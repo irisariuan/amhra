@@ -1,0 +1,7 @@
+discordjs
+@discordjs/builders
+@discordjs/voice
+@discordjs/rest
+discord-api-types/v9
+play-dl
+yt-search
