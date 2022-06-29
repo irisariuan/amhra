@@ -1,7 +1,10 @@
 const { Client, Intents } = require('discord.js');
 const { readJson, readJsonSync } = require('./lib/read.js');
-const ytdl = require('ytdl-core');
 const fs = require('fs');
+
+process.on('uncaughtException', e => {
+	console.log('Uncaught Error: ' + e)
+})
 
 const client = new Client({ intents: [
 	Intents.FLAGS.GUILDS,
@@ -65,6 +68,14 @@ client.on('messageCreate', async message => {
 		switch (args.shift()) {
 		}
 	}
+});
+
+client.on('shardError', e => {
+	console.log('Shard Error: ' + e)
+});
+
+process.on('unhandledRejection', error => {
+	console.error('Unhandled promise rejection:', error);
 });
 
 (async () => {

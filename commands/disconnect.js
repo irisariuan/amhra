@@ -12,7 +12,7 @@ module.exports = {
             connection.disconnect();
 
             interaction.reply({
-                content: 'Disconnect'
+                content: 'Disconnected'
             })
 
             //also destory the audio player if there is one

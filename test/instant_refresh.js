@@ -16,7 +16,7 @@ for (const file of commandFiles) {
 }
 
 const rest = new REST({ version: '9' }).setToken(setting.TOKEN);
-let guildList = ['897409924236197888'];
+let guildList = ['897409924236197888', '781782289888837654'];
 
 (async () => {
 	console.log("Start refreshing commands")
