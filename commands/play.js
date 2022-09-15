@@ -69,7 +69,7 @@ module.exports = {
 					content: `Playing ${data.title}`
 				})
 			} catch (error) {
-				console.log('An error occurred while trying to start playing music: ' + error)
+				console.error('An error occurred while trying to start playing music: ', error)
 				interaction.editReply({
 					content: 'An error occurred while processing the song',
 					ephemeral: true
