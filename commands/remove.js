@@ -19,6 +19,6 @@ module.exports = {
 		if (!player) return await interaction.reply({ content: 'The queue is clear!' });
 		if (index > player.queue.length) return await interaction.reply({ content: 'Out of index!' });
 		removed = player.queue.splice(index-1, 1)[0];
-		return await interaction.reply({ content: `Removed ${removed.title}!` })
+		return await interaction.reply({ content: `Removed \`${removed}\`!` })
 	},
 };

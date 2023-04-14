@@ -7,7 +7,7 @@ const {destoryAudioPlayer} = require('../lib/voice')
 module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('forcereset')
-		.setDescription('Force reset current player, only use when you cannot play music properly'),
+		.setDescription('Force reset the current player, only use it when you cannot play music properly'),
 	/**
 	 * @param {BaseCommandInteraction} interaction 
 	 * @param {Client} client 
