@@ -8,6 +8,7 @@ module.exports = {
 		.setName('superreset')
 		.setDescription('Reset all the players'),
 	/**
+	 * @typedef {Array<string>} 
 	 * @param {BaseCommandInteraction} interaction 
 	 * @param {Client} client 
 	 */

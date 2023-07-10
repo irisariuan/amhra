@@ -1,12 +1,19 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { getAudioPlayer, getConnection, songToStr } = require('../lib/voice');
-const { MessageEmbed } = require('discord.js');
+const { MessageEmbed, BaseCommandInteraction } = require('discord.js');
 const yts = require('yt-search');
 
 module.exports = {
 	data: new SlashCommandBuilder()
 		.setName('queue')
-		.setDescription('Show the songs going to be played'),
+		.setDescription('Show the songs going to be played')
+		.addIntegerOption(opt => opt.setMinValue(1).setName('page').setDescription('Page number of queue')),
+	/**
+	 * 
+	 * @param {BaseCommandInteraction} interaction 
+	 * @param {*} client 
+	 * @returns 
+	 */
 	async execute(interaction, client) {
 		await interaction.deferReply();
 		const player = getAudioPlayer(client, interaction);
@@ -19,11 +26,14 @@ module.exports = {
 		} else if (player.queue.length <= 0) {
 			console.log('Queue clear')
 			return interaction.editReply({ content: 'There is no more things to be played!' });	
-		} 
+		}
 
-		result = '';
-		
-		for (const i of player.queue.slice(0, 5)) {
+		result = ''
+
+		let startPoint = interaction.options.get('page') ?? 0
+		let endPoint = (startPoint + 5 >= player.queue.length) ? player.queue.length - 1 : startPoint + 5
+
+		for (const i of player.queue.slice(startPoint, endPoint)) {
 			let videoId = i.match(/^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/)[7]
 			let data = await yts({videoId})
 		    result += songToStr({details: {durationInSec: data.seconds}, title: data.title}, i+1) + '\n';
