@@ -1,7 +1,8 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { getAudioPlayer, getConnection, songToStr } = require('../lib/voice');
 const { MessageEmbed, BaseCommandInteraction } = require('discord.js');
-const yts = require('yt-search');
+const { video_info } = require('play-dl')
+const { CustomClient } = require('../lib/client');
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -11,7 +12,7 @@ module.exports = {
 	/**
 	 * 
 	 * @param {BaseCommandInteraction} interaction 
-	 * @param {*} client 
+	 * @param {CustomClient} client 
 	 * @returns 
 	 */
 	async execute(interaction, client) {
@@ -34,12 +35,12 @@ module.exports = {
 		let endPoint = (startPoint + 5 >= player.queue.length) ? player.queue.length - 1 : startPoint + 5
 
 		for (const i of player.queue.slice(startPoint, endPoint)) {
-			let videoId = i.match(/^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#&?]*).*/)[7]
-			let data = await yts({videoId})
-		    result += songToStr({details: {durationInSec: data.seconds}, title: data.title}, i+1) + '\n';
+			let data = await video_info(i)
+
+		    result += songToStr({details: {durationInSec: data.video_details.durationInSec}, title: data.video_details.title}, i+1) + '\n';
 		}
 
-        const embed = new MessageEmbed().setTitle('Upcoming Songs').setColor('CF2373').addField('In queue', result.slice(0, -1));
+        const embed = new MessageEmbed().setTitle('Upcoming Songs').setColor('CF2373').addFields({name: 'In queue', value: result.slice(0, -1)});
 		
 		if (player.queue.length > 6) {
             if (player.queue.length === 7) {

@@ -1,5 +1,6 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { getAudioPlayer, getConnection } = require('../lib/voice');
+const { CustomClient } = require('../lib/client');
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -8,7 +9,7 @@ module.exports = {
 		.addIntegerOption(opt => opt.setName('volume').setDescription('Set the volume of the bot').setMinValue(0).setMaxValue(200).setRequired(true)),
 	/**
 	 * @param {BaseCommandInteraction} interaction 
-	 * @param {Client} client 
+	 * @param {CustomClient} client 
 	 */
 	async execute(interaction, client) {
 		const vol = interaction.options.getInteger('volume') / 100;
@@ -18,7 +19,6 @@ module.exports = {
 		player.volume = vol;
 		await interaction.reply({ content: `Set the volume to ${vol*100}%` })
 		if (!player.isPlaying) return;
-		console.log(player.nowPlaying.resource);
 		player.nowPlaying.resource.volume.setVolume(vol);
 	}
 };

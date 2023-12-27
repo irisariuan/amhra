@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { MessageEmbed } = require('discord.js');
 const { getAudioPlayer, songToStr } = require('../lib/voice');
+const { CustomClient } = require('../lib/client');
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -8,7 +9,7 @@ module.exports = {
 		.setDescription('Show the song playing'),
 	/**
 	 * @param {BaseCommandInteraction} interaction 
-	 * @param {Client} client 
+	 * @param {CustomClient} client 
 	**/
 	async execute(interaction, client) {
 		const player = getAudioPlayer(client, interaction, {createPlayer: false});

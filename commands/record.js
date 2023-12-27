@@ -7,7 +7,7 @@ module.exports = {
 		.setName('record')
 		.setDescription('Record your conversation'),
 	async execute(interaction, client) {
-		await record(interaction);
-		interaction.reply({content: 'Start Recording'});
+		// await record(interaction);
+		interaction.reply({content: 'We\'re still working on this funciton!'});
 	},
 };
