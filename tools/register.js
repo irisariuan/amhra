@@ -3,6 +3,7 @@
 const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v9');
 const { readJsonSync } = require('../lib/read');
+const { select } = require('@inquirer/prompts')
 const fs = require('fs');
 
 const commands = [];
@@ -18,14 +19,18 @@ for (const file of commandFiles) {
     commands.push(command.data.toJSON());
 }
 
-const rest = new REST({ version: '9' }).setToken(setting.TOKEN);
 
 (async () => {
+    const result = await select({ choices: [{ name: 'Production', value: 'prod' }, { name: 'Development', value: 'dev' }], message: 'Mode' })
+	const token = result === 'prod' ? setting.TOKEN : setting.TESTING_TOKEN
+	const clientId = result === 'prod' ? setting.CLIENT_ID : setting.TEST_CLIENT_ID
+    
+    const rest = new REST({ version: '9' }).setToken(token);
     try {
 		console.log('Started refreshing application (/) commands.');
 
         console.log(await rest.put(
-            Routes.applicationCommands(setting.CLIENT_ID),
+            Routes.applicationCommands(clientId),
             { body: commands }
         ));
 

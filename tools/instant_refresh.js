@@ -3,7 +3,7 @@ const { Routes } = require('discord-api-types/v9');
 const { readJsonSync } = require('./lib/read');
 const fs = require('fs');
 
-const { Client, Intents } = require('discord.js');
+const { select } = require('@inquirer/prompts')
 
 const commands = [];
 const commandFiles = fs.readdirSync('./commands').filter(d => d.endsWith('.js'));
@@ -15,16 +15,21 @@ for (const file of commandFiles) {
 	commands.push(command.data.toJSON());
 }
 
-const rest = new REST({ version: '9' }).setToken(setting.TOKEN);
-let guildList = ['897409924236197888', '781782289888837654'];
-
 (async () => {
+	const result = await select({ choices: [{ name: 'Production', value: 'prod' }, { name: 'Development', value: 'dev' }], message: 'Mode' })
+	const token = result === 'prod' ? setting.TOKEN : setting.TESTING_TOKEN
+	const clientId = result === 'prod' ? setting.CLIENT_ID : setting.TEST_CLIENT_ID
+	
+	const rest = new REST({ version: '9' }).setToken(token);
+	
+	let guildList = ['897409924236197888', '781782289888837654'];
+
 	console.log("Start refreshing commands")
 	for (i of guildList) {
-	console.log("Trying to refresh guild (ID: "+i+")")
+		console.log("Trying to refresh guild (ID: " + i + ")")
 		try {
 			console.log(await rest.put(
-				Routes.applicationCommands(setting.CLIENT_ID),
+				Routes.applicationCommands(clientId),
 				{
 					body: commands
 				}

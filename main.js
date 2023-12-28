@@ -1,26 +1,32 @@
 const { Client, Intents } = require('discord.js');
 const { readJson, readJsonSync } = require('./lib/read.js');
 const fs = require('fs');
+const { select, confirm } = require('@inquirer/prompts')
 const { CustomClient } = require('./lib/client.js');
+const readline = require('readline/promises')
+
+const rl = readline.createInterface(process.stdin, process.stdout)
 
 process.on('uncaughtException', e => {
 	console.log('Uncaught Error: ' + e)
 })
 
-const client = new CustomClient({ intents: [
-	Intents.FLAGS.GUILDS,
-	Intents.FLAGS.GUILD_MESSAGES,
-	Intents.FLAGS.GUILDS,
-	Intents.FLAGS.GUILD_MEMBERS,
-	Intents.FLAGS.GUILD_BANS,
-	Intents.FLAGS.GUILD_EMOJIS_AND_STICKERS,
-	Intents.FLAGS.GUILD_INTEGRATIONS,
-	Intents.FLAGS.GUILD_VOICE_STATES,
-	Intents.FLAGS.GUILD_PRESENCES,
-	Intents.FLAGS.GUILD_MESSAGES,
-	Intents.FLAGS.GUILD_MESSAGE_REACTIONS,
-	Intents.FLAGS.GUILD_MESSAGE_TYPING
-]});
+const client = new CustomClient({
+	intents: [
+		Intents.FLAGS.GUILDS,
+		Intents.FLAGS.GUILD_MESSAGES,
+		Intents.FLAGS.GUILDS,
+		Intents.FLAGS.GUILD_MEMBERS,
+		Intents.FLAGS.GUILD_BANS,
+		Intents.FLAGS.GUILD_EMOJIS_AND_STICKERS,
+		Intents.FLAGS.GUILD_INTEGRATIONS,
+		Intents.FLAGS.GUILD_VOICE_STATES,
+		Intents.FLAGS.GUILD_PRESENCES,
+		Intents.FLAGS.GUILD_MESSAGES,
+		Intents.FLAGS.GUILD_MESSAGE_REACTIONS,
+		Intents.FLAGS.GUILD_MESSAGE_TYPING
+	]
+});
 
 const setting = readJsonSync('./data/setting.json');
 Object.freeze(setting);
@@ -35,7 +41,7 @@ for (const file of commandFiles) {
 }
 
 client.on('ready', () => {
-	
+
 	console.log(`Logged in as ${client.user.tag}!`);
 });
 
@@ -48,8 +54,8 @@ client.on('interactionCreate', async interaction => {
 	} catch (e) {
 		console.error(e);
 		try {
-			await interaction.reply({content: "An error occured during running this action", ephemeral:true})
-		} catch {}
+			await interaction.reply({ content: "An error occured during running this action", ephemeral: true })
+		} catch { }
 	}
 });
 
@@ -74,5 +80,6 @@ process.on('unhandledRejection', error => {
 });
 
 (async () => {
-	client.login(setting.TOKEN);
+	const result = await select({ choices: [{ name: 'Production', value: setting.TOKEN },{ name: 'Development', value: setting.TESTING_TOKEN }], message: 'Mode' })
+	client.login(result);
 })()
