@@ -2,7 +2,7 @@
 
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { Interaction, Client, BaseCommandInteraction } = require('discord.js');
-const { CustomClient } = require('../lib/client');
+const { CustomClient } = require('../lib/custom');
 
 module.exports = {
 	data: new SlashCommandBuilder()

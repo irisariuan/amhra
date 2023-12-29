@@ -1,7 +1,7 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { MessageEmbed } = require('discord.js');
 const { getAudioPlayer, songToStr } = require('../lib/voice');
-const { CustomClient } = require('../lib/client');
+const { CustomClient } = require('../lib/custom');
 
 module.exports = {
 	data: new SlashCommandBuilder()

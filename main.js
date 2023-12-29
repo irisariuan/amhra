@@ -1,11 +1,8 @@
-const { Client, Intents } = require('discord.js');
-const { readJson, readJsonSync } = require('./lib/read.js');
+const { Intents } = require('discord.js');
+const { readJsonSync } = require('./lib/read.js');
 const fs = require('fs');
-const { select, confirm } = require('@inquirer/prompts')
-const { CustomClient } = require('./lib/client.js');
-const readline = require('readline/promises')
-
-const rl = readline.createInterface(process.stdin, process.stdout)
+const { select } = require('@inquirer/prompts')
+const { CustomClient } = require('./lib/custom.js');
 
 process.on('uncaughtException', e => {
 	console.log('Uncaught Error: ' + e)

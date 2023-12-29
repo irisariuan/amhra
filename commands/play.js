@@ -2,7 +2,7 @@ const { SlashCommandBuilder } = require('@discordjs/builders');
 const { joinVoiceChannel, AudioPlayerStatus } = require('@discordjs/voice');
 const { getAudioPlayer, createResource, isVideo, isPlaylist, joinVoice } = require('../lib/voice');
 const { playlist_info, search } = require('play-dl')
-const { CustomClient } = require('../lib/client');
+const { CustomClient } = require('../lib/custom');
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -32,12 +32,15 @@ module.exports = {
 		const audioPlayer = getAudioPlayer(client, interaction);
 		connection.subscribe(audioPlayer);
 
-		let url = input;
+		const c = client.cache.get(input)
+		let url = c ?? input;
 		let playlistInfo = null
 
 		if (!isVideo(input)) {
-			const result = await search(input, { limit: 1 });
-			url = result[0].url
+			if (!c) {
+				const result = await search(input, { limit: 1 });
+				url = result[0].url
+			}
 		} else if (isPlaylist(input)) {
 			playlistInfo = await playlist_info(url, {incomplete: true})
 			audioPlayer.queue = audioPlayer.queue.concat((await playlistInfo.all_videos()).map(v => v.url))
