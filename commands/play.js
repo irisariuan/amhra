@@ -1,8 +1,11 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
-const { joinVoiceChannel, AudioPlayerStatus } = require('@discordjs/voice');
-const { getAudioPlayer, createResource, isVideo, isPlaylist, joinVoice } = require('../lib/voice');
+//@ts-check
+
+const { SlashCommandBuilder } = require('@discordjs/builders')
+const { getAudioPlayer, createResource, isVideo, isPlaylist, joinVoice } = require('../lib/voice')
 const { playlist_info, search } = require('play-dl')
-const { CustomClient } = require('../lib/custom');
+const { CustomClient } = require('../lib/custom')
+const { BaseCommandInteraction } = require('discord.js')
+const { dcb } = require('../lib/misc')
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -17,60 +20,69 @@ module.exports = {
 	 */
 	async execute(interaction, client) {
 		//prevent error caused by long response time
-		await interaction.deferReply();
-		console.log('Called /play')
-		/**
-		 * @type {string}
-		 */
-		const input = interaction.options.getString('search');
+		await interaction.deferReply()
+		dcb.log('Called /play')
+		const input = interaction.options.getString('search')
 
-		let voiceChannel = interaction.member.voice.channel;
-		if (!voiceChannel) return;
+		let voiceChannel = interaction.member?.voice?.channel
+		if (!voiceChannel) return
 
-		const connection = joinVoice(voiceChannel, interaction);
-		console.log('Connected');
-		const audioPlayer = getAudioPlayer(client, interaction);
-		connection.subscribe(audioPlayer);
+		const connection = joinVoice(voiceChannel, interaction)
+		dcb.log('Connected')
+		const audioPlayer = getAudioPlayer(client, interaction)
+		connection.subscribe(audioPlayer)
 
+		//searching data on youtube and add to queue
+		// the video will be auto played by audioPlayer, it is not handled here
+
+		// find if there is cache
 		const c = client.cache.get(input)
-		let url = c ?? input;
-		let playlistInfo = null
+		if (c) {
+			dcb.log('found cache, using cache ' + c)
+		}
+		let url = c ?? input
+		let playlistInfo = c
 
 		if (!isVideo(input)) {
 			if (!c) {
-				const result = await search(input, { limit: 1 });
+				const result = await search(input, { limit: 1 })
+				client.cache.set(input, result)
 				url = result[0].url
 			}
 		} else if (isPlaylist(input)) {
-			playlistInfo = await playlist_info(url, {incomplete: true})
+			if (playlistInfo === null) {
+				playlistInfo = await playlist_info(url, {incomplete: true})
+				client.cache.set(input, playlistInfo)
+			}
 			audioPlayer.queue = audioPlayer.queue.concat((await playlistInfo.all_videos()).map(v => v.url))
 		}
 
-		audioPlayer.queue.push(url);
+		// interaction content
+		audioPlayer.queue.push(url)
 		if (!audioPlayer.isPlaying) {
-			console.log('Started to play music');
+			dcb.log('Started to play music')
 			try {
-				const data = await createResource(audioPlayer.queue.shift());
-				data.resource.volume.setVolume(audioPlayer.volume)
-				audioPlayer.isPlaying = true;
-				audioPlayer.nowPlaying = data;
+				const data = await createResource(audioPlayer.queue.shift())
+				data.resource.volume?.setVolume(audioPlayer.volume)
+				audioPlayer.isPlaying = true
+				audioPlayer.nowPlaying = data
 				
-				audioPlayer.play(data.resource);
+				audioPlayer.play(data.resource)
 				
 				if (isPlaylist(url)) {
-					console.log('Playing playlist')
+					dcb.log('Playing playlist')
 					if (!playlistInfo) return await interaction.editReply({ content: 'Cannot find any playlist!' })
 					return await interaction.editReply({
 						content: `Playing playlist ${playlistInfo.title} (${playlistInfo.url})`
 					})
 				}
 				if (input !== url) {
-					console.log('Playing Searched URL');
+					dcb.log('Playing Searched URL')
 					return await interaction.editReply({
 						content: `Playing ${data.title} (${url})`
 					})
 				}
-				console.log('Interaction inclued the URL');
+				dcb.log('Interaction inclued the URL')
 				await interaction.editReply({
 					content: `Playing ${data.title}`
 				})
@@ -82,17 +94,17 @@ module.exports = {
 				})
 			}
 		} else {
-			console.log('Added into queue')
+			dcb.log('Added into queue')
 			if (input !== url) {
-				console.log('Searched URL and added URL to queue');
+				dcb.log('Searched URL and added URL to queue')
 				return await interaction.editReply({
 					content: `Added ${input}(${url}) to queue`
 				})
 			}
-			console.log('Added URL to queue')
+			dcb.log('Added URL to queue')
 			await interaction.editReply({
 				content: `Added ${input} into queue`
 			})
 		}
 	}
-};
+}

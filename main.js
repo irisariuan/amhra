@@ -1,11 +1,14 @@
 const { Intents } = require('discord.js');
 const { readJsonSync } = require('./lib/read.js');
 const fs = require('fs');
+const chalk = require('chalk')
 const { select } = require('@inquirer/prompts')
 const { CustomClient } = require('./lib/custom.js');
+const { app } = require('./lib/express/main.js');
+const { exp, dcb, error } = require('./lib/misc.js');
 
 process.on('uncaughtException', e => {
-	console.log('Uncaught Error: ' + e)
+	error.log('Uncaught Error: ' + e)
 })
 
 const client = new CustomClient({
@@ -38,8 +41,7 @@ for (const file of commandFiles) {
 }
 
 client.on('ready', () => {
-
-	console.log(`Logged in as ${client.user.tag}!`);
+	dcb.log(`Logged in as ${client.user.tag}!`);
 });
 
 client.on('interactionCreate', async interaction => {
@@ -59,7 +61,7 @@ client.on('interactionCreate', async interaction => {
 client.on('messageCreate', async message => {
 	const msg = message.content;
 	if (message.author.id !== client.user.id) {
-		console.log(`${message.author.tag}: ${msg}`);
+		dcb.log(`${message.author.tag}: ${msg}`);
 	}
 	if (msg.startsWith(setting.PREFIX)) {
 		const args = msg.slice(setting.PREFIX.length).split(' ');
@@ -69,7 +71,7 @@ client.on('messageCreate', async message => {
 });
 
 client.on('shardError', e => {
-	console.log('Shard Error: ' + e)
+	dcb.log('Shard Error: ' + e)
 });
 
 process.on('unhandledRejection', error => {
@@ -77,6 +79,12 @@ process.on('unhandledRejection', error => {
 });
 
 (async () => {
-	const result = await select({ choices: [{ name: 'Production', value: setting.TOKEN },{ name: 'Development', value: setting.TESTING_TOKEN }], message: 'Mode' })
-	client.login(result);
+	const result = await select({ choices: [{ name: 'Production', value: 'prod' }, { name: 'Development', value: 'dev' }], message: 'Mode' })
+	
+	const token = {'prod': setting.TOKEN, 'dev': setting.TESTING_TOKEN}[result]
+
+	if (result === 'dev') {
+		app.listen(setting.PORT, () => exp.log(chalk.blue.bold('Listening on port ') + chalk.greenBright.italic(setting.PORT)))
+	}
+	client.login(token);
 })()

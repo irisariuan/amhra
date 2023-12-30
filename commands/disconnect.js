@@ -1,6 +1,7 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { getVoiceConnection } = require('@discordjs/voice');
 const { getAudioPlayer } = require('../lib/voice');
+const { dcb } = require('../lib/misc');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -10,7 +11,8 @@ module.exports = {
         const connection = getVoiceConnection(interaction.guildId);
         if (connection) {
             connection.disconnect();
-
+            
+            dcb.log('Disconnected')
             interaction.reply({
                 content: 'Disconnected'
             })

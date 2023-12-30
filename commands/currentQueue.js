@@ -3,6 +3,7 @@ const { getAudioPlayer, getConnection, songToStr } = require('../lib/voice');
 const { MessageEmbed, BaseCommandInteraction } = require('discord.js');
 const { video_info } = require('play-dl')
 const { CustomClient } = require('../lib/custom');
+const { dcb } = require('../lib/misc');
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -19,13 +20,13 @@ module.exports = {
 		await interaction.deferReply();
 		const player = getAudioPlayer(client, interaction);
 		if (!getConnection(interaction)) {
-			console.log('Bot not in voice channel');
+			dcb.log('Bot not in voice channel');
 			return interaction.editReply({ content: "I'm not in a voice channel!" });
 		} else if (!player) {
-			console.log('Bot not playing song');
+			dcb.log('Bot not playing song');
 			return interaction.editReply({ content: "I'm not playing anything!" });
 		} else if (player.queue.length <= 0) {
-			console.log('Queue clear')
+			dcb.log('Queue clear')
 			return interaction.editReply({ content: 'There is no more things to be played!' });	
 		}
 
