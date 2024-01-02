@@ -4,11 +4,11 @@ const fs = require('fs');
 const chalk = require('chalk')
 const { select } = require('@inquirer/prompts')
 const { CustomClient } = require('./lib/custom.js');
-const { app, event } = require('./lib/express/main.js');
+const { app, event, registered } = require('./lib/express/main.js');
 const { exp, dcb, error } = require('./lib/misc.js');
 
 process.on('uncaughtException', e => {
-	error.log('Uncaught Error: ' + e)
+	error.err('Uncaught Error: ' + e)
 })
 
 const client = new CustomClient({
@@ -79,6 +79,10 @@ event.on('page', pageName => exp.log('Fetched page ' + pageName))
 process.on('unhandledRejection', error => {
 	console.error('Unhandled promise rejection:', error);
 });
+
+app.get('/api/guildIds', registered, (req, res) => {
+    const id = Array.from(client.player.keys())
+})
 
 (async () => {
 	const result = await select({ choices: [{ name: 'Production', value: 'prod' }, { name: 'Development', value: 'dev' }], message: 'Mode' })

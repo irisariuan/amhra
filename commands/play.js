@@ -22,14 +22,19 @@ module.exports = {
 		//prevent error caused by long response time
 		await interaction.deferReply()
 		dcb.log('Called /play')
+		// @ts-ignore
 		const input = interaction.options.getString('search')
-
+		
+		// @ts-ignore
 		let voiceChannel = interaction.member?.voice?.channel
 		if (!voiceChannel) return
 
 		const connection = joinVoice(voiceChannel, interaction)
 		dcb.log('Connected')
 		const audioPlayer = getAudioPlayer(client, interaction)
+		if (typeof audioPlayer === 'boolean') {
+			throw new Error('Execution Error')
+		}
 		connection.subscribe(audioPlayer)
 
 		//searching data on youtube and add to queue
@@ -90,6 +95,7 @@ module.exports = {
 				console.error('An error occurred while trying to start playing music: ', error)
 				interaction.editReply({
 					content: 'An error occurred while processing the song',
+					// @ts-ignore
 					ephemeral: true
 				})
 			}

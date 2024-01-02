@@ -14,8 +14,18 @@ window.onload = async () => {
             l.textContent = v.message
             return l
         }).forEach(v => document.querySelector('#log').appendChild(v))
-        
+
     }
     setInterval(f, 10000);
     f()
+}
+
+async function editSong(action) {
+    fetch('/api/song/edit', {
+        body: JSON.stringify({ action }),
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
 }

@@ -5,6 +5,7 @@
     "@discordjs/rest": "^1.6.0",
     "@discordjs/voice": "^0.15.0",
     "@inquirer/prompts": "^3.3.0",
+    "body-parser": "^1.20.2",
     "chalk": "^4.1.0",
     "discord-api-types": "^0.37.37",
     "discord.js": "^13.14.0",
