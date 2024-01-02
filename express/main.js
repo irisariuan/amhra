@@ -32,9 +32,36 @@ async function editSong(action) {
 
 async function editSec() {
     fetch('/api/song/edit', {
-        body: JSON.stringify({ action, guildId: document.querySelector('input#inpGuildId').value, detail: {
-            sec: parseInt(document.querySelector('#songinp').value)
-        } }),
+        body: JSON.stringify({
+            action: 'setTime', guildId: document.querySelector('input#inpGuildId').value, detail: {
+                sec: parseInt(document.querySelector('#songinp').value)
+            }
+        }),
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+}
+
+async function addToQueue() {
+    const w = await (await fetch('/api/search', {
+        body: JSON.stringify({
+            query: document.querySelector('#playinp').value
+        }),
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })).json()
+    fetch('/api/song/edit', {
+        body: JSON.stringify({
+            action: 'addSong',
+            guildId: document.querySelector('input#inpGuildId').value,
+            detail: {
+                url: w.url
+            }
+        }),
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
