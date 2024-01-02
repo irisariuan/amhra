@@ -4,7 +4,7 @@ const fs = require('fs');
 const chalk = require('chalk')
 const { select } = require('@inquirer/prompts')
 const { CustomClient } = require('./lib/custom.js');
-const { app } = require('./lib/express/main.js');
+const { app, event } = require('./lib/express/main.js');
 const { exp, dcb, error } = require('./lib/misc.js');
 
 process.on('uncaughtException', e => {
@@ -73,6 +73,8 @@ client.on('messageCreate', async message => {
 client.on('shardError', e => {
 	dcb.log('Shard Error: ' + e)
 });
+
+event.on('page', pageName => exp.log('Fetched page ' + pageName))
 
 process.on('unhandledRejection', error => {
 	console.error('Unhandled promise rejection:', error);
