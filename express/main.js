@@ -22,7 +22,19 @@ window.onload = async () => {
 
 async function editSong(action) {
     fetch('/api/song/edit', {
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, guildId: document.querySelector('input#inpGuildId').value }),
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+}
+
+async function editSec() {
+    fetch('/api/song/edit', {
+        body: JSON.stringify({ action, guildId: document.querySelector('input#inpGuildId').value, detail: {
+            sec: parseInt(document.querySelector('#songinp').value)
+        } }),
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'

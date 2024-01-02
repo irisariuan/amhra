@@ -24,14 +24,15 @@ module.exports = {
 		dcb.log('Called /play')
 		// @ts-ignore
 		const input = interaction.options.getString('search')
-		
+
 		// @ts-ignore
 		let voiceChannel = interaction.member?.voice?.channel
 		if (!voiceChannel) return
 
 		const connection = joinVoice(voiceChannel, interaction)
 		dcb.log('Connected')
-		const audioPlayer = getAudioPlayer(client, interaction)
+		const audioPlayer = getAudioPlayer(client, interaction, { createPlayer: true })
+
 		if (typeof audioPlayer === 'boolean') {
 			throw new Error('Execution Error')
 		}
@@ -40,23 +41,26 @@ module.exports = {
 		//searching data on youtube and add to queue
 		// the video will be auto played by audioPlayer, it is not handled here
 
-		// find if there is cache
+		// find if there is cache, cache is saved by YoutubeVideo form
 		const c = client.cache.get(input)
 		if (c) {
-			dcb.log('found cache, using cache ' + c)
+			dcb.log('Found cache, using cache ' + c)
 		}
-		let url = c ?? input
+		let url = input
 		let playlistInfo = c
 
 		if (!isVideo(input)) {
 			if (!c) {
 				const result = await search(input, { limit: 1 })
-				client.cache.set(input, result)
+				client.cache.set(input, result[0])
 				url = result[0].url
+			} else {
+				// transfer YoutubeVideo back to url
+				url = c.url
 			}
 		} else if (isPlaylist(input)) {
 			if (playlistInfo === null) {
-				playlistInfo = await playlist_info(url, {incomplete: true})
+				playlistInfo = await playlist_info(url, { incomplete: true })
 				client.cache.set(input, playlistInfo)
 			}
 			audioPlayer.queue = audioPlayer.queue.concat((await playlistInfo.all_videos()).map(v => v.url))
@@ -71,9 +75,9 @@ module.exports = {
 				data.resource.volume?.setVolume(audioPlayer.volume)
 				audioPlayer.isPlaying = true
 				audioPlayer.nowPlaying = data
-				
+
 				audioPlayer.play(data.resource)
-				
+
 				if (isPlaylist(url)) {
 					dcb.log('Playing playlist')
 					if (!playlistInfo) return await interaction.editReply({ content: 'Cannot find any playlist!' })

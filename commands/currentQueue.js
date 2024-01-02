@@ -33,12 +33,16 @@ module.exports = {
 		result = ''
 
 		let startPoint = interaction.options.get('page') ?? 0
-		let endPoint = (startPoint + 5 >= player.queue.length) ? player.queue.length - 1 : startPoint + 5
+		let endPoint = (startPoint + 5 >= player.queue.length) ? player.queue.length : startPoint + 5
 
-		for (const i of player.queue.slice(startPoint, endPoint)) {
-			let data = await video_info(i)
-
-		    result += songToStr({details: {durationInSec: data.video_details.durationInSec}, title: data.video_details.title}, i+1) + '\n';
+		const q = player.queue.slice(startPoint, endPoint)
+		for (let i = 0; i < q.length; i++) {
+			const c = client.cache.getUrl(q[i])
+			if (c) {
+				dcb.log('Founded cache, using cached URL')
+			}
+			let data = c ?? await video_info(q[i])
+		    result += songToStr({details: {durationInSec: data.durationInSec}, title: data.title}, i+1) + '\n'
 		}
 
         const embed = new MessageEmbed().setTitle('Upcoming Songs').setColor('CF2373').addFields({name: 'In queue', value: result.slice(0, -1)});
@@ -49,6 +53,8 @@ module.exports = {
             }
             embed.setFooter({text: `There are ${player.queue.length - 6} more songs in the queue`});
         }
+
+		dcb.log('Sent queue')
 		await interaction.editReply({embeds: [embed]})
 	},
 };
