@@ -5,13 +5,13 @@ const { client } = require('./lib/client.js')
 const { select } = require('@inquirer/prompts')
 const chalk = require('chalk')
 const { readJsonSync } = require('./lib/read.js')
-const { exp, error } = require('./lib/misc.js')
+const { exp, globalApp } = require('./lib/misc.js')
 
 const setting = readJsonSync('./data/setting.json')
 Object.freeze(setting)
 
 process.on('uncaughtException', e => {
-    error.err('Uncaught Error: ' + e)
+    globalApp.err('Uncaught Error: ' + e)
 })
 
 process.on('unhandledRejection', error => {

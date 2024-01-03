@@ -11,14 +11,10 @@ const commandFiles = fs.readdirSync('./commands').filter(d => d.endsWith('.js'))
 const setting = readJsonSync('./data/setting.json');
 Object.freeze(setting);
 
-console.log(commandFiles)
-
 for (const file of commandFiles) {
-    const command = require(`../commands/${file}`);
-    console.log(command)
+    const command = require(`../commands/${file}`)
     commands.push(command.data.toJSON());
 }
-
 
 (async () => {
     const result = await select({ choices: [{ name: 'Production', value: 'prod' }, { name: 'Development', value: 'dev' }], message: 'Mode' })

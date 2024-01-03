@@ -1,7 +1,13 @@
-window.onload = async () => {
+let reg = false
+let password = ''
+
+async function register() {
+    password = document.querySelector('#auth').value
+    document.querySelector('#auth').value = ''
     await fetch('/api/new')
+    if (reg) return
     const f = async () => {
-        const logMsg = await (await fetch('/api/log')).json()
+        const logMsg = await (await fetch('/api/log', { headers: { Authorization: 'Basic ' + password } })).json()
         if (!logMsg) {
             return
         }
@@ -14,10 +20,10 @@ window.onload = async () => {
             l.textContent = v.message
             return l
         }).forEach(v => document.querySelector('#log').appendChild(v))
-
     }
     setInterval(f, 10000);
     f()
+    reg = true
 }
 
 async function editSong(action) {
@@ -25,7 +31,8 @@ async function editSong(action) {
         body: JSON.stringify({ action, guildId: document.querySelector('input#inpGuildId').value }),
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + password
         }
     })
 }
@@ -39,7 +46,8 @@ async function editSec() {
         }),
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + password
         }
     })
 }
@@ -51,7 +59,8 @@ async function addToQueue() {
         }),
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + password
         }
     })).json()
     fetch('/api/song/edit', {
@@ -64,7 +73,21 @@ async function addToQueue() {
         }),
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + password
+        }
+    })
+}
+
+async function action() {
+    fetch('/api/action', {
+        body: JSON.stringify({
+            action: 'exit'
+        }),
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Basic ' + password
         }
     })
 }
