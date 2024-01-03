@@ -3,5 +3,7 @@
 	"TESTING_TOKEN": "",
 	"PREFIX": "!",
 	"CLIENT_ID": "",
-	"AUTH_TOKEN": ""
+	"TEST_CLIENT_ID": "",
+	"AUTH_TOKEN": "",
+	"PORT": 3000
 }
