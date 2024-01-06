@@ -11,7 +11,7 @@ const setting = readJsonSync('./data/setting.json')
 Object.freeze(setting)
 
 process.on('uncaughtException', e => {
-    globalApp.err('Uncaught Error: ' + e)
+	globalApp.err('Uncaught Error: ' + e)
 })
 
 process.on('unhandledRejection', error => {
@@ -20,13 +20,11 @@ process.on('unhandledRejection', error => {
 
 
 (async () => {
-	
+
 	const result = await select({ choices: [{ name: 'Production', value: 'prod' }, { name: 'Development', value: 'dev' }], message: 'Mode' })
 
 	const token = { 'prod': setting.TOKEN, 'dev': setting.TESTING_TOKEN }[result]
 
-	if (result === 'dev') {
-		app.listen(setting.PORT, () => exp.log(chalk.blue.bold('Listening on port ') + chalk.greenBright.italic(setting.PORT)))
-	}
+	app.listen(setting.PORT, () => exp.log(chalk.blue.bold('Listening on port ') + chalk.greenBright.italic(setting.PORT)))
 	client.login(token)
 })()
