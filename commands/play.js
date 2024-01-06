@@ -33,7 +33,7 @@ module.exports = {
 		dcb.log('Connected')
 		const audioPlayer = getAudioPlayer(client, interaction, { createPlayer: true })
 
-		if (typeof audioPlayer === 'boolean') {
+		if (typeof audioPlayer === 'boolean' || !audioPlayer) {
 			throw new Error('Execution Error')
 		}
 		connection.subscribe(audioPlayer)
@@ -42,21 +42,21 @@ module.exports = {
 		// the video will be auto played by audioPlayer, it is not handled here
 
 		// find if there is cache, cache is saved by YoutubeVideo form
-		const c = client.cache.get(input)
-		if (c) {
-			dcb.log('Found cache, using cache ' + c)
+		const cachedUrl = client.cache.get(input)
+		if (cachedUrl) {
+			dcb.log('Found cache, using cache ' + cachedUrl)
 		}
 		let url = input
-		let playlistInfo = c
+		let playlistInfo = cachedUrl
 
 		if (!isVideo(input)) {
-			if (!c) {
+			if (!cachedUrl) {
 				const result = await search(input, { limit: 1 })
 				client.cache.set(input, result[0])
 				url = result[0].url
 			} else {
 				// transfer YoutubeVideo back to url
-				url = c.url
+				url = cachedUrl.url
 			}
 		} else if (isPlaylist(input)) {
 			if (playlistInfo === null) {
