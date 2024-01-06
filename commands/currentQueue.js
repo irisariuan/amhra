@@ -29,15 +29,18 @@ module.exports = {
 			dcb.log('Queue clear')
 			return interaction.editReply({ content: 'There is no more things to be played!' });
 		}
-		
-		let startPoint = (interaction.options.getInteger('page') - 1) * 5
-		if (interaction.options.getInteger('page') * 5 > player.queue.length) {
+
+		let pageNo = interaction.options.getInteger('page')
+		let startPoint = pageNo > 0 ? (pageNo - 1) * 5 : 0
+		if (pageNo * 5 > player.queue.length) {
 			// set it to last page if the page over maximum
-			startPoint = Math.floor(player.queue.length / 5)
+			startPoint = Math.floor(player.queue.length / 5) * 5
 		}
-		
+
 		let endPoint = (startPoint + 5 >= player.queue.length) ? player.queue.length : startPoint + 5
-		
+
+		console.log(startPoint, endPoint, player.queue.length)
+
 		result = ''
 		const songs = player.queue.slice(startPoint, endPoint)
 		for (let i = 0; i < songs.length; i++) {
@@ -46,20 +49,23 @@ module.exports = {
 				dcb.log('Founded cache, using cached URL')
 			}
 			let data = cachedUrl ?? await video_info(songs[i])
-			result += songToStr({ details: { durationInSec: data.durationInSec }, title: data.title }, i + 1) + '\n'
+			result += songToStr({ details: { durationInSec: data.durationInSec }, title: data.title }, i + 1 + startPoint) + '\n'
 		}
 
 		if (!result) {
-			return await interaction.reply({ephemeral: true, content: 'An error occured during running this action'})
+			return await interaction.editReply({ ephemeral: true, content: 'An error occured during running this action' })
 		}
 
-		const embed = new MessageEmbed().setTitle('Upcoming Songs').setColor('CF2373').addFields({ name: 'In queue', value: result.slice(0, -1) });
+		const embed = new MessageEmbed().setTitle('Upcoming Songs').setColor('CF2373').addFields({ name: 'In queue', value: result.slice(0, -1) })
 
-		if (player.queue.length > 6) {
-			if (player.queue.length === 7) {
+		const remainSongNo = player.queue.length - startPoint - 5
+		if (remainSongNo > 0) {
+			if (remainSongNo === 1) {
 				embed.setFooter({ text: `There are 1 more song in the queue` });
 			}
-			embed.setFooter({ text: `There are ${player.queue.length - 6} more songs in the queue` });
+			embed.setFooter({ text: `There are ${remainSongNo} more songs in the queue` });
+		} else {
+			embed.setFooter({ text: 'This is the end of the queue!' })
 		}
 
 		dcb.log('Sent queue')
