@@ -29,20 +29,28 @@ module.exports = {
 			dcb.log('Queue clear')
 			return interaction.editReply({ content: 'There is no more things to be played!' });
 		}
-
-		result = ''
-
-		let startPoint = interaction.options.get('page') ?? 0
+		
+		let startPoint = (interaction.options.getNumber('page') - 1) * 5
+		if (interaction.options.getNumber('page') * 5 > player.queue.length) {
+			// set it to last page if the page over maximum
+			startPoint = Math.floor(player.queue.length / 5)
+		}
+		
 		let endPoint = (startPoint + 5 >= player.queue.length) ? player.queue.length : startPoint + 5
-
-		const q = player.queue.slice(startPoint, endPoint)
-		for (let i = 0; i < q.length; i++) {
-			const c = client.cache.getUrl(q[i])
-			if (c) {
+		
+		result = ''
+		const songs = player.queue.slice(startPoint, endPoint)
+		for (let i = 0; i < songs.length; i++) {
+			const cachedUrl = client.cache.getUrl(songs[i])
+			if (cachedUrl) {
 				dcb.log('Founded cache, using cached URL')
 			}
-			let data = c ?? await video_info(q[i])
+			let data = cachedUrl ?? await video_info(songs[i])
 			result += songToStr({ details: { durationInSec: data.durationInSec }, title: data.title }, i + 1) + '\n'
+		}
+
+		if (!result) {
+			return await interaction.reply({ephemeral: true, content: 'An error occured during running this action'})
 		}
 
 		const embed = new MessageEmbed().setTitle('Upcoming Songs').setColor('CF2373').addFields({ name: 'In queue', value: result.slice(0, -1) });
