@@ -30,8 +30,8 @@ module.exports = {
 			return interaction.editReply({ content: 'There is no more things to be played!' });
 		}
 		
-		let startPoint = (interaction.options.getNumber('page') - 1) * 5
-		if (interaction.options.getNumber('page') * 5 > player.queue.length) {
+		let startPoint = (interaction.options.getInteger('page') - 1) * 5
+		if (interaction.options.getInteger('page') * 5 > player.queue.length) {
 			// set it to last page if the page over maximum
 			startPoint = Math.floor(player.queue.length / 5)
 		}
