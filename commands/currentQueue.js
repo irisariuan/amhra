@@ -39,8 +39,6 @@ module.exports = {
 
 		let endPoint = (startPoint + 5 >= player.queue.length) ? player.queue.length : startPoint + 5
 
-		console.log(startPoint, endPoint, player.queue.length)
-
 		result = ''
 		const songs = player.queue.slice(startPoint, endPoint)
 		for (let i = 0; i < songs.length; i++) {
@@ -48,12 +46,12 @@ module.exports = {
 			if (cachedUrl) {
 				dcb.log('Founded cache, using cached URL')
 			}
-			let data = cachedUrl ?? await video_info(songs[i])
+			const data = cachedUrl ?? await video_info(songs[i])
 			result += songToStr({ details: { durationInSec: data.durationInSec }, title: data.title }, i + 1 + startPoint) + '\n'
 		}
 
 		if (!result) {
-			return await interaction.editReply({ ephemeral: true, content: 'An error occured during running this action' })
+			return await interaction.editReply({ ephemeral: true, content: 'An error occurred during running this action' })
 		}
 
 		const embed = new MessageEmbed().setTitle('Upcoming Songs').setColor('CF2373').addFields({ name: 'In queue', value: result.slice(0, -1) })

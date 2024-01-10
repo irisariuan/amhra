@@ -15,7 +15,7 @@ process.on('uncaughtException', e => {
 })
 
 process.on('unhandledRejection', error => {
-	console.error('Unhandled promise rejection:', error)
+	globalApp.err('Unhandled promise rejection:', error)
 });
 
 
