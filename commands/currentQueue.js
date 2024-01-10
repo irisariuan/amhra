@@ -48,12 +48,12 @@ module.exports = {
 			if (cachedUrl) {
 				dcb.log('Founded cache, using cached URL')
 			}
-			let data = cachedUrl ?? await video_info(songs[i])
+			let data = cachedUrl ?? (await video_info(songs[i])).video_details
 			result += songToStr({ details: { durationInSec: data.durationInSec }, title: data.title }, i + 1 + startPoint) + '\n'
 		}
 
 		if (!result) {
-			return await interaction.editReply({ ephemeral: true, content: 'An error occured during running this action' })
+			return await interaction.editReply({ ephemeral: true, content: 'An error occurred during running this action' })
 		}
 
 		const embed = new MessageEmbed().setTitle('Upcoming Songs').setColor('CF2373').addFields({ name: 'In queue', value: result.slice(0, -1) })
