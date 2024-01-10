@@ -4,7 +4,7 @@ let password = ''
 async function register() {
     password = document.querySelector('#auth').value
     document.querySelector('#auth').value = ''
-    await fetch('/api/new')
+    if (!await (await fetch('/api/new')).ok) return
     if (reg) return
     const f = async () => {
         const logMsg = await (await fetch('/api/log', { headers: { Authorization: 'Basic ' + password } })).json()
