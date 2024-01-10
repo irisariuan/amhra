@@ -91,7 +91,7 @@ module.exports = {
 						content: `Playing ${data.title} (${url})`
 					})
 				}
-				dcb.log('Interaction inclued the URL')
+				dcb.log('Interaction included the URL')
 				await interaction.editReply({
 					content: `Playing ${data.title}`
 				})

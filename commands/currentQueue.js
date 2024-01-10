@@ -39,8 +39,6 @@ module.exports = {
 
 		let endPoint = (startPoint + 5 >= player.queue.length) ? player.queue.length : startPoint + 5
 
-		console.log(startPoint, endPoint, player.queue.length)
-
 		result = ''
 		const songs = player.queue.slice(startPoint, endPoint)
 		for (let i = 0; i < songs.length; i++) {

@@ -15,13 +15,22 @@ process.on('uncaughtException', e => {
 })
 
 process.on('unhandledRejection', error => {
-	console.error('Unhandled promise rejection:', error)
+	globalApp.err('Unhandled promise rejection:', error)
 });
 
 
 (async () => {
-
-	const result = await select({ choices: [{ name: 'Production', value: 'prod' }, { name: 'Development', value: 'dev' }], message: 'Mode' })
+	const choices = []
+	if (setting.TOKEN) {
+		choices.push({ name: 'Production', value: 'prod' })
+	}
+	if (setting.TESTING_TOKEN) {
+		choices.push({ name: 'Development', value: 'dev' })
+	}
+	if (!choices.length) {
+		return console.log(chalk.bgRed.whiteBright('No token is provided'))
+	}
+	const result = await select({ choices: choices, message: 'Mode' })
 
 	const token = { 'prod': setting.TOKEN, 'dev': setting.TESTING_TOKEN }[result]
 
