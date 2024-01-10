@@ -42,11 +42,15 @@ module.exports = {
 		result = ''
 		const songs = player.queue.slice(startPoint, endPoint)
 		for (let i = 0; i < songs.length; i++) {
+			if (!song[i]) {
+				continue
+			}
 			const cachedUrl = client.cache.getUrl(songs[i])
 			if (cachedUrl) {
 				dcb.log('Founded cache, using cached URL')
 			}
 			let data = cachedUrl ?? (await video_info(songs[i])).video_details
+			console.log(data)
 			result += songToStr({ details: { durationInSec: data.durationInSec }, title: data.title }, i + 1 + startPoint) + '\n'
 		}
 
