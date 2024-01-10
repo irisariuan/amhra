@@ -2,3 +2,4 @@ node_modules/*
 test/*
 !test/.gitkeep
 package-lock.json
+bun.lockb
