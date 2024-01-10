@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { getVoiceConnection } = require('@discordjs/voice');
-const { destoryAudioPlayer } = require('../lib/voice');
+const { destroyAudioPlayer } = require('../lib/voice');
 const { dcb } = require('../lib/misc');
 
 module.exports = {
@@ -19,8 +19,8 @@ module.exports = {
                 content: 'Disconnected'
             })
 
-            //also destory the audio player if there is one
-            destoryAudioPlayer(client, interaction)
+            //also destroy the audio player if there is one
+            destroyAudioPlayer(client, interaction)
         } else {
             interaction.reply({
                 content: 'I am not connected to a voice channel'
