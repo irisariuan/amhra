@@ -42,7 +42,7 @@ module.exports = {
 		result = ''
 		const songs = player.queue.slice(startPoint, endPoint)
 		for (let i = 0; i < songs.length; i++) {
-			if (!song[i]) {
+			if (!songs[i]) {
 				continue
 			}
 			const cachedUrl = client.cache.getUrl(songs[i])
