@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { VoiceReceiver } = require('@discordjs/voice');
-const { record } = require('../lib/voice');
+const { record } = require('../lib/voice/core');
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -8,6 +8,6 @@ module.exports = {
 		.setDescription('Record your conversation'),
 	async execute(interaction, client) {
 		// await record(interaction);
-		interaction.reply({content: 'We\'re still working on this funciton!'});
+		interaction.reply({content: 'We\'re still working on this function!'});
 	},
 };

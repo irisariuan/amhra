@@ -1,13 +1,13 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { getVoiceConnection } = require('@discordjs/voice');
-const { destroyAudioPlayer } = require('../lib/voice');
+const { destroyAudioPlayer } = require('../lib/voice/core');
 const { dcb } = require('../lib/misc');
 
 module.exports = {
     data: new SlashCommandBuilder()
     .setName('disconnect')
     .setDescription('Disconnect the bot'),
-	async execute(interaction, client) {
+	execute(interaction, client) {
         const connection = getVoiceConnection(interaction.guildId);
         if (connection) {
 

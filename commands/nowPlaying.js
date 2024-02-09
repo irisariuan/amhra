@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { MessageEmbed } = require('discord.js');
-const { getAudioPlayer, songToStr } = require('../lib/voice');
+const { getAudioPlayer, songToString } = require('../lib/voice/core');
 const { CustomClient } = require('../lib/custom');
 
 module.exports = {
@@ -11,10 +11,10 @@ module.exports = {
 	 * @param {BaseCommandInteraction} interaction 
 	 * @param {CustomClient} client 
 	**/
-	async execute(interaction, client) {
+	execute(interaction, client) {
 		const player = getAudioPlayer(client, interaction, {createPlayer: false});
-		if (!player) return await interaction.reply({ content: 'I am not playing any song' });
-		if (!player.nowPlaying) return await interaction.reply({ content: "I'm not playing anything" });		
-		interaction.reply({embeds: [new MessageEmbed().setTitle('Now Playing').setDescription(songToStr(player.nowPlaying))]});
+		if (!player) return interaction.reply({ content: 'Not playing any song' });
+		if (!player.nowPlaying) return interaction.reply({ content: "Not playing any song" });		
+		interaction.reply({embeds: [new MessageEmbed().setTitle('Now Playing').setDescription(songToString(player.nowPlaying))]});
 	},
 };

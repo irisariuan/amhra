@@ -1,9 +1,9 @@
 // @ts-check
 
-const { SlashCommandBuilder } = require('@discordjs/builders');
-const { Interaction, Client, BaseCommandInteraction } = require('discord.js');
-const { getAudioPlayer } = require('../lib/voice');
-const { CustomClient } = require('../lib/custom');
+const { SlashCommandBuilder } = require('@discordjs/builders')
+const { BaseCommandInteraction } = require('discord.js')
+const { getAudioPlayer } = require('../lib/voice/core')
+const { CustomClient } = require('../lib/custom')
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -15,11 +15,13 @@ module.exports = {
 	 * @param {CustomClient} client 
 	 */
 	async execute(interaction, client) {
-		const player = getAudioPlayer(client, interaction, {createPlayer: false});
-		const index = interaction.options.getInteger('index');
-		if (!player) return await interaction.reply({ content: 'The queue is clear!' });
-		if (index > player.queue.length) return await interaction.reply({ content: 'Out of index!' });
-		removed = player.queue.splice(index-1, 1)[0];
-		return await interaction.reply({ content: `Removed \`${removed}\`!` })
+		const player = getAudioPlayer(client, interaction, {createPlayer: false})
+		const index = interaction.options.getInteger('index')
+		if (!player) return await interaction.reply({ content: 'The queue is clean!' })
+		if (index > player.queue.length) return await interaction.reply({ content: 'Out of index!' })
+		const removed = player.queue.splice(index-1, 1)[0]
+		const videoDetail = client.cache.getUrl(removed)
+		if (videoDetail) return interaction.reply({content: `Removed ${videoDetail.title} (\`${removed}\`)`})
+		return interaction.reply({ content: `Removed \`${removed}\`!` })
 	},
-};
+}

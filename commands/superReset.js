@@ -13,7 +13,7 @@ module.exports = {
 	 * @param {BaseCommandInteraction} interaction 
 	 * @param {CustomClient} client 
 	 */
-	async execute(interaction, client) {
+	execute(interaction, client) {
         client.player.clear()
 		interaction.reply({content: 'Super reset!'});
 	},

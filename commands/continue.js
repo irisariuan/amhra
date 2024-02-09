@@ -2,7 +2,7 @@
 
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { BaseCommandInteraction } = require('discord.js');
-const { getAudioPlayer } = require('../lib/voice');
+const { getAudioPlayer } = require('../lib/voice/core');
 const { CustomClient } = require('../lib/custom');
 
 module.exports = {

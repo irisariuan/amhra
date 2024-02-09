@@ -2,7 +2,7 @@
 
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { Interaction, Client, BaseCommandInteraction } = require('discord.js');
-const { getAudioPlayer } = require('../lib/voice');
+const { getAudioPlayer } = require('../lib/voice/core');
 const { CustomClient } = require('../lib/custom');
 
 module.exports = {
@@ -15,7 +15,7 @@ module.exports = {
 	 */
 	async execute(interaction, client) {
 		const player = getAudioPlayer(client, interaction, { createPlayer: false });
-		if (!player) return await interaction.reply({ content: "I'm not playing any song" })
+		if (!player) return await interaction.reply({ content: "Not playing any song" })
 		if (player.pause()) {
 			await interaction.reply({content: 'Paused!'})
 		} else {

@@ -1,7 +1,7 @@
 //@ts-check
 
 const { SlashCommandBuilder } = require('@discordjs/builders')
-const { getAudioPlayer, createResource, isVideo, isPlaylist, joinVoice } = require('../lib/voice')
+const { getAudioPlayer, createResource, isVideo, isPlaylist, joinVoice } = require('../lib/voice/core')
 const { playlist_info, search } = require('play-dl')
 const { CustomClient } = require('../lib/custom')
 const { BaseCommandInteraction } = require('discord.js')
@@ -66,8 +66,8 @@ module.exports = {
 			audioPlayer.queue = audioPlayer.queue.concat((await playlistInfo.all_videos()).map(v => v.url))
 		}
 
-		// interaction content
 		audioPlayer.queue.push(url)
+		// interaction content
 		if (!audioPlayer.isPlaying) {
 			dcb.log('Started to play music')
 			try {
