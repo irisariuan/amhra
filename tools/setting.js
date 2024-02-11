@@ -1,6 +1,7 @@
 const { input, confirm } = require('@inquirer/prompts')
 const chalk = require('chalk')
 const crypto = require('crypto');
+const { writeJsonSync } = require('../lib/read');
 
 (async () => {
     const setting = {

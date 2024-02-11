@@ -1,5 +1,5 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
-const { Interaction, Client, BaseCommandInteraction } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js')
+const { CommandInteraction } = require('discord.js');
 const { getAudioPlayer } = require('../lib/voice/core');
 const { CustomClient } = require('../lib/custom');
 
@@ -8,7 +8,7 @@ module.exports = {
 		.setName('pause')
 		.setDescription('Pause the music playing'),
 	/**
-	 * @param {BaseCommandInteraction} interaction 
+	 * @param {CommandInteraction} interaction 
 	 * @param {CustomClient} client 
 	 */
 	async execute(interaction, client) {

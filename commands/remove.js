@@ -1,5 +1,5 @@
-const { SlashCommandBuilder } = require('@discordjs/builders')
-const { BaseCommandInteraction } = require('discord.js')
+const { SlashCommandBuilder } = require('discord.js')
+const { CommandInteraction } = require('discord.js')
 const { getAudioPlayer } = require('../lib/voice/core')
 const { CustomClient } = require('../lib/custom')
 
@@ -9,7 +9,7 @@ module.exports = {
 		.setDescription('Remove a song from queue')
 		.addIntegerOption(opt => opt.setName('index').setDescription('Index of the item you would like to remove').setMinValue(1).setRequired(true)),
 	/**
-	 * @param {BaseCommandInteraction} interaction 
+	 * @param {CommandInteraction} interaction 
 	 * @param {CustomClient} client 
 	 */
 	async execute(interaction, client) {

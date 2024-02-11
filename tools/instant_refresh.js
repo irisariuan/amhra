@@ -25,7 +25,7 @@ for (const file of commandFiles) {
 	let guildList = ['897409924236197888', '781782289888837654'];
 
 	console.log("Start refreshing commands")
-	for (i of guildList) {
+	for (const i of guildList) {
 		console.log("Trying to refresh guild (ID: " + i + ")")
 		try {
 			console.log(await rest.put(

@@ -1,9 +1,14 @@
-const { SlashCommandBuilder } = require("@discordjs/builders")
-const { getAudioPlayer, getConnection, songToString } = require("../lib/voice/core")
-const { MessageEmbed, BaseCommandInteraction } = require("discord.js")
+const { SlashCommandBuilder } = require("discord.js")
+const {
+	getAudioPlayer,
+	getConnection,
+	songToString,
+} = require("../lib/voice/core")
+const { EmbedBuilder, CommandInteraction } = require("discord.js")
 const { video_info } = require("play-dl")
 const { CustomClient } = require("../lib/custom")
 const { dcb } = require("../lib/misc")
+const misc = require("../lib/misc")
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -14,7 +19,7 @@ module.exports = {
 		),
 	/**
 	 *
-	 * @param {BaseCommandInteraction} interaction
+	 * @param {CommandInteraction} interaction
 	 * @param {CustomClient} client
 	 * @returns
 	 */
@@ -34,6 +39,7 @@ module.exports = {
 			})
 		}
 
+		// @ts-ignore
 		let pageNo = interaction.options.getInteger("page")
 		let startPoint = pageNo > 0 ? (pageNo - 1) * 5 : 0
 		if (pageNo * 5 > player.queue.length) {
@@ -46,7 +52,7 @@ module.exports = {
 				? player.queue.length
 				: startPoint + 5
 
-		result = ""
+		let result = ""
 		const songs = player.queue.slice(startPoint, endPoint)
 		for (let i = 0; i < songs.length; i++) {
 			if (!songs[i]) {
@@ -57,7 +63,7 @@ module.exports = {
 				dcb.log("Founded cache, using cached URL")
 			}
 			let data = cachedUrl ?? (await video_info(songs[i])).video_details
-			
+
 			result +=
 				songToString(
 					{ details: { durationInSec: data.durationInSec }, title: data.title },
@@ -66,15 +72,12 @@ module.exports = {
 		}
 
 		if (!result) {
-			return await interaction.editReply({
-				ephemeral: true,
-				content: "An error occurred during running this action",
-			})
+			return await interaction.editReply(misc.misc.errorMessage)
 		}
 
-		const embed = new MessageEmbed()
+		const embed = new EmbedBuilder()
 			.setTitle("Upcoming Songs")
-			.setColor("CF2373")
+			.setColor("#CF2373")
 			.addFields({ name: "In queue", value: result.slice(0, -1) })
 
 		const remainSongNo = player.queue.length - startPoint - 5

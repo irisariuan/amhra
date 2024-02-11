@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require("@discordjs/builders")
+const { SlashCommandBuilder } = require('discord.js')
 const { getAudioPlayer, getConnection } = require("../lib/voice/core")
 const { CustomClient } = require("../lib/custom")
 
@@ -15,7 +15,7 @@ module.exports = {
 				.setRequired(true)
 		),
 	/**
-	 * @param {BaseCommandInteraction} interaction
+	 * @param {CommandInteraction} interaction
 	 * @param {CustomClient} client
 	 */
 	execute(interaction, client) {

@@ -1,5 +1,5 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
-const { BaseCommandInteraction } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js')
+const { CommandInteraction } = require('discord.js');
 const {destroyAudioPlayer} = require('../lib/voice/core')
 const { CustomClient } = require('../lib/custom');
 
@@ -8,7 +8,7 @@ module.exports = {
 		.setName('forcereset')
 		.setDescription('Force reset the current player, only use it when you cannot play music properly'),
 	/**
-	 * @param {BaseCommandInteraction} interaction 
+	 * @param {CommandInteraction} interaction 
 	 * @param {CustomClient} client 
 	 */
 	async execute(interaction, client) {

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('@discordjs/builders');
+const { SlashCommandBuilder } = require('discord.js')
 const { VoiceReceiver } = require('@discordjs/voice');
 const { record } = require('../lib/voice/core');
 

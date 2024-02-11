@@ -1,35 +1,45 @@
-const { REST } = require('@discordjs/rest');
-const { Routes } = require('discord-api-types/v9');
-const { readJsonSync } = require('../lib/read');
-const { select } = require('@inquirer/prompts')
-const fs = require('fs');
+const { REST, Routes } = require("discord.js")
+const { readJsonSync } = require("../lib/read")
+const { select } = require("@inquirer/prompts")
+const fs = require("fs")
 
-const commands = [];
-const commandFiles = fs.readdirSync('./commands').filter(d => d.endsWith('.js'));
-const setting = readJsonSync('./data/setting.json');
-Object.freeze(setting);
+const commands = []
+const commandFiles = fs
+	.readdirSync("./commands")
+	.filter(filename => filename.endsWith(".js"))
+const setting = readJsonSync("./data/setting.json")
 
 for (const file of commandFiles) {
-    const command = require(`../commands/${file}`)
-    commands.push(command.data.toJSON());
+	const command = require(`../commands/${file}`)
+    if ('data' in command && 'execute' in command) {
+        commands.push(command.data.toJSON())
+    } else {
+        console.log('Error when loading ' + file)
+    }
 }
 
 (async () => {
-    const result = await select({ choices: [{ name: 'Production', value: 'prod' }, { name: 'Development', value: 'dev' }], message: 'Mode' })
-	const token = result === 'prod' ? setting.TOKEN : setting.TESTING_TOKEN
-	const clientId = result === 'prod' ? setting.CLIENT_ID : setting.TEST_CLIENT_ID
-    
-    const rest = new REST({ version: '9' }).setToken(token);
-    try {
-		console.log('Started refreshing application (/) commands.');
+	const result = await select({
+		choices: [
+			{ name: "Production", value: "prod" },
+			{ name: "Development", value: "dev" },
+		],
+		message: "Mode",
+	})
+	const token = result === "prod" ? setting.TOKEN : setting.TESTING_TOKEN
+	const clientId =
+		result === "prod" ? setting.CLIENT_ID : setting.TEST_CLIENT_ID
 
-        console.log(await rest.put(
-            Routes.applicationCommands(clientId),
-            { body: commands }
-        ));
+	const rest = new REST({ version: "9" }).setToken(token)
+	try {
+		console.log("Started refreshing application (/) commands.")
 
-        console.log('Successfully reloaded application (/) commands.');
-    } catch (error) {
-        console.error(error);
-    }
-})();
+		console.log(
+			await rest.put(Routes.applicationCommands(clientId), { body: commands })
+		)
+
+		console.log("Successfully reloaded application (/) commands.")
+	} catch (error) {
+		console.error(error)
+	}
+})()
