@@ -1,5 +1,3 @@
-//@ts-check
-
 const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v9');
 const { readJsonSync } = require('../lib/read');

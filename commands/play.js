@@ -1,5 +1,3 @@
-//@ts-check
-
 const { SlashCommandBuilder } = require('@discordjs/builders')
 const { getAudioPlayer, createResource, isVideo, isPlaylist, joinVoice } = require('../lib/voice/core')
 const { playlist_info, search } = require('play-dl')
@@ -22,10 +20,8 @@ module.exports = {
 		//prevent error caused by long response time
 		await interaction.deferReply()
 		dcb.log('Called /play')
-		// @ts-ignore
 		const input = interaction.options.getString('search')
 
-		// @ts-ignore
 		let voiceChannel = interaction.member?.voice?.channel
 		if (!voiceChannel) return
 
@@ -99,7 +95,7 @@ module.exports = {
 				console.error('An error occurred while trying to start playing music: ', error)
 				interaction.editReply({
 					content: 'An error occurred while processing the song',
-					// @ts-ignore
+		
 					ephemeral: true
 				})
 			}

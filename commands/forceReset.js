@@ -1,5 +1,3 @@
-// @ts-check
-
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { BaseCommandInteraction } = require('discord.js');
 const {destroyAudioPlayer} = require('../lib/voice/core')
