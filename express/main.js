@@ -4,8 +4,10 @@ const URL_REGEX =
 	/(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})/
 
 async function register() {
-	password = document.querySelector("#auth").value
-	document.querySelector("#auth").value = ""
+	const auth = document.querySelector("#auth")
+	if (!auth) return
+	password = auth.value
+	auth.value = ""
 	if (!(await (await fetch("/api/new")).ok)) return
 	if (reg) return
 	const f = async () => {
@@ -27,7 +29,11 @@ async function register() {
 				l.textContent = v.message
 				return l
 			})
-			.forEach(v => document.querySelector("#log").appendChild(v))
+			.forEach(v => document.querySelector("#log")?.appendChild(v))
+		const guildId = await (await fetch('/api/guildIds', {
+			headers: { Authorization: "Basic " + password },
+		})).json()
+
 	}
 	setInterval(f, 10000)
 	f()
@@ -126,4 +132,14 @@ async function monitor(enable) {
 			Authorization: "Basic " + password,
 		},
 	})
+}
+async function getGuildIds() {
+	return await (
+		await fetch("/api/guildIds", {
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: "Basic " + password,
+			},
+		})
+	).json()
 }
