@@ -34,7 +34,6 @@ module.exports = {
 			return interaction.reply(misc.misc.errorMessageObj)
 		}
 		await interaction.deferReply()
-		dcb.log("Called /play")
 		// @ts-ignore
 		const input = interaction.options.getString("search")
 
@@ -42,7 +41,8 @@ module.exports = {
 		if (!voiceChannel) return
 
 		const connection = joinVoice(voiceChannel, interaction)
-		dcb.log("Connected")
+		dcb.log(`Connected to voice channel (ID: ${voiceChannel.id}, Guild ID: ${interaction.guildId})`)
+
 		const audioPlayer = getAudioPlayer(client, interaction, {
 			createPlayer: true,
 		})
@@ -55,7 +55,7 @@ module.exports = {
 		//searching data on youtube and add to queue
 		// the video will be auto played by audioPlayer, it is not handled here
 
-		// find if there is cache, cache is saved by YoutubeVideo form
+		// find if there is cache, cache is saved in YoutubeVideo form
 		const cachedUrl = client.cache.get(input)
 		if (cachedUrl) {
 			dcb.log("Found cache, using cache " + cachedUrl)
