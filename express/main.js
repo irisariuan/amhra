@@ -4,7 +4,7 @@ const URL_REGEX =
 	/(https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|www\.[a-zA-Z0-9][a-zA-Z0-9-]+[a-zA-Z0-9]\.[^\s]{2,}|https?:\/\/(?:www\.|(?!www))[a-zA-Z0-9]+\.[^\s]{2,}|www\.[a-zA-Z0-9]+\.[^\s]{2,})/
 
 async function register() {
-	const auth = document.querySelector("#auth")
+	const auth = document.querySelector("input#auth")
 	if (!auth) return
 	password = auth.value
 	auth.value = ""
@@ -29,11 +29,44 @@ async function register() {
 				l.textContent = v.message
 				return l
 			})
-			.forEach(v => document.querySelector("#log")?.appendChild(v))
-		const guildId = await (await fetch('/api/guildIds', {
-			headers: { Authorization: "Basic " + password },
-		})).json()
+			.forEach(v => document.querySelector("ul#log")?.appendChild(v))
+		/**
+		 * @type {string[]}
+		 */
+		const guildId = (await getGuildIds()).ids
+		const selected = document.querySelector("select#guildSelected")
+		if (!selected?.childNodes || !selected) return
 
+		if (guildId.length === 0) {
+			const opt = document.createElement("option")
+			opt.value = ""
+			opt.text = "No Guild Found"
+			document
+				.querySelector("select#guildSelected")
+				?.setAttribute("disabled", "")
+			document.querySelector("select#guildSelected")?.appendChild(opt)
+		}
+		console.log(guildId)
+		for (const i of selected.childNodes) {
+			if (!i.value) {
+				continue
+			}
+			if (guildId.includes(i.value)) {
+				guildId.splice(guildId.indexOf(i.value), 1)
+			} else {
+				selected.removeChild(i)
+			}
+		}
+		console.log(guildId)
+		for (const i of guildId) {
+			const opt = document.createElement("option")
+			opt.value = i
+			opt.text = i
+			document
+				.querySelector("select#guildSelected")
+				?.removeAttribute("disabled")
+			document.querySelector("select#guildSelected")?.appendChild(opt)
+		}
 	}
 	setInterval(f, 10000)
 	f()
@@ -44,7 +77,7 @@ async function editSong(action) {
 	fetch("/api/song/edit", {
 		body: JSON.stringify({
 			action,
-			guildId: document.querySelector("input#inpGuildId").value,
+			guildId: document.querySelector("select#guildId").value,
 		}),
 		method: "POST",
 		headers: {
@@ -58,9 +91,9 @@ async function editSec() {
 	fetch("/api/song/edit", {
 		body: JSON.stringify({
 			action: "setTime",
-			guildId: document.querySelector("input#inpGuildId")?.value,
+			guildId: document.querySelector("select#guildId")?.value,
 			detail: {
-				sec: parseInt(document.querySelector("#songinp")?.value),
+				sec: parseInt(document.querySelector("input#songinp")?.value),
 			},
 		}),
 		method: "POST",
@@ -72,12 +105,12 @@ async function editSec() {
 }
 
 async function addToQueue() {
-	const url = URL_REGEX.test(document.querySelector("#playinp")?.value)
-		? URL_REGEX.exec(document.querySelector("#playinp")?.value)[0]
+	const url = URL_REGEX.test(document.querySelector("input#playinp")?.value)
+		? URL_REGEX.exec(document.querySelector("input#playinp")?.value)[0]
 		: await (
 				await fetch("/api/search", {
 					body: JSON.stringify({
-						query: document.querySelector("#playinp")?.value,
+						query: document.querySelector("input#playinp")?.value,
 					}),
 					method: "POST",
 					headers: {
@@ -90,7 +123,7 @@ async function addToQueue() {
 	fetch("/api/song/edit", {
 		body: JSON.stringify({
 			action: "addSong",
-			guildId: document.querySelector("input#inpGuildId")?.value,
+			guildId: document.querySelector("select#guildId")?.value,
 			detail: {
 				url,
 			},
