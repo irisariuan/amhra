@@ -5,5 +5,7 @@
 	"CLIENT_ID": "",
 	"TEST_CLIENT_ID": "",
 	"AUTH_TOKEN": "",
-	"PORT": 3000
+	"PORT": 3000,
+	"ENABLE_RATE_LIMIT": true,
+	"DETAIL_LOGGING": false
 }
