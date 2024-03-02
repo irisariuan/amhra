@@ -22,7 +22,7 @@ for (const file of commandFiles) {
 	
 	const rest = new REST({ version: '9' }).setToken(token);
 	
-	let guildList = ['897409924236197888', '781782289888837654'];
+	let guildList = [];
 
 	console.log("Start refreshing commands")
 	for (const i of guildList) {
