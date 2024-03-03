@@ -1,4 +1,4 @@
-const { app } = require("./lib/express/main.js")
+const { app } = require("./lib/express/server.js")
 const { client } = require("./lib/client.js")
 const { select } = require("@inquirer/prompts")
 const chalk = require("chalk")
