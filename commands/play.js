@@ -53,8 +53,6 @@ module.exports = {
 		connection.subscribe(audioPlayer)
 
 		//searching data on youtube and add to queue
-		// the video will be auto played by audioPlayer, it is not handled here
-
 		// find if there is cache, cache is saved in YoutubeVideo form
 		const cachedUrl = client.cache.get(input)
 		if (cachedUrl) {

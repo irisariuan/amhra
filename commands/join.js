@@ -32,7 +32,7 @@ module.exports = {
 			}
 			dcb.log('Joined voice')
 			const connection = joinVoice(interaction.member.voice.channel, interaction);
-			// @ts-ignore
+
 			if (interaction.options.getBoolean('player', false)) {
 				dcb.log('Created Player')
 				const player = getAudioPlayer(client, interaction, { createPlayer: true })
