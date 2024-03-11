@@ -1,4 +1,4 @@
-const { app } = require("./lib/express/server.js")
+const { init } = require("./lib/express/server.js")
 const { client } = require("./lib/client.js")
 const { select } = require("@inquirer/prompts")
 const chalk = require("chalk")
@@ -29,7 +29,7 @@ process.on("unhandledRejection", error => {
 	const result = await select({ choices: choices, message: "Mode" })
 
 	const token = { prod: setting.TOKEN, dev: setting.TESTING_TOKEN }[result]
-
+	const app = init(client)
 	app.listen(setting.PORT, () =>
 		exp.log(
 			chalk.blue.bold("Listening on port ") +
