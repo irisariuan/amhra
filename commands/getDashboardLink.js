@@ -6,7 +6,7 @@ const { createLink } = require('../lib/dashboard')
 module.exports = {
 	data: new SlashCommandBuilder()
 		.setName("dashboard")
-		.setDescription("Get the one-time website for controlling the bot"),
+		.setDescription("Online dashboard for controlling song activities"),
 	/**
 	 * @param {CommandInteraction} interaction
 	 * @param {CustomClient} client
