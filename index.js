@@ -7,17 +7,17 @@ const { exp, globalApp } = require("./lib/misc.js")
 
 const setting = readJsonSync("./data/setting.json")
 
-process.on("uncaughtException", e => {
-	globalApp.err("Uncaught Error: " + e)
-})
-
-process.on("unhandledRejection", error => {
-	globalApp.err("Unhandled promise rejection:", error)
-})
 
 ;(async () => {
 	const choices = []
 	if (setting.TOKEN) {
+		process.on("uncaughtException", e => {
+			globalApp.err("Uncaught Error: " + e)
+		})
+		
+		process.on("unhandledRejection", error => {
+			globalApp.err("Unhandled promise rejection:", error)
+		})
 		choices.push({ name: "Production", value: "prod" })
 	}
 	if (setting.TESTING_TOKEN) {
@@ -29,12 +29,13 @@ process.on("unhandledRejection", error => {
 	const result = await select({ choices: choices, message: "Mode" })
 
 	const token = { prod: setting.TOKEN, dev: setting.TESTING_TOKEN }[result]
-	const app = init(client)
+	const [app, levelMap, newToken] = init(client)
 	app.listen(setting.PORT, () =>
 		exp.log(
 			chalk.blue.bold("Listening on port ") +
 				chalk.greenBright.italic(setting.PORT)
 		)
 	)
+	client.initDashboard(levelMap, newToken)
 	client.login(token)
 })()

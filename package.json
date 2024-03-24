@@ -15,6 +15,7 @@
     "i": "^0.3.7",
     "inquirer": "^9.2.12",
     "libsodium-wrappers": "^0.7.13",
+    "node-cache": "^5.1.2",
     "npm": "^9.6.2",
     "opus-stream-decoder": "^1.2.7",
     "opusscript": "^0.0.8",

@@ -11,7 +11,7 @@ const { writeJsonSync } = require('../lib/read');
         TEST_CLIENT_ID: '',
         AUTH_TOKEN: 'b83688be9b1a88796694310157b24fdc167b10d499dcbd71b953f8dbac441d30',
         PORT: 3000,
-        ENABLE_RATE_LIMIT: true
+        RATE_LIMIT: 0
     }
 
     const token = await input({ message: 'Bot Token' })
@@ -37,7 +37,7 @@ const { writeJsonSync } = require('../lib/read');
         setting.PORT = port
     }
     if (await confirm({ message: 'Enable rate limit?', default: true })) {
-        setting.ENABLE_RATE_LIMIT = true
+        await input({message: 'Rate limit (per 15 minute)', validate: v => parseInt(v) > 0, transformer: v => parseInt(v)})
     }
     if (await confirm({ message: 'Write to setting.json?', default: true })) {
         writeJsonSync(process.cwd() + '/data/setting.json', setting)

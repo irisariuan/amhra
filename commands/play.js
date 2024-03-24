@@ -76,7 +76,7 @@ module.exports = {
 				client.cache.set(input, playlistInfo)
 			}
 			audioPlayer.queue = audioPlayer.queue.concat(
-				(await playlistInfo.all_videos()).map(v => v.url)
+				...(await playlistInfo.all_videos()).map(v => v.url)
 			)
 		}
 
