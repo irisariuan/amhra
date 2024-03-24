@@ -16,6 +16,6 @@ module.exports = {
         if (!token) {
             return interaction.reply({content: 'An error occurred while processing this command', ephemeral: true})
         }
-        interaction.reply(`Link to the dashboard: ${await createLink(interaction.guildId, token)}`)
+        interaction.reply({content: `Link to the dashboard: ${await createLink(interaction.guildId, token)}`, ephemeral: true})
 	},
 }
