@@ -11,7 +11,11 @@ const { writeJsonSync } = require('../lib/read');
         TEST_CLIENT_ID: '',
         AUTH_TOKEN: 'b83688be9b1a88796694310157b24fdc167b10d499dcbd71b953f8dbac441d30',
         PORT: 3000,
-        RATE_LIMIT: 0
+        RATE_LIMIT: 0,
+        DETAIL_LOGGING: false,
+        QUEUE_SIZE: 4000,
+        WEBSITE: null,
+        HTTPS: false
     }
 
     const token = await input({ message: 'Bot Token' })
@@ -37,8 +41,21 @@ const { writeJsonSync } = require('../lib/read');
         setting.PORT = port
     }
     if (await confirm({ message: 'Enable rate limit?', default: true })) {
-        await input({message: 'Rate limit (per 15 minute)', validate: v => parseInt(v) > 0, transformer: v => parseInt(v)})
+        const rateLimit = await input({ message: 'Rate limit (per 15 minute)', validate: v => parseInt(v) > 0, transformer: v => parseInt(v) })
+        setting.RATE_LIMIT = rateLimit
     }
+    if (await confirm({ message: 'Will your bot use detailed logging?', default: false })) {
+        setting.DETAIL_LOGGING = true
+    }
+    if (await confirm({ message: 'Do you have a custom website?', default: false })) {
+        const website = await input({ message: 'Website URL', validate: v => /[a-zA-Z0-9]+\.[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)?/.test(v) })
+        setting.WEBSITE = website
+        if (await confirm({ message: 'Would you use HTTPS over HTTP?', default: false })) {
+            setting.HTTPS = true
+        }
+    }
+    const queueSize = await input({ message: 'Set up your cache size for logs', validate: v => parseInt(v) > 0, transformer: v => parseInt(v), default: '4000' })
+    setting.QUEUE_SIZE = queueSize
     if (await confirm({ message: 'Write to setting.json?', default: true })) {
         writeJsonSync(process.cwd() + '/data/setting.json', setting)
         console.log('Done!')
