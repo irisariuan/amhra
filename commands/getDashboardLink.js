@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, CommandInteraction } = require('discord.js')
+const { SlashCommandBuilder, CommandInteraction, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js')
 const { getAudioPlayer, getConnection } = require("../lib/voice/core")
 const { CustomClient } = require("../lib/custom")
 const { createLink } = require('../lib/dashboard')
@@ -12,10 +12,19 @@ module.exports = {
 	 * @param {CustomClient} client
 	 */
 	async execute(interaction, client) {
-        const token = client.createToken(interaction.guildId)
-        if (!token) {
-            return interaction.reply({content: 'An error occurred while processing this command', ephemeral: true})
-        }
-        interaction.reply({content: `Link to the dashboard: ${await createLink(interaction.guildId, token)}`, ephemeral: true})
+		const token = client.createToken(interaction.guildId)
+		if (!token) {
+			return interaction.reply({ content: 'An error occurred while processing this command', ephemeral: true })
+		}
+		
+		const link = await createLink(interaction.guildId, token)
+		const linkButton = new ButtonBuilder()
+			.setLabel('Dashboard')
+			.setURL(link)
+			.setStyle(ButtonStyle.Link)
+		const row = new ActionRowBuilder()
+			.addComponents(linkButton)
+
+		interaction.reply({ components: [row] })
 	},
 }
