@@ -16,7 +16,7 @@ module.exports = {
 		if (!token) {
 			return interaction.reply({ content: 'An error occurred while processing this command', ephemeral: true })
 		}
-		
+
 		const link = await createLink(interaction.guildId, token)
 		const linkButton = new ButtonBuilder()
 			.setLabel('Dashboard')
@@ -25,6 +25,6 @@ module.exports = {
 		const row = new ActionRowBuilder()
 			.addComponents(linkButton)
 
-		interaction.reply({ components: [row] })
+		interaction.reply({ components: [row], ephemeral: true })
 	},
 }
