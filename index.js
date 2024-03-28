@@ -29,13 +29,12 @@ const setting = readJsonSync("./data/setting.json")
 	const result = await select({ choices: choices, message: "Mode" })
 
 	const token = { prod: setting.TOKEN, dev: setting.TESTING_TOKEN }[result]
-	const [app, levelMap, newToken] = init(client)
+	const app = init(client)
 	app.listen(setting.PORT, () =>
 		exp.log(
 			chalk.blue.bold("Listening on port ") +
 				chalk.greenBright.italic(setting.PORT)
 		)
 	)
-	client.initDashboard(levelMap, newToken)
 	client.login(token)
 })()
