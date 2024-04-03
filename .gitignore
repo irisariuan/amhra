@@ -4,5 +4,6 @@ package-lock.json
 bun.lockb
 .vscode/*
 data/log/*
+biome.json
 
 !**/.gitkeep
