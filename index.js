@@ -12,7 +12,7 @@ const setting = readJsonSync("./data/setting.json")
 	const choices = []
 	if (setting.TOKEN) {
 		process.on("uncaughtException", e => {
-			globalApp.err("Uncaught Error: " + e)
+			globalApp.err(`Uncaught Error: ${e}`)
 		})
 		
 		process.on("unhandledRejection", error => {

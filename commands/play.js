@@ -37,7 +37,7 @@ module.exports = {
 		// @ts-ignore
 		const input = interaction.options.getString("search")
 
-		let voiceChannel = interaction.member?.voice?.channel
+		const voiceChannel = interaction.member?.voice?.channel
 		if (!voiceChannel) return
 
 		const connection = joinVoice(voiceChannel, interaction)
@@ -56,7 +56,7 @@ module.exports = {
 		// find if there is cache, cache is saved in YoutubeVideo form
 		const cachedUrl = client.cache.get(input)
 		if (cachedUrl) {
-			dcb.log("Found cache, using cache " + cachedUrl)
+			dcb.log(`Found cache, using cache ${cachedUrl}`)
 		}
 		let url = input
 		let playlistInfo = cachedUrl

@@ -24,24 +24,24 @@ module.exports = {
 			return interaction.reply({
 				content: 'I am already in a voice channel'
 			})
-		} else {
-			if (!interaction.member.voice.channel) {
-				return interaction.reply({
-					content: 'You are not in a voice channel'
-				})
-			}
-			dcb.log('Joined voice')
-			const connection = joinVoice(interaction.member.voice.channel, interaction);
+		}
 
-			if (interaction.options.getBoolean('player', false)) {
-				dcb.log('Created Player')
-				const player = getAudioPlayer(client, interaction, { createPlayer: true })
-				if (!player) return
-				connection.subscribe(player)
-			}
-			interaction.reply({
-				content: 'Joined voice channel'
+		if (!interaction.member.voice.channel) {
+			return interaction.reply({
+				content: 'You are not in a voice channel'
 			})
 		}
+		dcb.log('Joined voice')
+		const connection = joinVoice(interaction.member.voice.channel, interaction);
+
+		if (interaction.options.getBoolean('player', false)) {
+			dcb.log('Created Player')
+			const player = getAudioPlayer(client, interaction, { createPlayer: true })
+			if (!player) return
+			connection.subscribe(player)
+		}
+		interaction.reply({
+			content: 'Joined voice channel'
+		})
 	},
 };
