@@ -1,7 +1,7 @@
 const { SlashCommandBuilder } = require('discord.js')
-const { CommandInteraction } = require('discord.js');
+const { CommandInteraction } = require('discord.js')
 const {destroyAudioPlayer} = require('../lib/voice/core')
-const { CustomClient } = require('../lib/custom');
+const { CustomClient } = require('../lib/custom')
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -13,8 +13,8 @@ module.exports = {
 	 */
 	async execute(interaction, client) {
         if (destroyAudioPlayer(client, interaction)) {
-			return await interaction.reply({content: 'I\'ve reset the player!'});
+			return await interaction.reply({content: 'I\'ve reset the player!'})
 		}
 		await interaction.reply({content: 'Player not found!'})
 	},
-};
+}

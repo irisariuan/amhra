@@ -1,6 +1,6 @@
 const { input, confirm } = require('@inquirer/prompts')
 const chalk = require('chalk')
-const crypto = require('crypto');
+const crypto = require('node:crypto')
 const { writeJsonSync } = require('../lib/read');
 
 (async () => {
@@ -32,16 +32,16 @@ const { writeJsonSync } = require('../lib/read');
 
     if (await confirm({ message: 'Set up custom dashboard authentication password?', default: false })) {
         const pw = await input({ message: 'Password' })
-        const hash = crypto.createHash('sha256').update('Basic ' + pw).digest('hex')
-        console.log('Your password: ' + chalk.bgGray.whiteBright(pw))
+        const hash = crypto.createHash('sha256').update(`Basic ${pw}`).digest('hex')
+        console.log(`Your password: ${chalk.bgGray.whiteBright(pw)}`)
         setting.AUTH_TOKEN = hash
     }
     if (await confirm({ message: 'Set up custom port?', default: false })) {
-        const port = parseInt(await input({ message: 'Port', validate: v => /[1-65535]/.test(v) }))
+        const port = Number.parseInt(await input({ message: 'Port', validate: v => /[1-65535]/.test(v) }))
         setting.PORT = port
     }
     if (await confirm({ message: 'Enable rate limit?', default: true })) {
-        const rateLimit = await input({ message: 'Rate limit (per 15 minute)', validate: v => parseInt(v) > 0, transformer: v => parseInt(v) })
+        const rateLimit = await input({ message: 'Rate limit (per 15 minute)', validate: v => Number.parseInt(v) > 0, transformer: v => Number.parseInt(v) })
         setting.RATE_LIMIT = rateLimit
     }
     if (await confirm({ message: 'Will your bot use detailed logging?', default: false })) {
@@ -54,13 +54,13 @@ const { writeJsonSync } = require('../lib/read');
             setting.HTTPS = true
         }
     }
-    const queueSize = await input({ message: 'Set up your cache size for logs', validate: v => parseInt(v) > 0, transformer: v => parseInt(v), default: '4000' })
+    const queueSize = await input({ message: 'Set up your cache size for logs', validate: v => Number.parseInt(v) > 0, transformer: v => Number.parseInt(v), default: '4000' })
     setting.QUEUE_SIZE = queueSize
     if (await confirm({ message: 'Write to setting.json?', default: true })) {
-        writeJsonSync(process.cwd() + '/data/setting.json', setting)
+        writeJsonSync(`${process.cwd()}/data/setting.json`, setting)
         console.log('Done!')
     } else {
         console.log(JSON.stringify(setting, null, 4))
     }
-    console.log(chalk.bold('Use ' + chalk.bgGrey.whiteBright('tool/register.js') + ' to register commands'))
+    console.log(chalk.bold(`Use ${chalk.bgGrey.whiteBright('tool/register.js')} to register commands`))
 })()

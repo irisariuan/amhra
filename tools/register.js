@@ -1,7 +1,7 @@
 const { REST, Routes } = require("discord.js")
 const { readJsonSync } = require("../lib/read")
 const { select } = require("@inquirer/prompts")
-const fs = require("fs")
+const fs = require("node:fs")
 
 const commands = []
 const commandFiles = fs
@@ -14,7 +14,7 @@ for (const file of commandFiles) {
     if ('data' in command && 'execute' in command) {
         commands.push(command.data.toJSON())
     } else {
-        console.log('Error when loading ' + file)
+        console.log(`Error when loading ${file}`)
     }
 }
 

@@ -1,8 +1,8 @@
 const { SlashCommandBuilder, CommandInteraction } = require('discord.js')
-const { getVoiceConnection } = require('@discordjs/voice');
-const { destroyAudioPlayer, getConnection } = require('../lib/voice/core');
-const { dcb } = require('../lib/misc');
-const { CustomClient } = require('../lib/custom');
+const { getVoiceConnection } = require('@discordjs/voice')
+const { destroyAudioPlayer, getConnection } = require('../lib/voice/core')
+const { dcb } = require('../lib/misc')
+const { CustomClient } = require('../lib/custom')
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -14,10 +14,10 @@ module.exports = {
      * @param {CustomClient} client 
      */
 	execute(interaction, client) {
-        const connection = getConnection(interaction);
+        const connection = getConnection(interaction)
         if (connection) {
 
-            connection.disconnect();
+            connection.disconnect()
             connection.destroy()
             
             dcb.log('Disconnected')
@@ -33,4 +33,4 @@ module.exports = {
             })
         }
 	}
-};
+}

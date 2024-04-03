@@ -7,7 +7,6 @@ const { exp, globalApp } = require("./lib/misc.js")
 
 const setting = readJsonSync("./data/setting.json")
 
-
 ;(async () => {
 	const choices = []
 	if (setting.TOKEN) {

@@ -1,6 +1,6 @@
 const { SlashCommandBuilder } = require('discord.js')
-const { Interaction, Client, CommandInteraction } = require('discord.js');
-const { CustomClient } = require('../lib/custom');
+const { Interaction, Client, CommandInteraction } = require('discord.js')
+const { CustomClient } = require('../lib/custom')
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -13,6 +13,6 @@ module.exports = {
 	 */
 	execute(interaction, client) {
         client.player.clear()
-		interaction.reply({content: 'Super reset!'});
+		interaction.reply({content: 'Super reset!'})
 	},
-};
+}

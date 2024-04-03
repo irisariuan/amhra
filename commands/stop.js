@@ -1,12 +1,12 @@
 const { SlashCommandBuilder } = require('discord.js')
-const { getAudioPlayer } = require('../lib/voice/core');
+const { getAudioPlayer } = require('../lib/voice/core')
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('stop')
         .setDescription('Stop the music playing'),
     async execute(interaction, client) {
-        const player = getAudioPlayer(client, interaction);
+        const player = getAudioPlayer(client, interaction)
         if (player.cleanStop()) {
             return interaction.reply({
                 content: 'Stopped the music'
@@ -16,4 +16,4 @@ module.exports = {
             content: 'Not playing music'
         })
     }
-};
+}

@@ -1,9 +1,9 @@
 const { SlashCommandBuilder } = require('discord.js')
-const { getVoiceConnection } = require('@discordjs/voice');
+const { getVoiceConnection } = require('@discordjs/voice')
 const { CommandInteraction } = require('discord.js')
-const { joinVoice, getAudioPlayer } = require('../lib/voice/core');
-const { dcb } = require('../lib/misc');
-const misc = require('../lib/misc');
+const { joinVoice, getAudioPlayer } = require('../lib/voice/core')
+const { dcb } = require('../lib/misc')
+const misc = require('../lib/misc')
 
 module.exports = {
 	data: new SlashCommandBuilder()
@@ -32,7 +32,7 @@ module.exports = {
 			})
 		}
 		dcb.log('Joined voice')
-		const connection = joinVoice(interaction.member.voice.channel, interaction);
+		const connection = joinVoice(interaction.member.voice.channel, interaction)
 
 		if (interaction.options.getBoolean('player', false)) {
 			dcb.log('Created Player')
@@ -44,4 +44,4 @@ module.exports = {
 			content: 'Joined voice channel'
 		})
 	},
-};
+}
