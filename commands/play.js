@@ -80,7 +80,7 @@ module.exports = {
 			)
 		}
 
-		audioPlayer.queue.push(url)
+		audioPlayer.addToQueue(url)
 		// interaction content
 		if (!audioPlayer.isPlaying) {
 			dcb.log("Started to play music")
