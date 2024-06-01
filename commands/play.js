@@ -86,7 +86,6 @@ module.exports = {
 			dcb.log("Started to play music")
 			try {
 				const data = await createResource(audioPlayer.queue.shift())
-				data.resource.volume?.setVolume(audioPlayer.volume)
 				audioPlayer.playResource(data)
 
 				if (isPlaylist(url)) {
