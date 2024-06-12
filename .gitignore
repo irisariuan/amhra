@@ -6,5 +6,6 @@ bun.lockb
 .vscode/*
 data/log/*
 biome.json
+prisma/migrations/*
 
 !**/.gitkeep
