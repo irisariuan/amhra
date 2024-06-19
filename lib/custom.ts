@@ -4,6 +4,9 @@ import { SearchCache } from "./cache"
 import type { AudioResource } from "@discordjs/voice"
 import type { YouTubeChannel, YouTubeVideo } from "play-dl"
 import { misc } from './misc'
+import { readJsonSync } from './read'
+
+const setting = readJsonSync()
 
 export interface Resource {
 	resource: AudioResource<any>,
@@ -18,6 +21,26 @@ interface Token {
 	token: string,
 	guilds: string[],
 	level: number
+}
+
+export interface SongDataPacket {
+	song: {
+		link: string,
+		channel?: string,
+		duration: number,
+		title?: string,
+		thumbnails: string[],
+		startFrom: number,
+		startTime: number
+	} | null,
+	queue: string[],
+	volume: number,
+	isPlaying: boolean,
+	history: string[],
+	useYoutubeDl: boolean,
+	paused: boolean,
+	pausedInMs: number,
+	pausedTimestamp: number
 }
 
 export class CustomClient extends Client {
@@ -151,10 +174,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.nowPlaying = null
 	}
 
-	/**
-	 * @returns {{song: null | {link: string, channel: string, duration: number, title: string, thumbnails: string[], startFrom: number}, queue: string[], volume: number, isPlaying: boolean}}
-	 */
-	getData() {
+
+	getData(): SongDataPacket {
 		return {
 			song: this.nowPlaying
 				? {
@@ -174,6 +195,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 			paused: this.isPaused,
 			pausedInMs: this.pauseCounter,
 			pausedTimestamp: this.pauseTimestamp,
+			useYoutubeDl: setting.USE_YOUTUBE_DL
 		}
 	}
 	pause() {
