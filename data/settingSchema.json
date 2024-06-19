@@ -69,6 +69,10 @@
 		"HTTPS": {
 			"type": "boolean",
 			"description": "Using HTTPS"
+		},
+		"USE_YOUTUBE_DL": {
+			"type": "boolean",
+			"description": "Use youtube-dl instead of play-dl"
 		}
 	},
 	"required": [
