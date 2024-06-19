@@ -114,7 +114,7 @@ export default {
 
 		dcb.log("Searched URL and added URL to queue")
 		return await interaction.editReply({
-			content: `Added ${isPlaylist(input) ? 'playlist' : ''} ${input}(${videoUrl}) to queue`,
+			content: `Added ${isPlaylist(input) ? 'playlist ' : ''}${input}(${videoUrl}) to queue`,
 		})
 
 	},
