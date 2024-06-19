@@ -38,6 +38,7 @@ export interface SongDataPacket {
 	isPlaying: boolean,
 	history: string[],
 	useYoutubeDl: boolean,
+	canSeek: boolean,
 	paused: boolean,
 	pausedInMs: number,
 	pausedTimestamp: number
@@ -195,7 +196,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 			paused: this.isPaused,
 			pausedInMs: this.pauseCounter,
 			pausedTimestamp: this.pauseTimestamp,
-			useYoutubeDl: setting.USE_YOUTUBE_DL
+			useYoutubeDl: setting.USE_YOUTUBE_DL,
+			canSeek: setting.SEEK
 		}
 	}
 	pause() {
