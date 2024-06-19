@@ -1,10 +1,11 @@
-const { input, confirm } = require('@inquirer/prompts')
-const chalk = require('chalk')
-const crypto = require('node:crypto')
-const { writeJsonSync } = require('../lib/read');
+import { input, confirm } from '@inquirer/prompts'
+import chalk from 'chalk'
+import crypto from 'node:crypto'
+import { writeJsonSync } from '../lib/read';
+import type { Setting } from '../lib/setting';
 
 (async () => {
-    const setting = {
+    const setting: Setting = {
         TOKEN: '',
         TESTING_TOKEN: '',
         CLIENT_ID: '',
@@ -41,8 +42,8 @@ const { writeJsonSync } = require('../lib/read');
         setting.PORT = port
     }
     if (await confirm({ message: 'Enable rate limit?', default: true })) {
-        const rateLimit = await input({ message: 'Rate limit (per 15 minute)', validate: v => Number.parseInt(v) > 0, transformer: v => Number.parseInt(v) })
-        setting.RATE_LIMIT = rateLimit
+        const rateLimit = await input({ message: 'Rate limit (per 15 minute)', validate: v => Number.parseInt(v) > 0 })
+        setting.RATE_LIMIT = Number.parseInt(rateLimit)
     }
     if (await confirm({ message: 'Will your bot use detailed logging?', default: false })) {
         setting.DETAIL_LOGGING = true

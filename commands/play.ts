@@ -33,7 +33,10 @@ export default {
 		const input = interaction.options.getString("search", true)
 
 		const voiceChannel = interaction.member?.voice?.channel
-		if (!voiceChannel) return
+		if (!voiceChannel) {
+			interaction.editReply('You need to be in a voice channel to play music')
+			return
+		}
 
 		const connection = joinVoice(voiceChannel, interaction)
 		dcb.log(`Connected to voice channel (ID: ${voiceChannel.id}, Guild ID: ${interaction.guildId})`)
@@ -67,9 +70,19 @@ export default {
 			videoUrl = audioPlayer.queue.shift()
 			if (!videoUrl) return interaction.editReply('The playlist is empty!')
 		} else {
-			videoUrl = (await search(input, {
-				limit: 1,
-			}))[0].url
+			const cached = client.cache.get(input)
+			if (cached?.isVideo()) {
+				videoUrl = cached.value.url
+			} else {
+				const query = await search(input, {
+					limit: 1,
+				})
+				if (!query.length) {
+					return interaction.editReply(misc.errorMessageObj)
+				}
+				client.cache.set(input, query[0], 'video')
+				videoUrl = query[0].url
+			}
 		}
 
 		audioPlayer.addToQueue(videoUrl)

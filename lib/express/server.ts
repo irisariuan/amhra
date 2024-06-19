@@ -10,7 +10,8 @@ import bodyParser from "body-parser"
 import {
 	globalApp,
 	misc,
-	exp} from "../misc"
+	exp
+} from "../misc"
 import { readJsonSync } from "../read"
 import chalk from "chalk"
 import type { CustomClient } from "../custom"
@@ -378,7 +379,16 @@ export async function init(client: CustomClient) {
 			if (!v) return []
 			const message = (await (v as TextChannel).messages?.fetch({ cache: true })) ?? []
 
-			const messages = message.map(v => { return { message: { content: v.content, id: v.id }, author: { id: v.author.id, tag: v.author.tag }, timestamp: { createdAt: v.createdTimestamp, ...(v.editedTimestamp ? { editedAt: v.editedTimestamp } : {}) } } })
+			const messages: Message[] = message.map(v => {
+				return {
+					message: { content: v.content, id: v.id },
+					author: { id: v.author.id, tag: v.author.tag },
+					timestamp: {
+						createdAt: v.createdTimestamp,
+						editedAt: v.editedTimestamp ?? undefined
+					}
+				}
+			})
 
 			return { channel: { id: v.id, name: v.name }, messages }
 		})
@@ -396,4 +406,19 @@ export async function init(client: CustomClient) {
 	initAuth(app, jsonParser, basicCheckBuilder)
 
 	return app
+}
+
+export interface Message {
+	message: {
+		content: string
+		id: string
+	},
+	author: {
+		id: string
+		tag: string
+	},
+	timestamp: {
+		createdAt: number
+		editedAt?: number
+	}
 }

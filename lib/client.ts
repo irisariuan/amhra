@@ -1,13 +1,13 @@
-import { GatewayIntentBits, type GuildMember } from "discord.js"
-import fs from "node:fs"
-import { CustomClient } from "./custom.js"
-import { event } from "./express/event.js"
-import { dcb, globalApp, misc } from "./misc.js"
-import { readJsonSync } from "./read.js"
+import { GatewayIntentBits, type GuildMember } from 'discord.js'
+import fs from 'node:fs'
+import { CustomClient } from './custom'
+import { event } from './express/event'
+import { dcb, globalApp, misc } from './misc'
+import { readJsonSync } from './read'
 import { createResource } from './voice/core'
 import { yt_validate } from 'play-dl'
-import chalk from "chalk"
-import type { Command } from "./interaction.js"
+import chalk from 'chalk'
+import type { Command } from './interaction'
 
 const setting = readJsonSync()
 export const client = new CustomClient({
@@ -23,20 +23,21 @@ export const client = new CustomClient({
 
 // import commands
 const commandFiles = fs
-	.readdirSync(`${process.cwd()}/commands`)
-	.filter(d => d.endsWith(".js"))
-const commands = new Map()
+	.readdirSync(`${__dirname}/../commands`)
+	.filter(d => (d.endsWith('.ts') || d.endsWith('.js')) && !d.endsWith('.d.ts') && !d.endsWith('.map.js'))
+const commands: Map<string, Command> = new Map()
 
 for (const file of commandFiles) {
-	const command: Command = require(`${process.cwd()}/commands/${file}`)
+	const command: Command = (require(`${__dirname}/../commands/${file}`)).default
 	commands.set(command.data.name, command)
 }
 
-client.on("ready", () => {
+client.on('ready', () => {
 	dcb.log(`Logged in as ${client.user?.tag}!`)
+	dcb.log(`Loaded commands ${Array.from(commands.keys()).join(', ')}`)
 })
 
-client.on("interactionCreate", async interaction => {
+client.on('interactionCreate', async interaction => {
 	if (!interaction.isCommand() || !interaction.isChatInputCommand()) return
 	const command = commands.get(interaction.commandName)
 	if (!command) {
@@ -52,18 +53,18 @@ client.on("interactionCreate", async interaction => {
 		try {
 			await interaction.reply(misc.errorMessage)
 		} catch {
-			globalApp.err("Cannot send error message")
+			globalApp.err('Cannot send error message')
 		}
 	}
 })
 
-client.on("messageCreate", async message => {
+client.on('messageCreate', async message => {
 	if (message.author.id === client.user?.id) return
 	dcb.messageLog(
 		`${message.author.tag} (Guild ID: ${message.guildId}, Channel ID: ${message.channelId}, Message ID: ${message.id}): '${chalk.bgWhite.black(message.content)}'${Array.from(message.attachments.values()).length ? `Attachments: ${message.attachments.map(v => `URL: ${v.url}, Type: ${v.contentType}`).join(', ')}` : ''}`
 	)
 	if (message.content.startsWith(setting.PREFIX)) {
-		const args = message.content.slice(setting.PREFIX.length).split(" ")
+		const args = message.content.slice(setting.PREFIX.length).split(' ')
 		switch (args.shift()) {
 			default:
 				return
@@ -105,31 +106,31 @@ client.on('voiceStateUpdate', (oldState, newState) => {
 	}
 })
 
-client.on("shardError", e => {
+client.on('shardError', e => {
 	dcb.log(`Shard Error: ${e}`)
 })
 
-event.on("songInterruption", async (guildId, action, detail) => {
+event.on('songInterruption', async (guildId, action, detail) => {
 	const player = client.player.get(guildId)
 	if (!player) {
-		return globalApp.err("Player not found")
+		return globalApp.err('Player not found')
 	}
 	switch (action) {
-		case "pause": {
+		case 'pause': {
 			player.pause()
 			break
 		}
-		case "resume": {
+		case 'resume': {
 			player.unpause()
 			break
 		}
-		case "setTime":
+		case 'setTime':
 			{
 				if (!player.nowPlaying || !player.isPlaying) {
-					return globalApp.err("Cannot interrupt the song since nothing is playing")
+					return globalApp.err('Cannot interrupt the song since nothing is playing')
 				}
 				if (detail.sec > player.nowPlaying.details.durationInSec || detail.sec < 0) {
-					return globalApp.err("Out of range")
+					return globalApp.err('Out of range')
 				}
 
 				const res = await createResource(player.nowPlaying.url, detail.sec)
@@ -137,10 +138,10 @@ event.on("songInterruption", async (guildId, action, detail) => {
 				dcb.log('Relocated the video')
 			}
 			break
-		case "addSong": {
-			dcb.log("Added song from dashboard to queue")
+		case 'addSong': {
+			dcb.log('Added song from dashboard to queue')
 			if (yt_validate(detail.url ?? '') !== 'video') {
-				return globalApp.err("Invalid URL")
+				return globalApp.err('Invalid URL')
 			}
 			player.addToQueue(detail.url)
 			if (!player.isPlaying) {
@@ -148,19 +149,19 @@ event.on("songInterruption", async (guildId, action, detail) => {
 				if (!p) return
 				const res = await createResource(p)
 
-				event.emit("songInfo", p)
+				event.emit('songInfo', p)
 				player.playResource(res)
-				dcb.log("Started playing song from queue")
+				dcb.log('Started playing song from queue')
 			}
 			break
 		}
-		case "stop": {
-			dcb.log("Stop the music from dashboard")
+		case 'stop': {
+			dcb.log('Stop the music from dashboard')
 			player.cleanStop()
 			break
 		}
-		case "skip": {
-			dcb.log("Skip the music from dashboard")
+		case 'skip': {
+			dcb.log('Skip the music from dashboard')
 			player.stop()
 			break
 		}

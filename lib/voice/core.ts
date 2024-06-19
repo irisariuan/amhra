@@ -145,7 +145,6 @@ export interface Stream { stream: any, type: StreamType }
 
 export async function createStream(url: string, seek?: number): Promise<Stream> {
 	if (setting.USE_YOUTUBE_DL) {
-		console.log('using youtube dl')
 		const stream = ytdl(url, { filter: 'audioonly', quality: 'highestaudio', begin: seek })
 		return { stream, type: StreamType.Arbitrary }
 	}

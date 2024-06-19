@@ -1,4 +1,5 @@
 import { readFile, writeFileSync, readFileSync } from 'node:fs'
+import type { Setting } from './setting'
 
 export function readJson(file) {
 	return new Promise((resolve, reject) => {
@@ -9,7 +10,7 @@ export function readJson(file) {
 	})
 }
 
-export function readJsonSync(file = `${process.cwd()}/data/setting.json`) {
+export function readJsonSync(file = `${process.cwd()}/data/setting.json`): Setting {
 	return JSON.parse(readFileSync(file, 'utf8'))
 }
 

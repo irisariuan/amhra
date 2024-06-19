@@ -1,24 +1,25 @@
-const { REST, Routes } = require("discord.js")
-const { readJsonSync } = require("../lib/read")
-const { select } = require("@inquirer/prompts")
-const fs = require("node:fs")
+import { REST, type RESTPostAPIChatInputApplicationCommandsJSONBody, Routes } from "discord.js"
+import { readJsonSync } from "../lib/read"
+import { select } from "@inquirer/prompts"
+import fs from "node:fs"
+import type { Command } from "../lib/interaction"
 
-const commands = []
+const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = []
 const commandFiles = fs
 	.readdirSync("./commands")
-	.filter(filename => filename.endsWith(".js"))
-const setting = readJsonSync()
-
-for (const file of commandFiles) {
-	const command = require(`../commands/${file}`)
-    if ('data' in command && 'execute' in command) {
-        commands.push(command.data.toJSON())
-    } else {
-        console.log(`Error when loading ${file}`)
-    }
-}
+	.filter(filename => filename.endsWith(".ts"))
+const setting = readJsonSync();
 
 (async () => {
+	for (const file of commandFiles) {
+		const command: Command = (await import(`../commands/${file}`)).default
+		if ('data' in command && 'execute' in command) {
+			commands.push(command.data.toJSON())
+		} else {
+			console.log(`Error when loading ${file}`, command)
+		}
+	}
+
 	const result = await select({
 		choices: [
 			{ name: "Production", value: "prod" },

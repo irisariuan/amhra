@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { readdirSync } from 'node:fs'
 
-export enum typeRef {
+export enum TypeRef {
     main = 'dcblog',
     message = 'dcbmsg',
     express = 'explog',
@@ -23,13 +23,13 @@ export async function loadAll() {
 export async function load(...filepaths) {
     const result: Log[] = []
     for (const filepath of filepaths) {
-        const file = await readFile(`${process.cwd()}/data/log/${filepath}`, 'utf8')
+        const file = await readFile(`${process.cwd()}/data/log/${filepath}.log`, 'utf8')
         for (const line of file.split('\n')) {
             if (!line) continue
             const timestamp = Number.parseInt(line?.match(/T[0-9]{13}/)?.at(0)?.slice(1) ?? '0')
             result.push({
                 time: timestamp,
-                type: typeRef[filepath.replace('.log', '')],
+                type: TypeRef[filepath.replace('.log', '')],
                 message: line?.match(/T[0-9]{13}: (.*)/)?.at(1) ?? ''
             })
         }
