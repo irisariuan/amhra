@@ -36,8 +36,7 @@ export default {
 			})
 		}
 
-		// @ts-ignore
-		const pageNo = interaction.options.getInteger('page')
+		const pageNo = interaction.options.getInteger('page') ?? 1
 		let startPoint = pageNo > 0 ? (pageNo - 1) * 5 : 0
 		if (pageNo * 5 > player.queue.length) {
 			// set it to last page if the page over maximum
@@ -59,7 +58,7 @@ export default {
 			if (cachedUrl) {
 				dcb.log('Founded cache, using cached URL')
 			}
-			const data = cachedUrl ?? (await video_info(songs[i])).video_details
+			const data = cachedUrl?.isVideo() ? cachedUrl?.value : (await video_info(songs[i])).video_details
 
 			result += `${songToString({ details: { durationInSec: data.durationInSec }, title: data.title ?? '' }, i + 1 + startPoint)}\n`
 		}

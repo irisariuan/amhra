@@ -45,7 +45,7 @@ async function record(interaction, opts?: RecordOption) {
 		//stop the stream
 		stream.destroy()
 		await /** @type {Promise<void>} */ (
-			new Promise(r => {
+			new Promise<void>(r => {
 				stream.on("close", () => {
 					r()
 				})

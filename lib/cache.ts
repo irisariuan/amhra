@@ -67,7 +67,7 @@ export class SearchCache {
                 this.urlCache.delete(query)
                 return null
             }
-            return returnedQuery.value
+            return returnedQuery
         }
         return null
     }
