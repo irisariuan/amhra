@@ -7,7 +7,7 @@ const commands = []
 const commandFiles = fs
 	.readdirSync("./commands")
 	.filter(filename => filename.endsWith(".js"))
-const setting = readJsonSync("./data/setting.json")
+const setting = readJsonSync()
 
 for (const file of commandFiles) {
 	const command = require(`../commands/${file}`)

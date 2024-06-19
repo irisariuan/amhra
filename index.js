@@ -5,7 +5,7 @@ const chalk = require("chalk")
 const { readJsonSync } = require("./lib/read.js")
 const { exp, globalApp } = require("./lib/misc.js")
 
-const setting = readJsonSync("./data/setting.json")
+const setting = readJsonSync()
 
 ;(async () => {
 	const choices = []
