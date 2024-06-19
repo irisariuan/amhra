@@ -181,6 +181,10 @@ export async function init(client: CustomClient) {
 					event.emit("songInterruption", req.body.guildId, req.body.action)
 					break
 				case "setTime":
+					if (!setting.SEEK) {
+						cError('Seeking is disabled')
+						return res.sendStatus(500)
+					}
 					if (req.body.detail?.sec) {
 						cLog('Setting time')
 						event.emit(

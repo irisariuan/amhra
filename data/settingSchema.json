@@ -73,6 +73,10 @@
 		"USE_YOUTUBE_DL": {
 			"type": "boolean",
 			"description": "Use youtube-dl instead of play-dl"
+		},
+		"SEEK": {
+			"type": "boolean",
+			"description": "Enable time seeking function, should be closed when using youtube-dl"
 		}
 	},
 	"required": [
