@@ -1,16 +1,11 @@
-const { SlashCommandBuilder } = require('discord.js')
-const { CommandInteraction } = require('discord.js')
-const { getAudioPlayer } = require('../lib/voice/core')
-const { CustomClient } = require('../lib/custom')
+import { SlashCommandBuilder } from 'discord.js'
+import { getAudioPlayer } from '../lib/voice/core'
+import type { Command } from '../lib/interaction'
 
-module.exports = {
+export default {
 	data: new SlashCommandBuilder()
 		.setName('resume')
 		.setDescription('Resume the song'),
-	/**
-	 * @param {CommandInteraction} interaction 
-	 * @param {CustomClient} client 
-	 */
 	async execute(interaction, client) {
 		const player = getAudioPlayer(client, interaction, { createPlayer: false })
 
@@ -21,4 +16,4 @@ module.exports = {
 			await interaction.reply({ content: 'Fail to resume the song!' })
 		}
 	},
-}
+} as Command

@@ -1,18 +1,12 @@
-const { SlashCommandBuilder, CommandInteraction } = require('discord.js')
-const { getVoiceConnection } = require('@discordjs/voice')
-const { destroyAudioPlayer, getConnection } = require('../lib/voice/core')
-const { dcb } = require('../lib/misc')
-const { CustomClient } = require('../lib/custom')
+import { SlashCommandBuilder, CommandInteraction } from 'discord.js'
+import { destroyAudioPlayer, getConnection } from '../lib/voice/core'
+import { dcb } from '../lib/misc'
+import type { Command } from '../lib/interaction'
 
-module.exports = {
+export default {
     data: new SlashCommandBuilder()
     .setName('disconnect')
     .setDescription('Disconnect the bot'),
-    /**
-     * 
-     * @param {CommandInteraction} interaction 
-     * @param {CustomClient} client 
-     */
 	execute(interaction, client) {
         const connection = getConnection(interaction)
         if (connection) {
@@ -24,7 +18,7 @@ module.exports = {
             interaction.reply({
                 content: 'Disconnected'
             })
-
+            if (!interaction.guildId) return
             //also destroy the audio player if there is one
             destroyAudioPlayer(client, interaction.guildId)
         } else {
@@ -33,4 +27,4 @@ module.exports = {
             })
         }
 	}
-}
+} as Command

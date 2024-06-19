@@ -1,28 +1,23 @@
-const { SlashCommandBuilder } = require('discord.js')
-const {
+import type { Command } from "../lib/interaction"
+
+import { SlashCommandBuilder } from 'discord.js'
+import {
 	getAudioPlayer,
 	getConnection,
-	songToString,
-} = require('../lib/voice/core')
-const { EmbedBuilder, CommandInteraction } = require('discord.js')
-const { video_info } = require('play-dl')
-const { CustomClient } = require('../lib/custom')
-const { dcb } = require('../lib/misc')
-const misc = require('../lib/misc')
+	songToString
+} from '../lib/voice/core'
+import { EmbedBuilder, CommandInteraction } from 'discord.js'
+import { video_info } from 'play-dl'
+import { dcb } from '../lib/misc'
+import { misc } from '../lib/misc'
 
-module.exports = {
+export default {
 	data: new SlashCommandBuilder()
 		.setName('queue')
 		.setDescription('Show the songs going to be played')
 		.addIntegerOption(opt =>
 			opt.setMinValue(1).setName('page').setDescription('Page number of queue')
 		),
-	/**
-	 *
-	 * @param {CommandInteraction} interaction
-	 * @param {CustomClient} client
-	 * @returns
-	 */
 	async execute(interaction, client) {
 		await interaction.deferReply()
 		const player = getAudioPlayer(client, interaction)
@@ -66,11 +61,11 @@ module.exports = {
 			}
 			const data = cachedUrl ?? (await video_info(songs[i])).video_details
 
-			result += `${songToString({ details: { durationInSec: data.durationInSec }, title: data.title },i + 1 + startPoint)}\n`
+			result += `${songToString({ details: { durationInSec: data.durationInSec }, title: data.title ?? '' }, i + 1 + startPoint)}\n`
 		}
 
 		if (!result) {
-			return await interaction.editReply(misc.misc.errorMessage)
+			return await interaction.editReply(misc.errorMessage)
 		}
 
 		const embed = new EmbedBuilder()
@@ -93,4 +88,4 @@ module.exports = {
 		dcb.log('Sent queue')
 		await interaction.editReply({ embeds: [embed] })
 	},
-}
+} as Command

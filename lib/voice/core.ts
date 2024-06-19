@@ -1,40 +1,35 @@
-const {
+import {
 	createAudioResource,
 	AudioPlayerStatus,
 	joinVoiceChannel,
 	getVoiceConnection,
-	AudioResource,
-} = require("@discordjs/voice")
-const {
+	StreamType,
+	type CreateAudioPlayerOptions,
+} from "@discordjs/voice"
+import {
+	type InfoData,
 	stream,
 	video_info,
 	YouTubeChannel,
-	YouTubeVideo,
 	yt_validate,
-} = require("play-dl")
-const ytdl = require('ytdl-core')
-const { CommandInteraction } = require("discord.js")
-const { CustomAudioPlayer, CustomClient } = require("../custom")
-const { dcb, globalApp } = require("../misc")
-const { event } = require("../express/event")
-const NodeCache = require("node-cache")
-const { readJsonSync } = require("../read")
-require('dotenv').config()
+	YouTubeStream,
+} from "play-dl"
+import ytdl from 'ytdl-core'
+import { CustomAudioPlayer, type Resource, type CustomClient } from "../custom"
+import { dcb, globalApp } from "../misc"
+import { event } from "../express/event"
+import NodeCache from "node-cache"
+import { readJsonSync } from "../read"
+import dotenv from 'dotenv'
+import type { CommandInteraction, VoiceBasedChannel, VoiceChannel } from "discord.js"
+dotenv.config()
 
 const videoInfoCache = new NodeCache()
 const setting = readJsonSync()
 
-/**
- * Creates an audio player for the specified guild.
- *
- * @param {string} guildId - The ID of the guild.
- * @param {object} client - The client object.
- * @param {object} createOpts - Optional parameters for creating the audio player.
- * @returns {CustomAudioPlayer} The created audio player.
- */
-function createAudioPlayer(guildId, client, createOpts = {}) {
+export function createAudioPlayer(guildId: string, client: CustomClient, createOpts?: CreateAudioPlayerOptions) {
 	//create a player and initialize it if there isn't one
-	const player = new CustomAudioPlayer(createOpts)
+	const player = new CustomAudioPlayer(guildId, createOpts)
 
 	player.timeoutList.push(setTimeout(() => {
 		if (player.isPlaying || player.queue.length > 0) {
@@ -52,6 +47,7 @@ function createAudioPlayer(guildId, client, createOpts = {}) {
 	}, 15 * 60 * 1000))
 
 	player.on(AudioPlayerStatus.Playing, () => {
+		if (!player.nowPlaying?.url) return
 		player.history.push(player.nowPlaying.url)
 	})
 	//continue to play song after ending one
@@ -102,19 +98,12 @@ function createAudioPlayer(guildId, client, createOpts = {}) {
 	return player
 }
 
-/**
- * @param {CustomClient} client
- * @param {CommandInteraction} interaction
- * @param {object} option
- * @param {boolean} [option.createPlayer=true]
- * @param {object} [option.createOpts={}]
- * @param {boolean} [option.fail=false]
- * @returns {( CustomAudioPlayer | null )}
- */
-function getAudioPlayer(
-	client,
-	interaction,
-	option = { createPlayer: true, createOpts: {}, fail: false },
+interface GetAudioPlayerOption { createPlayer: boolean }
+
+export function getAudioPlayer(
+	client: CustomClient,
+	interaction: CommandInteraction,
+	option: GetAudioPlayerOption = { createPlayer: true },
 ) {
 	if (!interaction.guild) {
 		return null
@@ -131,12 +120,7 @@ function getAudioPlayer(
 	return player
 }
 
-/**
- * @param {CustomClient} client
- * @param {string} guildId
- * @returns {boolean}
- */
-function destroyAudioPlayer(client, guildId) {
+export function destroyAudioPlayer(client: CustomClient, guildId: string): boolean {
 	if (client.player.has(guildId)) {
 		// reset player to the init status
 		client.player.get(guildId)?.resetAll()
@@ -151,49 +135,38 @@ function destroyAudioPlayer(client, guildId) {
 	return false
 }
 
-function getConnection(interaction) {
+export function getConnection(interaction) {
 	const connection = getVoiceConnection(interaction.guildId)
 	if (!connection) return false
 	return connection
 }
 
-/**
- * 
- * @param {string} url 
- * @param {number} seek 
- * @returns {Promise<import("play-dl").YouTubeStream>}
- */
-async function createStream(url, seek = undefined) {
+export interface Stream { stream: any, type: StreamType }
+
+export async function createStream(url: string, seek?: number): Promise<Stream> {
 	if (setting.USE_YOUTUBE_DL) {
 		console.log('using youtube dl')
 		const stream = ytdl(url, { filter: 'audioonly', quality: 'highestaudio', begin: seek })
-		return { stream, type: 'arbitrary' }
+		return { stream, type: StreamType.Arbitrary }
 	}
 	const source = await stream(url, { seek })
-	return source
+	return { stream: source.stream, type: source.type as StreamType }
 }
 
-async function getVideoInfo(url) {
+export async function getVideoInfo(url: string): Promise<InfoData> {
 	if (videoInfoCache.get(url)) {
-		return videoInfoCache.get(url)
+		return videoInfoCache.get(url) as InfoData
 	}
 	const videoInfo = await video_info(url)
 	videoInfoCache.set(url, videoInfo)
 	return videoInfo
 }
 
-/**
- *
- * @param {String} url
- * @param {number | undefined} seek
- * @param {boolean} useCache
- * @returns {Promise<{resource: AudioResource, channel: YouTubeChannel, title: string, details: YouTubeVideo, url: string, startFrom?: number}>}
- */
-async function createResource(url, seek = undefined) {
+export async function createResource(url: string, seek?: number): Promise<Resource> {
 	const source = await createStream(url, seek)
 	const detail = (await getVideoInfo(url)).video_details
 	const res = createAudioResource(source.stream, {
-		inputType: source.type,
+		inputType: source.type as StreamType,
 		inlineVolume: true,
 	})
 	if (!detail.channel || !detail.title) {
@@ -211,7 +184,10 @@ async function createResource(url, seek = undefined) {
 	}
 }
 
-function joinVoice(voiceChannel, interaction) {
+export function joinVoice(voiceChannel: VoiceChannel | VoiceBasedChannel, interaction: CommandInteraction) {
+	if (!interaction.guild) {
+		return
+	}
 	return joinVoiceChannel({
 		channelId: voiceChannel.id,
 		guildId: voiceChannel.guildId,
@@ -221,24 +197,21 @@ function joinVoice(voiceChannel, interaction) {
 	})
 }
 
-function isYoutube(query) {
+export function isYoutube(query: string) {
 	return yt_validate(query) !== false
 }
 
-function isVideo(link) {
+export function isVideo(link: string) {
 	return yt_validate(link) === "video"
 }
 
-function isPlaylist(link) {
+export function isPlaylist(link: string) {
 	return yt_validate(link) === "playlist"
 }
 
 // https://stackoverflow.com/questions/3733227/javascript-seconds-to-minutes-and-seconds
-function timeFormat(duration) {
-	let dur = duration
-	if (typeof duration === "string") {
-		dur = Number.parseInt(duration)
-	}
+export function timeFormat(duration: string | number) {
+	const dur = typeof duration === 'number' ? duration : Number.parseInt(duration)
 	// Hours, minutes and seconds
 	const hrs = ~~(dur / 3600)
 	const mins = ~~((dur % 3600) / 60)
@@ -256,26 +229,16 @@ function timeFormat(duration) {
 
 	return result
 }
-/**
- *
- * @param {*} d
- * @param {number | null} i
- * @returns
- */
-function songToString(d, i = null) {
-	return `${i ? `\`${i}.\` ` : ""}${d.title} \`${timeFormat(
-		d.details.durationInSec || d.durationInSec,
-	)}\``
+
+export interface TransformableResource {
+	details: {
+		durationInSec: number
+	},
+	title: string
 }
 
-module.exports = {
-	getAudioPlayer,
-	createResource,
-	joinVoice,
-	getConnection,
-	isPlaylist,
-	isVideo,
-	isYoutube,
-	songToString,
-	destroyAudioPlayer,
+export function songToString(d: TransformableResource, i?: number) {
+	return `${i ? `\`${i}.\` ` : ""}${d.title} \`${timeFormat(
+		d.details.durationInSec,
+	)}\``
 }

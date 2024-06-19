@@ -1,52 +1,41 @@
-const express = require("express")
-const { rateLimit } = require("express-rate-limit")
-const crypto = require("node:crypto")
-const { load } = require("../log/load")
-const { search, video_info } = require("play-dl")
-const { initAuth } = require('./auth')
-const { event } = require("./event")
-const youtubeSuggest = require('youtube-suggest')
-const bodyParser = require("body-parser")
-const {
+import express, { type Request, type NextFunction, type Response } from "express"
+import { rateLimit } from "express-rate-limit"
+import crypto from "node:crypto"
+import { load } from "../log/load"
+import { search, video_info } from "play-dl"
+import { initAuth } from './auth'
+import { event } from "./event"
+import youtubeSuggest from 'youtube-suggest'
+import bodyParser from "body-parser"
+import {
 	globalApp,
 	misc,
-	exp,
-	dcb,
-	misc: {
-		removeBearer
-	}
-} = require("../misc")
-const { readJsonSync } = require("../read")
-const chalk = require("chalk")
-const { CustomClient } = require("../custom")
-const NodeCache = require("node-cache")
-const { countUser, getUser } = require("../db/core")
-const { getUserGuilds } = require("../auth/core")
+	exp} from "../misc"
+import { readJsonSync } from "../read"
+import chalk from "chalk"
+import type { CustomClient } from "../custom"
+import NodeCache from "node-cache"
+import { countUser, getUser } from "../db/core"
+import { type Guild, getUserGuilds } from "../auth/core"
+import type { TextChannel } from "discord.js"
 
 const YoutubeVideoRegex = /http(?:s?):\/\/(?:www\.)?youtu(?:be\.com\/watch\?v=|\.be\/)([\w\-_]*)(&(amp;)?[\w?=]*)?/
 
-/**
- * 
- * @param {CustomClient} client 
- * @returns {express.Express}>
- */
-async function init(client) {
-	/**
-	 * @description Authorization middleware
-	 * 
-	 * When requirePassword is set to false, it will only check if the token is valid
-	 * @param {{requirePassword: boolean, allowBearer: boolean}} authOptions 
-	 * @returns {(req: express.Request, res: express.Response, next: express.NextFunction) => void}
-	 */
-	function auth(authOptions = { requirePassword: true, allowBearer: false }) {
-		return async (req, res, next) => {
+interface AuthOptions {
+	requirePassword: boolean
+	allowBearer: boolean
+}
+
+export async function init(client: CustomClient) {
+	function auth(authOptions: AuthOptions = { requirePassword: true, allowBearer: false }) {
+		return async (req: Request, res: Response, next: NextFunction) => {
 			const formatter = misc.prefixFormatter(`${chalk.bgGrey(`(IP: ${req.ip})`)}`)
 			if (!req.headers.authorization) {
 				exp.error(formatter("Auth failed (NOT_FOUND)"))
 				return res.sendStatus(401)
 			}
 			if (authOptions.allowBearer && req.headers.authorization.startsWith('Bearer')) {
-				if (await countUser(removeBearer(req.headers.authorization)) > 0) {
+				if (await countUser(misc.removeBearer(req.headers.authorization)) > 0) {
 					return next()
 				}
 				exp.error(formatter("Auth failed (NOT_MATCHING_DB)"))
@@ -92,14 +81,8 @@ async function init(client) {
 		}
 	}
 
-	/**
-	 * 
-	 * @param {Request} req 
-	 * @param {Response} res 
-	 * @param {() => void} next 
-	 */
-	function checkGuildMiddleware(req, res, next) {
-		if (checkGuild(req.headers.authorization ?? '', req.body.guildId)) {
+	function checkGuildMiddleware(req: Request, res: Response, next: NextFunction) {
+		if (checkGuild(req.headers.authorization ?? '', req.body?.guildId)) {
 			return next()
 		}
 		exp.error('Guild not found')
@@ -121,10 +104,8 @@ async function init(client) {
 	// TTL set to 5 days
 	const videoCache = new NodeCache({ stdTTL: 60 * 60 * 24 * 5 })
 	const userGuildCache = new NodeCache({ stdTTL: 60 * 60 * 3 })
-	/**
-	 * @type {Map<string, {guilds: string[], level: number}>}
-	 */
-	const authLevel = new Map()
+
+	const authLevel: Map<string, { guilds: string[], level: number }> = new Map()
 
 	app.use((req, res, next) => {
 		const formatter = misc.prefixFormatter(`${chalk.bgGrey(`(IP: ${req.ip})`)}`)
@@ -281,7 +262,7 @@ async function init(client) {
 						return res.sendStatus(400)
 					}
 					const guildId = req.body.guildId
-					const { token, level } = client.newToken([guildId])
+					const { token, level } = client.newToken(guildId)
 					exp.log('Successfully created server-based dashboard')
 					res.send(JSON.stringify({ token, guildId, level }))
 					break
@@ -357,16 +338,16 @@ async function init(client) {
 
 	app.get("/api/playingGuildIds", auth({ requirePassword: false, allowBearer: true }), async (req, res) => {
 		const content = await Promise.all(Array.from(client.player.keys()).map(async v => { return { id: v, name: (await client.guilds.fetch(v)).name ?? null } }))
-		if (req.headers.authorization.startsWith('Bearer')) {
-			const user = await getUser(removeBearer(req.headers.authorization))
+		if (req.headers.authorization?.startsWith('Bearer')) {
+			const user = await getUser(misc.removeBearer(req.headers.authorization))
 			if (!user) {
 				return res.sendStatus(401)
 			}
-			let rawGuilds
+			let rawGuilds: Guild[]
 			if (userGuildCache.has(user.id)) {
-				rawGuilds = userGuildCache.get(user.id)
+				rawGuilds = userGuildCache.get(user.id) as Guild[]
 			} else {
-				rawGuilds = await getUserGuilds(removeBearer(req.headers.authorization))
+				rawGuilds = await getUserGuilds(misc.removeBearer(req.headers.authorization)) ?? []
 				userGuildCache.set(user.id, rawGuilds)
 			}
 			const guilds = rawGuilds.map(v => v.id)
@@ -395,7 +376,7 @@ async function init(client) {
 		const channels = await guild.channels.fetch()
 		const data = channels.map(async v => {
 			if (!v) return []
-			const message = (await v.messages?.fetch({ force: true, cache: false })) ?? []
+			const message = (await (v as TextChannel).messages?.fetch({ cache: true })) ?? []
 
 			const messages = message.map(v => { return { message: { content: v.content, id: v.id }, author: { id: v.author.id, tag: v.author.tag }, timestamp: { createdAt: v.createdTimestamp, ...(v.editedTimestamp ? { editedAt: v.editedTimestamp } : {}) } } })
 
@@ -412,9 +393,7 @@ async function init(client) {
 		return res.send(JSON.stringify(data ?? null))
 	})
 
-	initAuth(app, jsonParser, basicCheckBuilder, setting)
+	initAuth(app, jsonParser, basicCheckBuilder)
 
 	return app
 }
-
-module.exports = { init }

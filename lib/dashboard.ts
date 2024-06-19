@@ -1,16 +1,10 @@
-const { readFileSync } = require('node:fs')
-const NodeCache = require("node-cache")
-const { readJsonSync } = require('./read')
+import NodeCache from "node-cache"
+import { readJsonSync } from './read'
 const ipCache = new NodeCache()
 
 const setting = readJsonSync()
-/**
- * 
- * @param {string} guildId Guild Id
- * @param {string} token Token
- * @returns string
- */
-async function createLink(guildId, token) {
+
+export async function createLink(guildId: string, token: string) {
     const prefix = setting.HTTPS ? 'https' : 'http'
     if (setting.WEBSITE) {
         return encodeURI(`${prefix}://${setting.WEBSITE}/dashboard/${btoa(JSON.stringify({ guildId, auth: token }))}`)
@@ -22,5 +16,5 @@ async function createLink(guildId, token) {
     }
     const { ip } = await (await fetch('https://api.ipify.org/?format=json')).json()
     ipCache.set('ip', ip)
+    return encodeURI(`${prefix}://${ip}:3000/dashboard/${btoa(JSON.stringify({ guildId, auth: token }))}`)
 }
-module.exports = { createLink }

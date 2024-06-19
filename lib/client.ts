@@ -1,15 +1,16 @@
-const { GatewayIntentBits, MessageType } = require("discord.js")
-const fs = require("node:fs")
-const { CustomClient } = require("./custom.js")
-const { event } = require("./express/event.js")
-const { exp, dcb, globalApp, misc } = require("./misc.js")
-const { readJsonSync } = require("./read.js")
-const { createResource } = require('./voice/core')
-const { yt_validate } = require('play-dl')
-const chalk = require("chalk")
+import { GatewayIntentBits, type GuildMember } from "discord.js"
+import fs from "node:fs"
+import { CustomClient } from "./custom.js"
+import { event } from "./express/event.js"
+import { dcb, globalApp, misc } from "./misc.js"
+import { readJsonSync } from "./read.js"
+import { createResource } from './voice/core'
+import { yt_validate } from 'play-dl'
+import chalk from "chalk"
+import type { Command } from "./interaction.js"
 
 const setting = readJsonSync()
-const client = new CustomClient({
+export const client = new CustomClient({
 	intents: [
 		GatewayIntentBits.GuildVoiceStates,
 		GatewayIntentBits.GuildMessages,
@@ -27,7 +28,7 @@ const commandFiles = fs
 const commands = new Map()
 
 for (const file of commandFiles) {
-	const command = require(`${process.cwd()}/commands/${file}`)
+	const command: Command = require(`${process.cwd()}/commands/${file}`)
 	commands.set(command.data.name, command)
 }
 
@@ -36,14 +37,15 @@ client.on("ready", () => {
 })
 
 client.on("interactionCreate", async interaction => {
-	if (!interaction.isCommand()) return
+	if (!interaction.isCommand() || !interaction.isChatInputCommand()) return
 	const command = commands.get(interaction.commandName)
 	if (!command) {
 		globalApp.important(`Command not implemented: ${interaction.commandName}`)
-		return interaction.reply('Command not implemented!')
+		interaction.reply('Command not implemented!')
+		return
 	}
 	try {
-		dcb.log(`${misc.createFormattedName(interaction.member)} called command ${chalk.bgGray.whiteBright(interaction.commandName)}`)
+		dcb.log(`${misc.createFormattedName(interaction.member as GuildMember)} called command ${chalk.bgGray.whiteBright(interaction.commandName)}`)
 		await command.execute(interaction, client)
 	} catch (e) {
 		globalApp.err(e)
@@ -71,19 +73,22 @@ client.on("messageCreate", async message => {
 })
 
 client.on('messageDelete', message => {
-	dcb.messageLog(`${chalk.red('[DELETE]')} ${message.author.tag} (Guild ID: ${message.guildId}, Channel ID: ${message.channelId}, Message ID: ${message.id}) deleted '${chalk.bgWhite.black(message.content)}''${message.attachments ? `Attachments: ${message.attachments.map(v => `URL: ${v.url}, Type: ${v.contentType}`).join(', ')}` : ''}`)
+	dcb.messageLog(`${chalk.red('[DELETE]')} ${message.author?.tag} (Guild ID: ${message.guildId}, Channel ID: ${message.channelId}, Message ID: ${message.id}) deleted '${chalk.bgWhite.black(message.content)}''${message.attachments ? `Attachments: ${message.attachments.map(v => `URL: ${v.url}, Type: ${v.contentType}`).join(', ')}` : ''}`)
 })
 
 client.on('messageUpdate', (oldMessage, newMessage) => {
-	if (oldMessage.author.id === client.user?.id) return
+	if (oldMessage.author?.id === client.user?.id) return
 	if (oldMessage.content === newMessage.content) {
 		return
 	}
-	dcb.messageLog(`${chalk.yellowBright('[EDIT]')} ${newMessage.author.tag} (Guild ID: ${newMessage.guildId}, Channel ID: ${newMessage.channelId}, Message ID: ${newMessage.id === oldMessage.id ? newMessage.id : `N${newMessage.id}O${oldMessage.id}`}) edited '${chalk.bgWhite.black(oldMessage.content)}' to '${chalk.bgWhite.black(newMessage.content)}'`)
+	dcb.messageLog(`${chalk.yellowBright('[EDIT]')} ${newMessage.author?.tag} (Guild ID: ${newMessage.guildId}, Channel ID: ${newMessage.channelId}, Message ID: ${newMessage.id === oldMessage.id ? newMessage.id : `N${newMessage.id}O${oldMessage.id}`}) edited '${chalk.bgWhite.black(oldMessage.content)}' to '${chalk.bgWhite.black(newMessage.content)}'`)
 })
 
 client.on('voiceStateUpdate', (oldState, newState) => {
 	const formatter = misc.prefixFormatter(`${chalk.bgMagentaBright('[VOICE]')} (Channel ID: ${newState.channelId ?? oldState.channelId}, Guild ID: ${newState.guild.id})`)
+	if (!newState.member) {
+		return dcb.log(formatter('Member not found'))
+	}
 	const formattedName = misc.createFormattedName(newState.member)
 
 	if (oldState.channel !== newState.channel) {
@@ -140,6 +145,7 @@ event.on("songInterruption", async (guildId, action, detail) => {
 			player.addToQueue(detail.url)
 			if (!player.isPlaying) {
 				const p = player.queue.shift()
+				if (!p) return
 				const res = await createResource(p)
 
 				event.emit("songInfo", p)
@@ -189,5 +195,3 @@ event.on("songInterruption", async (guildId, action, detail) => {
 			break
 	}
 })
-
-module.exports = { client }

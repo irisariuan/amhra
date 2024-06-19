@@ -1,16 +1,24 @@
-const { getVoiceConnection, EndBehaviorType } = require("@discordjs/voice")
-const fs = require("node:fs")
-const prism = require("prism-media")
-const { pipeline } = require("node:stream")
-const { joinVoice } = require("./core")
+import { getVoiceConnection, EndBehaviorType } from '@discordjs/voice'
+import fs from 'node:fs'
+import prism from 'prism-media'
+import { pipeline } from "node:stream"
+import { joinVoice } from "./core"
 
-async function record(interaction, opts = {}) {
+interface RecordOption {
+	filename?: string
+	format?: string
+}
+
+async function record(interaction, opts?: RecordOption) {
 	// return await interaction.reply({ content: 'Currently not supported!' })
 	//get voice connection, if there isn't one, create one
 	let connection = getVoiceConnection(interaction.guildId)
 	if (!connection) {
 		if (!interaction.member.voice.channel) return false
 		connection = joinVoice(interaction.member.voice.channel, interaction)
+		if (!connection) {
+			return
+		}
 	}
 	const memberId = interaction.member.id
 
@@ -28,7 +36,7 @@ async function record(interaction, opts = {}) {
 	})
 	//create the file stream
 	const writableStream = fs.createWriteStream(
-		`${opts.filename || interaction.guild.name}.${opts.format || "ogg"}`
+		`${opts?.filename || interaction.guild.name}.${opts?.format || "ogg"}`
 	)
 	console.log("Created the streams, started recording")
 	//todo: set the stream into client and stop it in another function
@@ -74,5 +82,3 @@ async function record(interaction, opts = {}) {
 		// })
 	}, 5000)
 }
-
-module.exports = { record }

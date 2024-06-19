@@ -1,64 +1,48 @@
-const { Client, ClientOptions } = require("discord.js")
-const { AudioPlayer } = require("@discordjs/voice")
-const { SearchCache } = require("./cache")
-const { AudioResource } = require("@discordjs/voice")
-const { YouTubeChannel, YouTubeVideo } = require("play-dl")
-const { misc: { generateToken } } = require('./misc')
+import { Client, type ClientOptions } from "discord.js"
+import { AudioPlayer, type CreateAudioPlayerOptions } from "@discordjs/voice"
+import { SearchCache } from "./cache"
+import type { AudioResource } from "@discordjs/voice"
+import type { YouTubeChannel, YouTubeVideo } from "play-dl"
+import { misc } from './misc'
 
-class CustomClient extends Client {
+export interface Resource {
+	resource: AudioResource<any>,
+	channel: YouTubeChannel,
+	title: string,
+	details: YouTubeVideo,
+	url: string,
+	startFrom?: number
+}
+
+interface Token {
+	token: string,
+	guilds: string[],
+	level: number
+}
+
+export class CustomClient extends Client {
 	/**
 	 * @description GuildID, AudioPlayer
-	 * @type {Map<string, CustomAudioPlayer>}
-	 */
-	player
-	/**
-	 * @type {SearchCache}
-	 */
-	cache
-	/**
-	 * @type {Map<string, {guilds: string[], level: number}> | null}
-	 */
-	levelMap
+	*/
+	player: Map<string, CustomAudioPlayer>
+	cache: SearchCache
+	levelMap: Map<string, { guilds: string[], level: number }>
+	savedLevelMap: Map<string, string>
 
-	/**
-	 * @type {Map<string, string>}
-	 */
-	savedLevelMap
-
-	/**
-	 * @param {ClientOptions} clientOpt 
-	 */
-	constructor(clientOpt) {
+	constructor(clientOpt: ClientOptions) {
 		super(clientOpt)
-		/**
-		 * @type {Map<string, CustomAudioPlayer>}
-		 */
 		this.player = new Map()
 		this.cache = new SearchCache()
 		this.levelMap = new Map()
-		/**
-		 * @description GuildID, Token
-		 * @type {Map<string, string>}
-		 */
 		this.savedLevelMap = new Map()
 	}
-	/**
-	 * 
-	 * @param {string} guildId Guild ID
-	 * @returns {{token: string, guilds: string[], level: number}}
-	 */
-	newToken(guildId) {
-		const token = generateToken(36)
+	newToken(guildId: string): Token {
+		const token = misc.generateToken(36)
 		const level = 1
 		this.levelMap.set(token, { guilds: [guildId], level })
 		return { token, guilds: [guildId], level }
 	}
-	/**
-	 * 
-	 * @param {string} guildId Guild Id
-	 * @returns {string | null}
-	 */
-	createToken(guildId) {
+	createToken(guildId: string): string | null {
 		if (this.savedLevelMap.has(guildId)) {
 			return this.savedLevelMap.get(guildId) ?? null
 		}
@@ -68,53 +52,23 @@ class CustomClient extends Client {
 	}
 }
 
-class CustomAudioPlayer extends AudioPlayer {
-	/**
-	 * @type {number}
-	 */
-	volume
-	/**
-	 * @type {{resource: AudioResource<any>, channel: YouTubeChannel, title: string, details: YouTubeVideo, url: string,} | null}
-	 */
-	nowPlaying
-	/**
-	 * @type {boolean}
-	 */
-	isPlaying
-	/**
-	 * @type {string[]}
-	 */
-	queue
-	/**
-	 * @type {string}
-	 */
-	guildId
-	/**
-	 * @type {boolean}
-	 */
-	isPaused
-	/**
-	 * @type {number}
-	 */
-	startTime
-	/**
-	 * @type {number[]}
-	 */
-	timeoutList
-	/**
-	 * @type {number}
-	 */
-	pauseCounter
-	/**
-	 * @type {number}
-	 */
-	pauseTimestamp
+export class CustomAudioPlayer extends AudioPlayer {
 
-	/**
-	 * @param {string} guildId Guild ID of the player
-	 * @param {import("@discordjs/voice").CreateAudioPlayerOptions} options
-	 */
-	constructor(guildId, options = undefined) {
+	volume: number
+	nowPlaying: Resource | null
+	isPlaying: boolean
+	queue: string[]
+	guildId: string
+	isPaused: boolean
+	startTime: number
+	timeoutList: Timer[]
+	pauseCounter: number
+	pauseTimestamp: number
+	history: string[]
+	startFrom: number
+	looping: boolean
+
+	constructor(guildId: string, options?: CreateAudioPlayerOptions) {
 		super(options)
 		this.guildId = guildId
 
@@ -175,11 +129,7 @@ class CustomAudioPlayer extends AudioPlayer {
 		}
 	}
 
-	/**
-	 *
-	 * @param {{resource: AudioResource<any>, channel: YouTubeChannel, title: string, details: YouTubeVideo, url: string, startFrom?: number}} resource
-	 */
-	playResource(resource) {
+	playResource(resource: Resource) {
 		resource.resource.volume?.setVolume(this.volume)
 		this.nowPlaying = resource
 		this.isPlaying = true
@@ -187,15 +137,12 @@ class CustomAudioPlayer extends AudioPlayer {
 		this.pauseCounter = 0
 		this.startTime = Date.now()
 		this.startFrom = resource.startFrom ?? 0
-		resource.resource.volume.setVolume(this.volume)
+		resource.resource.volume?.setVolume(this.volume)
 		this.play(resource.resource)
 	}
-	/**
-	 * @param {number} volume 
-	 */
-	setVolume(volume) {
+	setVolume(volume: number) {
 		this.volume = volume
-		if (this.isPlaying && this.nowPlaying.resource) {
+		if (this.isPlaying && this.nowPlaying?.resource) {
 			this.nowPlaying.resource.volume?.setVolume(volume)
 		}
 	}
@@ -233,6 +180,7 @@ class CustomAudioPlayer extends AudioPlayer {
 		this.isPaused = true
 		this.pauseTimestamp = Date.now()
 		super.pause()
+		return this.isPaused
 	}
 	unpause() {
 		super.unpause()
@@ -240,17 +188,9 @@ class CustomAudioPlayer extends AudioPlayer {
 			this.pauseCounter += Date.now() - this.pauseTimestamp
 			this.isPaused = false
 		}
+		return this.isPaused
 	}
-	/**
-	 * 
-	 * @param {string} link 
-	 */
-	addToQueue(link) {
+	addToQueue(link: string) {
 		this.queue.push(link)
 	}
-}
-
-module.exports = {
-	CustomClient,
-	CustomAudioPlayer,
 }

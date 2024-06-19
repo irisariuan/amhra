@@ -1,8 +1,8 @@
-const { SlashCommandBuilder } = require('discord.js')
-const { getAudioPlayer, getConnection } = require("../lib/voice/core")
-const { CustomClient } = require("../lib/custom")
+import { SlashCommandBuilder } from 'discord.js'
+import { getAudioPlayer, getConnection } from "../lib/voice/core"
+import type { Command } from '../lib/interaction'
 
-module.exports = {
+export default {
 	data: new SlashCommandBuilder()
 		.setName("volume")
 		.setDescription("Set volume of the bot")
@@ -14,12 +14,8 @@ module.exports = {
 				.setMaxValue(200)
 				.setRequired(true)
 		),
-	/**
-	 * @param {CommandInteraction} interaction
-	 * @param {CustomClient} client
-	 */
 	execute(interaction, client) {
-		const volume = interaction.options.getInteger("volume") / 100
+		const volume = interaction.options.getInteger("volume", true) / 100
 		const player = getAudioPlayer(client, interaction, { createPlayer: false })
 		if (!getConnection(interaction))
 			return interaction.reply({ content: "I'm not in a voice channel!" })
@@ -27,4 +23,4 @@ module.exports = {
 		player.setVolume(volume)
 		interaction.reply({ content: `Set the volume to ${volume * 100}%` })
 	},
-}
+} as Command

@@ -1,8 +1,7 @@
-const { SlashCommandBuilder } = require('discord.js')
-const { VoiceReceiver } = require('@discordjs/voice');
-const { record } = require('../lib/voice/core');
+import type { Command } from "../lib/interaction";
+import { SlashCommandBuilder } from 'discord.js'
 
-module.exports = {
+export default {
 	data: new SlashCommandBuilder()
 		.setName('record')
 		.setDescription('Record your conversation'),
@@ -10,4 +9,4 @@ module.exports = {
 		// await record(interaction);
 		interaction.reply({content: 'We\'re still working on this function!'});
 	},
-};
+} as Command

@@ -1,16 +1,12 @@
-const { SlashCommandBuilder, CommandInteraction } = require("discord.js")
-const { EmbedBuilder } = require("discord.js")
-const { getAudioPlayer, songToString } = require("../lib/voice/core")
-const { CustomClient } = require("../lib/custom")
+import { SlashCommandBuilder } from "discord.js"
+import { EmbedBuilder } from "discord.js"
+import { getAudioPlayer, songToString } from "../lib/voice/core"
+import type { Command } from "../lib/interaction"
 
-module.exports = {
+export default {
 	data: new SlashCommandBuilder()
 		.setName("nowplaying")
 		.setDescription("Show the song playing"),
-	/**
-	 * @param {CommandInteraction} interaction
-	 * @param {CustomClient} client
-	 **/
 	execute(interaction, client) {
 		const player = getAudioPlayer(client, interaction, { createPlayer: false })
 		if (!player) return interaction.reply({ content: "Not playing any song" })
@@ -24,4 +20,4 @@ module.exports = {
 			],
 		})
 	},
-}
+} as Command

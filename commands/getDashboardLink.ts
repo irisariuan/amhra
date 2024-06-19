@@ -1,17 +1,13 @@
-const { SlashCommandBuilder, CommandInteraction, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js')
-const { getAudioPlayer, getConnection } = require("../lib/voice/core")
-const { CustomClient } = require("../lib/custom")
-const { createLink } = require('../lib/dashboard')
+import type { Command } from "../lib/interaction"
+import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js'
+import { createLink } from '../lib/dashboard'
 
-module.exports = {
+export default {
 	data: new SlashCommandBuilder()
 		.setName("dashboard")
 		.setDescription("Online dashboard for controlling song activities"),
-	/**
-	 * @param {CommandInteraction} interaction
-	 * @param {CustomClient} client
-	 */
 	async execute(interaction, client) {
+		if (!interaction.guildId) return
 		const token = client.createToken(interaction.guildId)
 		if (!token) {
 			return interaction.reply({ content: 'An error occurred while processing this command', ephemeral: true })
@@ -22,9 +18,8 @@ module.exports = {
 			.setLabel('Dashboard')
 			.setURL(link)
 			.setStyle(ButtonStyle.Link)
-		const row = new ActionRowBuilder()
+		const row = new ActionRowBuilder<ButtonBuilder>()
 			.addComponents(linkButton)
-
 		interaction.reply({ components: [row], ephemeral: true })
 	},
-}
+} as Command

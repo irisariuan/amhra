@@ -1,11 +1,27 @@
-const { readJsonSync } = require('../read')
+import { readJsonSync } from '../read'
 const setting = readJsonSync()
-const { newUser, getUser, countUser } = require('../db/core')
+import { newUser, getUser, countUser } from '../db/core'
+
+export interface User {
+    id: string;
+    createdAt: Date;
+    updatedAt: Date;
+    token: string;
+    tokenType: string;
+    refreshToken: string;
+    accessToken: string;
+    refreshTokenExpiresAt: number;
+}
+
+export interface Guild {
+	id: string,
+	name: string
+}
 
 /**
  * @param {string} code 
  */
-async function exchangeCode(code) {
+export async function exchangeCode(code) {
 	try {
 		const tokenResponseData = await fetch('https://discord.com/api/oauth2/token', {
 			method: 'POST',
@@ -31,15 +47,11 @@ async function exchangeCode(code) {
 		console.error(error)
 	}
 }
-/**
- * 
- * @param {string} refreshCode
- * @returns {Promise<{access_token: string, token_type: string, expires_in: number, refresh_token: string, scope: string} | null>}
- */
-async function refreshToken(refreshCode) {
+
+export async function refreshToken(refreshCode: string): Promise<User | undefined> {
 	// todo: perform check in db to see if the token is valid
-	if (!countUser(refreshCode) > 0) {
-		return null
+	if (!(await countUser(refreshCode) > 0)) {
+		return
 	}
 	try {
 		const tokenResponseData = await fetch('https://discord.com/api/oauth2/token', {
@@ -55,7 +67,7 @@ async function refreshToken(refreshCode) {
 			},
 		})
 		if (!tokenResponseData.ok) {
-			return null
+			return
 		}
 		/**
 		 * Access token response example
@@ -76,7 +88,7 @@ async function refreshToken(refreshCode) {
 	}
 }
 
-async function register(code) {
+export async function register(code: string): Promise<User | null> {
 	const oauthData = await exchangeCode(code)
 	if (!oauthData) {
 		return null
@@ -94,11 +106,8 @@ async function register(code) {
 	return await newUser(userResult.id, oauthData.access_token, oauthData.token_type, oauthData.refresh_token, oauthData.expires_in)
 }
 
-/**
- * @param {string} accessToken
- */
-async function getUserGuilds(accessToken) {
-	let user = await getUser(accessToken)
+export async function getUserGuilds(accessToken: string): Promise<Guild[] | null> {
+	const user = await getUser(accessToken)
 	if (!user) {
 		return null
 	}
@@ -108,14 +117,15 @@ async function getUserGuilds(accessToken) {
 		},
 	})
 	if (!userResult.ok) {
-		user = await refreshToken(user.refreshToken)
+		const refreshedUser = await refreshToken(user.refreshToken)
+		if (!refreshedUser) {
+			return null
+		}
 		return await (await fetch('https://discord.com/api/users/@me/guilds', {
 			headers: {
-				Authorization: `${user.tokenType} ${user.token}`,
+				Authorization: `${refreshedUser.tokenType} ${refreshedUser.token}`,
 			},
 		})).json() ?? null
 	}
 	return await userResult.json()
 }
-
-module.exports = { exchangeCode, register, refreshToken, getUserGuilds }

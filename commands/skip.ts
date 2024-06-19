@@ -1,9 +1,7 @@
-const { SlashCommandBuilder } = require('discord.js')
-const { CommandInteraction } = require('discord.js')
-const { getAudioPlayer } = require('../lib/voice/core')
-const { CustomClient } = require('../lib/custom')
+import { SlashCommandBuilder } from 'discord.js'
+import { getAudioPlayer } from '../lib/voice/core'
 
-module.exports = {
+export default {
 	data: new SlashCommandBuilder()
 		.setName('skip')
 		.setDescription('Skip the song'),
