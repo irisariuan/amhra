@@ -19,5 +19,6 @@ export interface Setting {
     
     PRELOAD: LogFile[],
     DETAIL_LOGGING: boolean,
-    USE_YOUTUBE_DL: boolean
+    USE_YOUTUBE_DL: boolean,
+    PREFIX: string
 }
