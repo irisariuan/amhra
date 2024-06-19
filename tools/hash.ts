@@ -1,6 +1,6 @@
-const crypto = require('node:crypto')
-const { input, confirm } = require('@inquirer/prompts')
-const { writeJsonSync, readJsonSync } = require('../lib/read')
+import crypto from 'node:crypto'
+import { input, confirm } from '@inquirer/prompts'
+import { writeJsonSync, readJsonSync } from '../lib/read'
 
 input({ message: 'Hash' }).then(async v => {
     const hash = crypto.createHash('sha256').update(`Basic ${v}`).digest('hex')

@@ -16,7 +16,13 @@ import type { Setting } from '../lib/setting';
         DETAIL_LOGGING: false,
         QUEUE_SIZE: 4000,
         WEBSITE: null,
-        HTTPS: false
+        HTTPS: false,
+        OAUTH_TOKEN: '',
+        PREFIX: '!',
+        PRELOAD: [],
+        REDIRECT_URI: '',
+        SEEK: true,
+        USE_YOUTUBE_DL: false
     }
 
     const token = await input({ message: 'Bot Token' })
@@ -55,8 +61,8 @@ import type { Setting } from '../lib/setting';
             setting.HTTPS = true
         }
     }
-    const queueSize = await input({ message: 'Set up your cache size for logs', validate: v => Number.parseInt(v) > 0, transformer: v => Number.parseInt(v), default: '4000' })
-    setting.QUEUE_SIZE = queueSize
+    const queueSize = await input({ message: 'Set up your cache size for logs', validate: v => Number.parseInt(v) > 0, default: '4000' })
+    setting.QUEUE_SIZE = Number.parseInt(queueSize)
     if (await confirm({ message: 'Write to setting.json?', default: true })) {
         writeJsonSync(`${process.cwd()}/data/setting.json`, setting)
         console.log('Done!')
