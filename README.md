@@ -19,10 +19,10 @@ npx tsc
 ### Setup with CLI
 
 #### Node
-`node tools/setting.js`
+`node dist/tools/setting.js`
 
 #### Bun
-`bun tools/setting.js`
+`bun dist/tools/setting.js`
 
 Follow instructions and finish setup
 
@@ -43,9 +43,9 @@ You may replace `AUTH_TOKEN` with `tool/hash.js`
 
 ## Start
 ### Node
-`node main.js`
+`node dist/main.js`
 ### Bun
-`bun main.js`
+`bun dist/main.js`
 
 ---
 # Enjoy your bot!
