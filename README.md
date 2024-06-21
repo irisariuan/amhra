@@ -41,6 +41,9 @@ You may replace `AUTH_TOKEN` with `tool/hash.js`
 
 > The default token for `AUTH_TOKEN` is `amhraBotDashboard`
 
+### Misc
+This project is built with [Amhra Dashboard](https://github.com/irisariuan/amhraDashboard), make sure you check out the dashboard there!
+
 ## Start
 ### Node
 `node dist/main.js`
