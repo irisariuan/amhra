@@ -9,7 +9,7 @@ interface RecordOption {
 	format?: string
 }
 
-async function record(interaction, opts?: RecordOption) {
+export async function record(interaction, opts?: RecordOption) {
 	// return await interaction.reply({ content: 'Currently not supported!' })
 	//get voice connection, if there isn't one, create one
 	let connection = getVoiceConnection(interaction.guildId)
@@ -44,7 +44,7 @@ async function record(interaction, opts?: RecordOption) {
 	return setTimeout(async () => {
 		//stop the stream
 		stream.destroy()
-		await /** @type {Promise<void>} */ (
+		await (
 			new Promise<void>(r => {
 				stream.on("close", () => {
 					r()

@@ -5,10 +5,6 @@ export default {
 	data: new SlashCommandBuilder()
 		.setName('skip')
 		.setDescription('Skip the song'),
-	/**
-	 * @param {CommandInteraction} interaction 
-	 * @param {CustomClient} client 
-	 */
 	async execute(interaction, client) {
 		const player = getAudioPlayer(client, interaction, {createPlayer: false})
 		if (!player) return await interaction.reply("I'm not playing anything")

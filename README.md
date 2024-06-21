@@ -2,11 +2,17 @@
 
 **Amhra**, a bot designed for smooth music playing experience in Discord
 
-## Installation
+## Installation and building the project
 ### Bun
-`bun install`
+```
+bun install
+bunx tsc
+```
 ### NPM
-`npm i`
+```
+npm i
+npx tsc
+```
 
 ## Setting Up
 

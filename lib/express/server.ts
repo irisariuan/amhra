@@ -59,10 +59,7 @@ export async function init(client: CustomClient) {
 		}
 	}
 
-	/**
-	 * @param {string[]} checklist
-	 */
-	function basicCheckBuilder(checklist) {
+	function basicCheckBuilder(checklist: string[]) {
 		/**
 		 * @param {Request} req
 		 * @param {Response} res

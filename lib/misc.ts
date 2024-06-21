@@ -69,11 +69,6 @@ export const misc = {
 		ephemeral: true,
 	},
 	errorMessage,
-	/**
-	 * 
-	 * @param {string} format 
-	 * @returns {}
-	 */
 	prefixFormatter(format: string): (input: string) => string {
 		/**
 		 * @param {string} input

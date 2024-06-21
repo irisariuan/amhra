@@ -18,10 +18,7 @@ export interface Guild {
 	name: string
 }
 
-/**
- * @param {string} code 
- */
-export async function exchangeCode(code) {
+export async function exchangeCode(code: string) {
 	try {
 		const tokenResponseData = await fetch('https://discord.com/api/oauth2/token', {
 			method: 'POST',
