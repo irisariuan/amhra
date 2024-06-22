@@ -8,6 +8,7 @@ import { createResource } from './voice/core'
 import { yt_validate } from 'play-dl'
 import chalk from 'chalk'
 import type { Command } from './interaction'
+import { SongEditType } from './express/type'
 
 const setting = readJsonSync()
 export const client = new CustomClient({
@@ -110,22 +111,22 @@ client.on('shardError', e => {
 	dcb.log(`Shard Error: ${e}`)
 })
 
-event.on('songInterruption', async (guildId, action, detail) => {
+event.on('songInterruption', async (guildId, act, detail) => {
 	const player = client.player.get(guildId)
 	if (!player) {
 		return globalApp.err('Player not found')
 	}
+	const action: SongEditType = act
 	switch (action) {
-		case 'pause': {
+		case SongEditType.Pause: {
 			player.pause()
 			break
 		}
-		case 'resume': {
+		case SongEditType.Resume: {
 			player.unpause()
 			break
 		}
-		case 'setTime':
-			{
+		case SongEditType.SetTime: {
 				if (!player.nowPlaying || !player.isPlaying) {
 					return globalApp.err('Cannot interrupt the song since nothing is playing')
 				}
