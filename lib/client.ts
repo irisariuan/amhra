@@ -1,10 +1,10 @@
 import { GatewayIntentBits, type GuildMember } from 'discord.js'
 import fs from 'node:fs'
 import { CustomClient } from './custom'
-import { ExpressEventDetail, event } from './express/event'
+import { event } from './express/event'
 import { dcb, globalApp, misc } from './misc'
 import { readJsonSync } from './read'
-import { createResource, getConnection } from './voice/core'
+import { createResource, destroyAudioPlayer, getConnection } from './voice/core'
 import { yt_validate } from 'play-dl'
 import chalk from 'chalk'
 import type { Command } from './interaction'
@@ -198,7 +198,7 @@ event.on('songInterruption', async (guildId, action, detail) => {
 			dcb.log('Quitting from dashboard')
 			player.stop()
 			getConnection(guildId)?.destroy()
-			client.player.delete(guildId)
+			destroyAudioPlayer(client, guildId)
 			break
 		}
 		default:

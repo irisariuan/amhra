@@ -230,6 +230,7 @@ export async function init(client: CustomClient) {
 					break
 				}
 				case SongEditType.Quit: {
+					cLog('Quitting from dashboard')
 					event.emitSong(req.body.guildId, action, {})
 					break
 				}
