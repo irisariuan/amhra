@@ -21,7 +21,7 @@ export default {
 	async execute(interaction, client) {
 		await interaction.deferReply()
 		const player = getAudioPlayer(client, interaction)
-		if (!getConnection(interaction)) {
+		if (!getConnection(interaction.guildId)) {
 			dcb.log('Bot not in voice channel')
 			return interaction.editReply({ content: "I'm not in a voice channel!" })
 		}

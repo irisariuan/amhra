@@ -8,7 +8,7 @@ export default {
     .setName('disconnect')
     .setDescription('Disconnect the bot'),
 	execute(interaction, client) {
-        const connection = getConnection(interaction)
+        const connection = getConnection(interaction.guildId)
         if (connection) {
 
             connection.disconnect()

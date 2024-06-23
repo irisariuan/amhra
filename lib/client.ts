@@ -4,10 +4,11 @@ import { CustomClient } from './custom'
 import { event } from './express/event'
 import { dcb, globalApp, misc } from './misc'
 import { readJsonSync } from './read'
-import { createResource } from './voice/core'
+import { createResource, destroyAudioPlayer, getConnection } from './voice/core'
 import { yt_validate } from 'play-dl'
 import chalk from 'chalk'
 import type { Command } from './interaction'
+import { SongEditType } from './express/event'
 
 const setting = readJsonSync()
 export const client = new CustomClient({
@@ -116,31 +117,30 @@ event.on('songInterruption', async (guildId, action, detail) => {
 		return globalApp.err('Player not found')
 	}
 	switch (action) {
-		case 'pause': {
+		case SongEditType.Pause: {
 			player.pause()
 			break
 		}
-		case 'resume': {
+		case SongEditType.Resume: {
 			player.unpause()
 			break
 		}
-		case 'setTime':
-			{
-				if (!player.nowPlaying || !player.isPlaying) {
-					return globalApp.err('Cannot interrupt the song since nothing is playing')
-				}
-				if (detail.sec > player.nowPlaying.details.durationInSec || detail.sec < 0) {
-					return globalApp.err('Out of range')
-				}
-
-				const res = await createResource(player.nowPlaying.url, detail.sec)
-				player.playResource(res)
-				dcb.log('Relocated the video')
+		case SongEditType.SetTime: {
+			if (!player.nowPlaying || !player.isPlaying || !detail.sec) {
+				return globalApp.err('Cannot interrupt the song since nothing is playing')
 			}
+			if (detail.sec > player.nowPlaying.details.durationInSec || detail.sec < 0) {
+				return globalApp.err('Out of range')
+			}
+
+			const res = await createResource(player.nowPlaying.url, detail.sec)
+			player.playResource(res)
+			dcb.log('Relocated the video')
+		}
 			break
-		case 'addSong': {
+		case SongEditType.AddSong: {
 			dcb.log('Added song from dashboard to queue')
-			if (yt_validate(detail.url ?? '') !== 'video') {
+			if (yt_validate(detail.url ?? '') !== 'video' || !detail.url) {
 				return globalApp.err('Invalid URL')
 			}
 			player.addToQueue(detail.url)
@@ -149,23 +149,24 @@ event.on('songInterruption', async (guildId, action, detail) => {
 				if (!p) return
 				const res = await createResource(p)
 
-				event.emit('songInfo', p)
+				event.emitSongInfo(p)
 				player.playResource(res)
 				dcb.log('Started playing song from queue')
 			}
 			break
 		}
-		case 'stop': {
+		case SongEditType.Stop: {
 			dcb.log('Stop the music from dashboard')
 			player.cleanStop()
 			break
 		}
-		case 'skip': {
+		case SongEditType.Skip: {
 			dcb.log('Skip the music from dashboard')
 			player.stop()
 			break
 		}
-		case 'removeSong': {
+		case SongEditType.RemoveSong: {
+			if (!detail.index) return globalApp.err('Index is required')
 			dcb.log('Removing song from dashboard')
 			const removedSong = player.queue.splice(detail.index, 1)
 			if (removedSong.at(0)) {
@@ -175,7 +176,8 @@ event.on('songInterruption', async (guildId, action, detail) => {
 			}
 			break
 		}
-		case 'setVolume': {
+		case SongEditType.SetVolume: {
+			if (!detail.volume) return globalApp.err('Volume is required')
 			dcb.log(`Setting volume to ${detail.volume}% from dashboard`)
 			const vol = Number.parseFloat(detail.volume)
 			if (!Number.isNaN(vol)) {
@@ -183,13 +185,20 @@ event.on('songInterruption', async (guildId, action, detail) => {
 			}
 			break
 		}
-		case 'setQueue': {
+		case SongEditType.SetQueue: {
 			dcb.log('Switching queue from dashboard')
 			if (detail.queue) {
 				player.queue = detail.queue
 			} else {
 				globalApp.err('Queue error', detail.queue)
 			}
+			break
+		}
+		case SongEditType.Quit: {
+			dcb.log('Quitting from dashboard')
+			player.stop()
+			getConnection(guildId)?.destroy()
+			destroyAudioPlayer(client, guildId)
 			break
 		}
 		default:
