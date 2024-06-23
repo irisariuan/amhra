@@ -169,11 +169,11 @@ export async function init(client: CustomClient) {
 			switch (action) {
 				case SongEditType.Pause:
 					cLog('Pausing song from dashboard')
-					event.emitSong('songInterruption', req.body.guildId, action, {})
+					event.emitSong(req.body.guildId, action, {})
 					break
 				case SongEditType.Resume:
 					cLog('Resuming song from dashboard')
-					event.emitSong('songInterruption', req.body.guildId, action, {})
+					event.emitSong(req.body.guildId, action, {})
 					break
 				case SongEditType.SetTime:
 					if (!setting.SEEK) {
@@ -209,30 +209,30 @@ export async function init(client: CustomClient) {
 					break
 				case SongEditType.Stop:
 					cLog(`(Guild ID: ${req.body.guildId}) Stopping song from dashboard`)
-					event.emitSong('songInterruption', req.body.guildId, action, {})
+					event.emitSong(req.body.guildId, action, {})
 					break
 				case SongEditType.Skip:
 					cLog('Skipping song from dashboard')
-					event.emitSong('songInterruption', req.body.guildId, action, {})
+					event.emitSong(req.body.guildId, action, {})
 					break
 				case SongEditType.RemoveSong: {
 					cLog('Removing song from dashboard')
-					event.emitSong('songInterruption', req.body.guildId, action, req.body.detail)
+					event.emitSong(req.body.guildId, action, req.body.detail)
 					break
 				}
 				case SongEditType.SetVolume: {
 					cLog('Setting volume from dashboard')
 					const volume = Number.isNaN(req.body.detail) || req.body.detail > 2 ? 0 : req.body.detail
-					event.emitSong('songInterruption', req.body.guildId, action, volume)
+					event.emitSong(req.body.guildId, action, volume)
 					break
 				}
 				case SongEditType.SetQueue: {
 					cLog('Setting queue from dashboard')
-					event.emitSong('songInterruption', req.body.guildId, action, req.body.detail)
+					event.emitSong(req.body.guildId, action, req.body.detail)
 					break
 				}
 				case SongEditType.Quit: {
-					event.emitSong('songInterruption', req.body.guildId, action, {})
+					event.emitSong(req.body.guildId, action, {})
 					break
 				}
 				default:

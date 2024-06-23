@@ -1,7 +1,7 @@
 import { GatewayIntentBits, type GuildMember } from 'discord.js'
 import fs from 'node:fs'
 import { CustomClient } from './custom'
-import { event } from './express/event'
+import { ExpressEventDetail, event } from './express/event'
 import { dcb, globalApp, misc } from './misc'
 import { readJsonSync } from './read'
 import { createResource } from './voice/core'
@@ -9,6 +9,7 @@ import { yt_validate } from 'play-dl'
 import chalk from 'chalk'
 import type { Command } from './interaction'
 import { SongEditType } from './express/type'
+import { assert } from 'node:console'
 
 const setting = readJsonSync()
 export const client = new CustomClient({
@@ -111,12 +112,11 @@ client.on('shardError', e => {
 	dcb.log(`Shard Error: ${e}`)
 })
 
-event.on('songInterruption', async (guildId, act, detail) => {
+event.on('songInterruption', async (guildId, action, detail) => {
 	const player = client.player.get(guildId)
 	if (!player) {
 		return globalApp.err('Player not found')
 	}
-	const action: SongEditType = act
 	switch (action) {
 		case SongEditType.Pause: {
 			player.pause()
@@ -127,21 +127,21 @@ event.on('songInterruption', async (guildId, act, detail) => {
 			break
 		}
 		case SongEditType.SetTime: {
-				if (!player.nowPlaying || !player.isPlaying) {
-					return globalApp.err('Cannot interrupt the song since nothing is playing')
-				}
-				if (detail.sec > player.nowPlaying.details.durationInSec || detail.sec < 0) {
-					return globalApp.err('Out of range')
-				}
-
-				const res = await createResource(player.nowPlaying.url, detail.sec)
-				player.playResource(res)
-				dcb.log('Relocated the video')
+			if (!player.nowPlaying || !player.isPlaying || !detail.sec) {
+				return globalApp.err('Cannot interrupt the song since nothing is playing')
 			}
+			if (detail.sec > player.nowPlaying.details.durationInSec || detail.sec < 0) {
+				return globalApp.err('Out of range')
+			}
+
+			const res = await createResource(player.nowPlaying.url, detail.sec)
+			player.playResource(res)
+			dcb.log('Relocated the video')
+		}
 			break
 		case 'addSong': {
 			dcb.log('Added song from dashboard to queue')
-			if (yt_validate(detail.url ?? '') !== 'video') {
+			if (yt_validate(detail.url ?? '') !== 'video' || !detail.url) {
 				return globalApp.err('Invalid URL')
 			}
 			player.addToQueue(detail.url)
@@ -150,7 +150,7 @@ event.on('songInterruption', async (guildId, act, detail) => {
 				if (!p) return
 				const res = await createResource(p)
 
-				event.emit('songInfo', p)
+				event.emitSongInfo(p)
 				player.playResource(res)
 				dcb.log('Started playing song from queue')
 			}
@@ -167,6 +167,7 @@ event.on('songInterruption', async (guildId, act, detail) => {
 			break
 		}
 		case 'removeSong': {
+			if (!detail.index) return globalApp.err('Index is required')
 			dcb.log('Removing song from dashboard')
 			const removedSong = player.queue.splice(detail.index, 1)
 			if (removedSong.at(0)) {
@@ -177,6 +178,7 @@ event.on('songInterruption', async (guildId, act, detail) => {
 			break
 		}
 		case 'setVolume': {
+			if (!detail.volume) return globalApp.err('Volume is required')
 			dcb.log(`Setting volume to ${detail.volume}% from dashboard`)
 			const vol = Number.parseFloat(detail.volume)
 			if (!Number.isNaN(vol)) {
