@@ -4,12 +4,11 @@ import { CustomClient } from './custom'
 import { ExpressEventDetail, event } from './express/event'
 import { dcb, globalApp, misc } from './misc'
 import { readJsonSync } from './read'
-import { createResource } from './voice/core'
+import { createResource, getConnection } from './voice/core'
 import { yt_validate } from 'play-dl'
 import chalk from 'chalk'
 import type { Command } from './interaction'
-import { SongEditType } from './express/type'
-import { assert } from 'node:console'
+import { SongEditType } from './express/event'
 
 const setting = readJsonSync()
 export const client = new CustomClient({
@@ -139,7 +138,7 @@ event.on('songInterruption', async (guildId, action, detail) => {
 			dcb.log('Relocated the video')
 		}
 			break
-		case 'addSong': {
+		case SongEditType.AddSong: {
 			dcb.log('Added song from dashboard to queue')
 			if (yt_validate(detail.url ?? '') !== 'video' || !detail.url) {
 				return globalApp.err('Invalid URL')
@@ -156,17 +155,17 @@ event.on('songInterruption', async (guildId, action, detail) => {
 			}
 			break
 		}
-		case 'stop': {
+		case SongEditType.Stop: {
 			dcb.log('Stop the music from dashboard')
 			player.cleanStop()
 			break
 		}
-		case 'skip': {
+		case SongEditType.Skip: {
 			dcb.log('Skip the music from dashboard')
 			player.stop()
 			break
 		}
-		case 'removeSong': {
+		case SongEditType.RemoveSong: {
 			if (!detail.index) return globalApp.err('Index is required')
 			dcb.log('Removing song from dashboard')
 			const removedSong = player.queue.splice(detail.index, 1)
@@ -177,7 +176,7 @@ event.on('songInterruption', async (guildId, action, detail) => {
 			}
 			break
 		}
-		case 'setVolume': {
+		case SongEditType.SetVolume: {
 			if (!detail.volume) return globalApp.err('Volume is required')
 			dcb.log(`Setting volume to ${detail.volume}% from dashboard`)
 			const vol = Number.parseFloat(detail.volume)
@@ -186,13 +185,20 @@ event.on('songInterruption', async (guildId, action, detail) => {
 			}
 			break
 		}
-		case 'setQueue': {
+		case SongEditType.SetQueue: {
 			dcb.log('Switching queue from dashboard')
 			if (detail.queue) {
 				player.queue = detail.queue
 			} else {
 				globalApp.err('Queue error', detail.queue)
 			}
+			break
+		}
+		case SongEditType.Quit: {
+			dcb.log('Quitting from dashboard')
+			player.stop()
+			getConnection(guildId)?.destroy()
+			client.player.delete(guildId)
 			break
 		}
 		default:

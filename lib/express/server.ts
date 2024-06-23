@@ -19,7 +19,7 @@ import NodeCache from 'node-cache'
 import { countUser, getUser } from '../db/core'
 import { type Guild, getUserGuilds } from '../auth/core'
 import type { TextChannel } from 'discord.js'
-import { SongEditType } from './type'
+import { SongEditType } from '../express/event'
 
 const YoutubeVideoRegex = /http(?:s?):\/\/(?:www\.)?youtu(?:be\.com\/watch\?v=|\.be\/)([\w\-_]*)(&(amp;)?[\w?=]*)?/
 
@@ -183,7 +183,6 @@ export async function init(client: CustomClient) {
 					if (req.body.detail?.sec) {
 						cLog('Setting time')
 						event.emitSong(
-							'songInterruption',
 							req.body.guildId,
 							action,
 							req.body.detail
@@ -197,7 +196,6 @@ export async function init(client: CustomClient) {
 					if (req.body?.detail?.url) {
 						cLog('Received song from dashboard')
 						event.emitSong(
-							'songInterruption',
 							req.body.guildId,
 							action,
 							req.body.detail

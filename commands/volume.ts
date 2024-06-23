@@ -17,7 +17,7 @@ export default {
 	execute(interaction, client) {
 		const volume = interaction.options.getInteger("volume", true) / 100
 		const player = getAudioPlayer(client, interaction, { createPlayer: false })
-		if (!getConnection(interaction))
+		if (!getConnection(interaction.guildId))
 			return interaction.reply({ content: "I'm not in a voice channel!" })
 		if (!player) return interaction.reply({ content: "I'm not playing song!" })
 		player.setVolume(volume)

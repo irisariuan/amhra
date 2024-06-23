@@ -135,10 +135,9 @@ export function destroyAudioPlayer(client: CustomClient, guildId: string): boole
 	return false
 }
 
-export function getConnection(interaction) {
-	const connection = getVoiceConnection(interaction.guildId)
-	if (!connection) return false
-	return connection
+export function getConnection(guildId: string | null) {
+	if (!guildId) return
+	return getVoiceConnection(guildId)
 }
 
 export interface Stream { stream: any, type: StreamType }

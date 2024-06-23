@@ -1,7 +1,19 @@
 import type { LogType } from "../log/load";
-import type { SongEditType } from "./type";
 
 const EventEmitter = require('node:events')
+
+export enum SongEditType {
+    Pause = 'pause',
+    Resume = 'resume',
+    Skip = 'skip',
+    Stop = 'stop',
+    AddSong = 'addSong',
+    SetTime = 'setTime',
+    RemoveSong = 'removeSong',
+    SetVolume = 'setVolume',
+    SetQueue = 'setQueue',
+    Quit = 'quit'
+}
 
 export type ExpressEventDetail = {
     url?: string
