@@ -205,3 +205,16 @@ event.on('songInterruption', async (guildId, action, detail) => {
 			break
 	}
 })
+
+event.on('reloadCommands', () => {
+	globalApp.important('Reloading commands')
+	for (const file of commandFiles) {
+		try {
+			const command: Command = (require(`${__dirname}/../commands/${file}`)).default
+			commands.set(command.data.name, command)
+		} catch (e) {
+			globalApp.err(e)
+		}
+	}
+	globalApp.important('Reloaded commands')
+})

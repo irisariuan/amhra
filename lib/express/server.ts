@@ -251,6 +251,9 @@ export async function init(client: CustomClient) {
 			const formatter = misc.prefixFormatter(`${chalk.bgGrey(`(IP: ${req.ip})`)}`)
 
 			exp.log(formatter('Received action request'))
+			if (!req.body.action) {
+				return res.sendStatus(400)
+			}
 			event.emitAction(req.body.action)
 			switch (req.body.action) {
 				case 'exit': {
@@ -264,10 +267,14 @@ export async function init(client: CustomClient) {
 						globalApp.warn('Failed to create server-based dashboard, missing guild ID')
 						return res.sendStatus(400)
 					}
-					const guildId = req.body.guildId
-					const { token, level } = client.newToken(guildId)
+					const { token, level } = client.newToken(req.body.guildId)
 					exp.log('Successfully created server-based dashboard')
-					res.send(JSON.stringify({ token, guildId, level }))
+					res.send(JSON.stringify({ token, guildId: req.body.guildId, level }))
+					break
+				}
+				case 'reload': {
+					globalApp.important(formatter('Reloading commands...'))
+					event.emitReloadCommands()
 					break
 				}
 				default: {

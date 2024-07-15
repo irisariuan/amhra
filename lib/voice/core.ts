@@ -14,7 +14,7 @@ import {
 	yt_validate,
 	YouTubeStream,
 } from "play-dl"
-import ytdl from 'ytdl-core'
+import ytdl from '@distube/ytdl-core'
 import { CustomAudioPlayer, type Resource, type CustomClient } from "../custom"
 import { dcb, globalApp } from "../misc"
 import { event } from "../express/event"
