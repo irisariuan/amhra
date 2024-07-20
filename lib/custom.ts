@@ -131,7 +131,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	unmute() {
 		this.isMuting = false
-		this.nowPlaying?.resource.volume?.setVolume(this.volume)
+		this.setVolume(this.volume)
 	}
 
 	resetAll() {
@@ -167,20 +167,20 @@ export class CustomAudioPlayer extends AudioPlayer {
 	}
 
 	playResource(resource: Resource) {
-		resource.resource.volume?.setVolume(this.isMuting ? 0 : this.volume)
 		this.nowPlaying = resource
 		this.isPlaying = true
 		this.isPaused = false
+		this.setVolume(this.isMuting ? 0 : this.volume)
 
 		this.pauseCounter = 0
 		this.startFrom = resource.startFrom ?? 0
 		this.updateStartTime()
-		this.play(resource.resource)
+		this.play(this.nowPlaying.resource)
 	}
 	setVolume(volume: number) {
 		this.volume = volume
 		if (this.isPlaying && this.nowPlaying?.resource && !this.isMuting) {
-			this.nowPlaying.resource.volume?.setVolume(volume)
+			this.nowPlaying.resource.volume?.setVolume(volume * (setting.VOLUME_MODIFIER ?? 1))
 		}
 	}
 

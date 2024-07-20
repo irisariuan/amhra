@@ -21,5 +21,7 @@ export interface Setting {
     DETAIL_LOGGING: boolean,
     USE_YOUTUBE_DL: boolean,
     SEEK: boolean,
-    PREFIX: string
+    PREFIX: string,
+
+    VOLUME_MODIFIER: number,
 }

@@ -77,6 +77,10 @@
 		"SEEK": {
 			"type": "boolean",
 			"description": "Enable time seeking function, should be closed when using youtube-dl"
+		},
+		"VOLUME_MODIFIER": {
+			"type": "number",
+			"description": "The volume modifier"
 		}
 	},
 	"required": [
