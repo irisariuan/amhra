@@ -14,7 +14,7 @@ export enum SongEditType {
     SetQueue = 'setQueue',
     Quit = 'quit',
     Mute = 'mute',
-    unmute = 'unmute'
+    Unmute = 'unmute'
 }
 
 export type ExpressEventDetail = {

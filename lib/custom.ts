@@ -41,7 +41,8 @@ export interface SongDataPacket {
 	canSeek: boolean,
 	paused: boolean,
 	pausedInMs: number,
-	pausedTimestamp: number
+	pausedTimestamp: number,
+	isMuting: boolean
 }
 
 export class CustomClient extends Client {
@@ -205,6 +206,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 			history: this.history,
 			volume: this.volume,
 			isPlaying: this.isPlaying,
+			isMuting: this.isMuting,
 			paused: this.isPaused,
 			pausedInMs: this.pauseCounter,
 			pausedTimestamp: this.pauseTimestamp,

@@ -201,6 +201,16 @@ event.on('songInterruption', async (guildId, action, detail) => {
 			destroyAudioPlayer(client, guildId)
 			break
 		}
+		case SongEditType.Unmute: {
+			dcb.log('Unmuting from dashboard')
+			player.unmute()
+			break
+		}
+		case SongEditType.Mute: {
+			dcb.log('Muting from dashboard')
+			player.mute()
+			break
+		}
 		default:
 			break
 	}

@@ -234,6 +234,16 @@ export async function init(client: CustomClient) {
 					event.emitSong(req.body.guildId, action, {})
 					break
 				}
+				case SongEditType.Mute: {
+					cLog('Muting from dashboard')
+					event.emitSong(req.body.guildId, action, {})
+					break
+				}
+				case SongEditType.Unmute: {
+					cLog('Unmuting from dashboard')
+					event.emitSong(req.body.guildId, action, {})
+					break
+				}
 				default:
 					cError(`Invalid action: ${action}`)
 					return res.sendStatus(400)
