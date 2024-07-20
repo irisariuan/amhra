@@ -23,5 +23,5 @@ export interface Setting {
     SEEK: boolean,
     PREFIX: string,
 
-    VOLUME_MODIFIER: number,
+VOLUME_MODIFIER: number,
 }
