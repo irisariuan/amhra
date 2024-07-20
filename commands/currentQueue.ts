@@ -87,4 +87,4 @@ export default {
 		dcb.log('Sent queue')
 		await interaction.editReply({ embeds: [embed] })
 	},
-} as Command
+} as Command<SlashCommandBuilder>

@@ -1,4 +1,4 @@
-import { GatewayIntentBits, type GuildMember } from 'discord.js'
+import { ContextMenuCommandBuilder, GatewayIntentBits, SlashCommandBuilder, type GuildMember } from 'discord.js'
 import fs from 'node:fs'
 import { CustomClient } from './custom'
 import { event } from './express/event'
@@ -26,10 +26,11 @@ export const client = new CustomClient({
 const commandFiles = fs
 	.readdirSync(`${__dirname}/../commands`)
 	.filter(d => (d.endsWith('.ts') || d.endsWith('.js')) && !d.endsWith('.d.ts') && !d.endsWith('.map.js'))
-const commands: Map<string, Command> = new Map()
+const commands: Map<string, Command<SlashCommandBuilder>> = new Map()
+const contextCommands: Map<string, Command<ContextMenuCommandBuilder>> = new Map()
 
 for (const file of commandFiles) {
-	const command: Command = (require(`${__dirname}/../commands/${file}`)).default
+	const command: Command<SlashCommandBuilder> = (require(`${__dirname}/../commands/${file}`)).default
 	commands.set(command.data.name, command)
 }
 
@@ -39,6 +40,9 @@ client.on('ready', () => {
 })
 
 client.on('interactionCreate', async interaction => {
+	if (interaction.isUserContextMenuCommand()) {
+
+	}
 	if (!interaction.isCommand() || !interaction.isChatInputCommand()) return
 	const command = commands.get(interaction.commandName)
 	if (!command) {
@@ -220,7 +224,7 @@ event.on('reloadCommands', () => {
 	globalApp.important('Reloading commands')
 	for (const file of commandFiles) {
 		try {
-			const command: Command = (require(`${__dirname}/../commands/${file}`)).default
+			const command: Command<SlashCommandBuilder> = (require(`${__dirname}/../commands/${file}`)).default
 			commands.set(command.data.name, command)
 		} catch (e) {
 			globalApp.err(e)

@@ -17,4 +17,4 @@ export default {
 			await interaction.reply({ content: 'Failed to pause' })
 		}
 	}
-} as Command
+} as Command<SlashCommandBuilder>

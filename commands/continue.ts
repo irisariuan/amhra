@@ -16,4 +16,4 @@ export default {
 			await interaction.reply({ content: 'Fail to resume the song!' })
 		}
 	},
-} as Command
+} as Command<SlashCommandBuilder>

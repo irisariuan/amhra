@@ -9,4 +9,4 @@ export default {
 		// await record(interaction);
 		interaction.reply({content: 'We\'re still working on this function!'});
 	},
-} as Command
+} as Command<SlashCommandBuilder>

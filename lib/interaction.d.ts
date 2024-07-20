@@ -1,7 +1,7 @@
-import type { ChatInputCommandInteraction, SlashCommandBuilder } from "discord.js";
+import type { ChatInputCommandInteraction, ContextMenuCommandBuilder, SlashCommandBuilder } from "discord.js";
 import type { CustomClient } from "./custom";
 
-export interface Command {
-    data: SlashCommandBuilder,
+export interface Command<T extends SlashCommandBuilder | ContextMenuCommandBuilder> {
+    data: T,
     execute: (interaction: ChatInputCommandInteraction, client: CustomClient) => void | Promise<void>
 }

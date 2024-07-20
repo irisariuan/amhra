@@ -39,4 +39,4 @@ export default {
 			content: 'Joined voice channel'
 		})
 	},
-} as Command
+} as Command<SlashCommandBuilder>

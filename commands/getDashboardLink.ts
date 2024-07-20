@@ -22,4 +22,4 @@ export default {
 			.addComponents(linkButton)
 		interaction.reply({ components: [row], ephemeral: true })
 	},
-} as Command
+} as Command<SlashCommandBuilder>

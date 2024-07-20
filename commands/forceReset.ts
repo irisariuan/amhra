@@ -13,4 +13,4 @@ export default {
 		}
 		await interaction.reply({content: 'Player not found!'})
 	},
-} as Command
+} as Command<SlashCommandBuilder>

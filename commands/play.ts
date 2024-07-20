@@ -118,4 +118,4 @@ export default {
 		})
 
 	},
-} as Command
+} as Command<SlashCommandBuilder>

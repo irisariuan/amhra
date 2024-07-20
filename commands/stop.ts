@@ -17,4 +17,4 @@ export default {
             content: 'Not playing music'
         })
     }
-} as Command
+} as Command<SlashCommandBuilder>

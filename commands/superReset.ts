@@ -12,4 +12,4 @@ export default {
 		client.player.clear()
 		interaction.reply({ content: 'Super reset!' })
 	},
-} as Command
+} as Command<SlashCommandBuilder>

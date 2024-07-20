@@ -23,4 +23,4 @@ export default {
 		player.setVolume(volume)
 		interaction.reply({ content: `Set the volume to ${volume * 100}%` })
 	},
-} as Command
+} as Command<SlashCommandBuilder>

@@ -20,4 +20,4 @@ export default {
 		if (videoDetail) return interaction.reply({ content: `Removed ${videoDetail.title} (\`${removed}\`)` })
 		return interaction.reply({ content: `Removed \`${removed}\`!` })
 	},
-} as Command
+} as Command<SlashCommandBuilder>
