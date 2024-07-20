@@ -91,12 +91,14 @@ export class CustomAudioPlayer extends AudioPlayer {
 	history: string[]
 	startFrom: number
 	looping: boolean
+	isMuting: boolean
 
 	constructor(guildId: string, options?: CreateAudioPlayerOptions) {
 		super(options)
 		this.guildId = guildId
 
 		this.volume = 1
+		this.isMuting = false
 
 		this.isPlaying = false
 		this.nowPlaying = null
@@ -119,6 +121,16 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.looping = false
 
 		this.timeoutList = []
+	}
+
+	mute() {
+		this.isMuting = true
+		this.nowPlaying?.resource.volume?.setVolume(0)
+	}
+
+	unmute() {
+		this.isMuting = false
+		this.nowPlaying?.resource.volume?.setVolume(this.volume)
 	}
 
 	resetAll() {

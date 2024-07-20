@@ -9,8 +9,7 @@ import {misc} from '../lib/misc'
 export default {
 	data: new SlashCommandBuilder()
 		.setName('join')
-		.setDescription('Join the voice channel')
-		.addBooleanOption(b => b.setName('player').setDescription('Get the player ready for later playing').setRequired(false)),
+		.setDescription('Join the voice channel'),
 	async execute(interaction, client) {
 		if (!interaction.guild || !interaction.inGuild() || !('voice' in interaction.member)) {
 			return interaction.reply(misc.errorMessageObj)
@@ -31,12 +30,11 @@ export default {
 		const connection = joinVoice(interaction.member.voice.channel, interaction)
 		if (!connection) return
 		
-		if (interaction.options.getBoolean('player', false)) {
-			dcb.log('Created Player')
-			const player = getAudioPlayer(client, interaction, { createPlayer: true })
-			if (!player) return
-			connection.subscribe(player)
-		}
+		dcb.log('Created Player')
+		const player = getAudioPlayer(client, interaction, { createPlayer: true })
+		if (!player) return
+		connection.subscribe(player)
+		
 		interaction.reply({
 			content: 'Joined voice channel'
 		})
