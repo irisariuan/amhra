@@ -179,7 +179,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 	}
 	setVolume(volume: number) {
 		this.volume = volume
-		if (this.isPlaying && this.nowPlaying?.resource) {
+		if (this.isPlaying && this.nowPlaying?.resource && !this.isMuting) {
 			this.nowPlaying.resource.volume?.setVolume(volume)
 		}
 	}
