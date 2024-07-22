@@ -30,6 +30,7 @@ let contextCommands = loadCommands<ContextMenuCommandBuilder>('context')
 client.on('ready', () => {
 	dcb.log(`Logged in as ${client.user?.tag}!`)
 	dcb.log(`Loaded commands ${Array.from(commands.keys()).join(', ')}`)
+	dcb.log(`Loaded context commands ${Array.from(contextCommands.keys()).join(', ')}`)
 })
 
 client.on('interactionCreate', async interaction => {
