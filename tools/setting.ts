@@ -23,7 +23,8 @@ import type { Setting } from '../lib/setting';
         REDIRECT_URI: '',
         SEEK: true,
         USE_YOUTUBE_DL: false,
-        VOLUME_MODIFIER: 1
+        VOLUME_MODIFIER: 1,
+        AUTO_LEAVE: 15 * 60 * 1000
     }
 
     const token = await input({ message: 'Bot Token' })

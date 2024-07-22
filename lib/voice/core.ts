@@ -44,7 +44,7 @@ export function createAudioPlayer(guildId: string, client: CustomClient, createO
 		client.player.delete(guildId)
 	}
 
-	player.newTimeout(timeoutDetection, setting.AUTO_LEAVE)
+	player.newTimeout(timeoutDetection, setting.AUTO_LEAVE ?? 15 * 60 * 1000)
 
 	player.on(AudioPlayerStatus.Playing, () => {
 		if (!player.nowPlaying?.url) return
@@ -57,7 +57,7 @@ export function createAudioPlayer(guildId: string, client: CustomClient, createO
 			return
 		}
 		if (player.queue.length === 0) {
-			player.newTimeout(timeoutDetection, setting.AUTO_LEAVE)
+			player.newTimeout(timeoutDetection, setting.AUTO_LEAVE ?? 15 * 60 * 1000)
 		}
 
 		try {
