@@ -1,7 +1,7 @@
 import { SlashCommandBuilder } from "discord.js"
 import { EmbedBuilder } from "discord.js"
-import { getAudioPlayer, songToString } from "../lib/voice/core"
-import type { Command } from "../lib/interaction"
+import { getAudioPlayer, songToString } from "../../lib/voice/core"
+import type { Command } from "../../lib/interaction"
 
 export default {
 	data: new SlashCommandBuilder()

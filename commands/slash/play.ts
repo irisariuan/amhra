@@ -1,4 +1,4 @@
-import type { Command } from "../lib/interaction"
+import type { Command } from "../../lib/interaction"
 
 import { SlashCommandBuilder } from "discord.js"
 import {
@@ -7,10 +7,10 @@ import {
 	isVideo,
 	isPlaylist,
 	joinVoice,
-} from "../lib/voice/core"
+} from "../../lib/voice/core"
 import { type YouTubePlayList, playlist_info, search } from "play-dl"
-import { dcb, globalApp } from "../lib/misc"
-import { misc } from "../lib/misc"
+import { dcb, globalApp } from "../../lib/misc"
+import { misc } from "../../lib/misc"
 
 export default {
 	data: new SlashCommandBuilder()

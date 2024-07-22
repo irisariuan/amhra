@@ -1,10 +1,10 @@
-import type { Command } from "../lib/interaction"
+import type { Command } from "../../lib/interaction"
 
 import { SlashCommandBuilder } from 'discord.js'
 import { getVoiceConnection } from '@discordjs/voice'
-import { joinVoice, getAudioPlayer } from '../lib/voice/core'
-import { dcb } from '../lib/misc'
-import {misc} from '../lib/misc'
+import { joinVoice, getAudioPlayer } from '../../lib/voice/core'
+import { dcb } from '../../lib/misc'
+import { misc } from '../../lib/misc'
 
 export default {
 	data: new SlashCommandBuilder()
@@ -29,12 +29,12 @@ export default {
 		dcb.log('Joined voice')
 		const connection = joinVoice(interaction.member.voice.channel, interaction)
 		if (!connection) return
-		
+
 		dcb.log('Created Player')
 		const player = getAudioPlayer(client, interaction, { createPlayer: true })
 		if (!player) return
 		connection.subscribe(player)
-		
+
 		interaction.reply({
 			content: 'Joined voice channel'
 		})

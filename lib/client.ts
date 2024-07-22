@@ -1,4 +1,5 @@
-import { ContextMenuCommandBuilder, GatewayIntentBits, SlashCommandBuilder, type GuildMember } from 'discord.js'
+import { type ContextMenuCommandBuilder, GatewayIntentBits, type SlashCommandBuilder, type GuildMember } from 'discord.js'
+import { loadCommands } from './core'
 import fs from 'node:fs'
 import { CustomClient } from './custom'
 import { event } from './express/event'
@@ -23,16 +24,8 @@ export const client = new CustomClient({
 })
 
 // import commands
-const commandFiles = fs
-	.readdirSync(`${__dirname}/../commands`)
-	.filter(d => (d.endsWith('.ts') || d.endsWith('.js')) && !d.endsWith('.d.ts') && !d.endsWith('.map.js'))
-const commands: Map<string, Command<SlashCommandBuilder>> = new Map()
-const contextCommands: Map<string, Command<ContextMenuCommandBuilder>> = new Map()
-
-for (const file of commandFiles) {
-	const command: Command<SlashCommandBuilder> = (require(`${__dirname}/../commands/${file}`)).default
-	commands.set(command.data.name, command)
-}
+let commands = loadCommands<SlashCommandBuilder>('slash')
+let contextCommands = loadCommands<ContextMenuCommandBuilder>('context')
 
 client.on('ready', () => {
 	dcb.log(`Logged in as ${client.user?.tag}!`)
@@ -41,24 +34,41 @@ client.on('ready', () => {
 
 client.on('interactionCreate', async interaction => {
 	if (interaction.isUserContextMenuCommand()) {
-
-	}
-	if (!interaction.isCommand() || !interaction.isChatInputCommand()) return
-	const command = commands.get(interaction.commandName)
-	if (!command) {
-		globalApp.important(`Command not implemented: ${interaction.commandName}`)
-		interaction.reply('Command not implemented!')
-		return
-	}
-	try {
-		dcb.log(`${misc.createFormattedName(interaction.member as GuildMember)} called command ${chalk.bgGray.whiteBright(interaction.commandName)}`)
-		await command.execute(interaction, client)
-	} catch (e) {
-		globalApp.err(e)
+		const command = contextCommands.get(interaction.commandName)
+		if (!command) {
+			globalApp.important(`Command not implemented: ${interaction.commandName}`)
+			interaction.reply('Command not implemented!')
+			return
+		}
 		try {
-			await interaction.reply(misc.errorMessage)
-		} catch {
-			globalApp.err('Cannot send error message')
+			dcb.log(`${misc.createFormattedName((interaction.targetMember || interaction.targetUser || interaction.member) as GuildMember)} called context command ${chalk.bgGray.whiteBright(interaction.commandName)}`)
+			await command.execute(interaction, client)
+		} catch (e) {
+			globalApp.err(e)
+			try {
+				await interaction.reply(misc.errorMessage)
+			} catch {
+				globalApp.err('Cannot send error message')
+			}
+		}
+	}
+	if (interaction.isChatInputCommand()) {
+		const command = commands.get(interaction.commandName)
+		if (!command) {
+			globalApp.important(`Command not implemented: ${interaction.commandName}`)
+			interaction.reply('Command not implemented!')
+			return
+		}
+		try {
+			dcb.log(`${misc.createFormattedName(interaction.member as GuildMember)} called command ${chalk.bgGray.whiteBright(interaction.commandName)}`)
+			await command.execute(interaction, client)
+		} catch (e) {
+			globalApp.err(e)
+			try {
+				await interaction.reply(misc.errorMessage)
+			} catch {
+				globalApp.err('Cannot send error message')
+			}
 		}
 	}
 })
@@ -222,13 +232,11 @@ event.on('songInterruption', async (guildId, action, detail) => {
 
 event.on('reloadCommands', () => {
 	globalApp.important('Reloading commands')
-	for (const file of commandFiles) {
-		try {
-			const command: Command<SlashCommandBuilder> = (require(`${__dirname}/../commands/${file}`)).default
-			commands.set(command.data.name, command)
-		} catch (e) {
-			globalApp.err(e)
-		}
+	try {
+		commands = loadCommands('slash')
+		contextCommands = loadCommands('context')
+	} catch (e) {
+		globalApp.err(e)
 	}
 	globalApp.important('Reloaded commands')
 })

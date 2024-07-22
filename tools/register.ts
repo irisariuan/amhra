@@ -1,25 +1,15 @@
-import { REST, type RESTPostAPIChatInputApplicationCommandsJSONBody, Routes, type SlashCommandBuilder } from "discord.js"
+import { REST, Routes, type SlashCommandBuilder } from "discord.js"
 import { readJsonSync } from "../lib/read"
 import { select } from "@inquirer/prompts"
-import fs from "node:fs"
-import type { Command } from "../lib/interaction"
+import { loadCommandsJson } from "../lib/core"
 
-const commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = []
-const commandFiles = fs
-	.readdirSync("./commands")
-	.filter(filename => filename.endsWith(".ts"))
 const setting = readJsonSync();
 
 (async () => {
-	for (const file of commandFiles) {
-		const command: Command<SlashCommandBuilder> = (await import(`../commands/${file}`)).default
-		if ('data' in command && 'execute' in command) {
-			commands.push(command.data.toJSON())
-		} else {
-			console.log(`Error when loading ${file}`, command)
-		}
-	}
-
+	const commands = await loadCommandsJson<SlashCommandBuilder>('slash')
+	const contextCommands = await loadCommandsJson('context')
+	console.log(`Loaded commands ${commands.map(c => c.name).join(', ')}`)
+	console.log(`Loaded context commands ${contextCommands.map(c => c.name).join(', ')}`)
 	const result = await select({
 		choices: [
 			{ name: "Production", value: "prod" },
@@ -35,9 +25,8 @@ const setting = readJsonSync();
 	try {
 		console.log("Started refreshing application (/) commands.")
 
-		console.log(
-			await rest.put(Routes.applicationCommands(clientId), { body: commands })
-		)
+		await rest.put(Routes.applicationCommands(clientId), { body: commands })
+		await rest.put(Routes.applicationCommands(clientId), { body: contextCommands })
 
 		console.log("Successfully reloaded application (/) commands.")
 	} catch (error) {

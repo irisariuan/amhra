@@ -1,6 +1,6 @@
 import { SlashCommandBuilder } from 'discord.js'
-import {destroyAudioPlayer} from '../lib/voice/core'
-import type { Command } from '../lib/interaction'
+import {destroyAudioPlayer} from '../../lib/voice/core'
+import type { Command } from '../../lib/interaction'
 
 export default {
 	data: new SlashCommandBuilder()

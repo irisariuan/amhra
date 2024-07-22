@@ -1,16 +1,15 @@
-import { SlashCommandBuilder, CommandInteraction } from 'discord.js'
-import { destroyAudioPlayer, getConnection } from '../lib/voice/core'
-import { dcb } from '../lib/misc'
-import type { Command } from '../lib/interaction'
+import { ContextMenuCommandBuilder, ApplicationCommandType } from 'discord.js'
+import { destroyAudioPlayer, getConnection } from '../../lib/voice/core'
+import { dcb } from '../../lib/misc'
+import type { Command } from '../../lib/interaction'
 
 export default {
-    data: new SlashCommandBuilder()
+    data: new ContextMenuCommandBuilder()
     .setName('disconnect')
-    .setDescription('Disconnect the bot'),
+    .setType(ApplicationCommandType.User),
 	execute(interaction, client) {
         const connection = getConnection(interaction.guildId)
         if (connection) {
-
             connection.disconnect()
             connection.destroy()
             
@@ -27,4 +26,4 @@ export default {
             })
         }
 	}
-} as Command<SlashCommandBuilder>
+} as Command<ContextMenuCommandBuilder>

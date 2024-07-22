@@ -1,11 +1,11 @@
-import type { Command } from "../lib/interaction"
-import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js'
-import { createLink } from '../lib/dashboard'
+import type { Command } from "../../lib/interaction"
+import { ActionRowBuilder, ButtonBuilder, ButtonStyle, ContextMenuCommandBuilder, ApplicationCommandType } from 'discord.js'
+import { createLink } from '../../lib/dashboard'
 
 export default {
-	data: new SlashCommandBuilder()
+	data: new ContextMenuCommandBuilder()
 		.setName("dashboard")
-		.setDescription("Online dashboard for controlling song activities"),
+		.setType(ApplicationCommandType.User),
 	async execute(interaction, client) {
 		if (!interaction.guildId) return
 		const token = client.createToken(interaction.guildId)
@@ -22,4 +22,4 @@ export default {
 			.addComponents(linkButton)
 		interaction.reply({ components: [row], ephemeral: true })
 	},
-} as Command<SlashCommandBuilder>
+} as Command<ContextMenuCommandBuilder>

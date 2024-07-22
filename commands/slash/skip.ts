@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js'
-import { getAudioPlayer } from '../lib/voice/core'
+import { getAudioPlayer } from '../../lib/voice/core'
 
 export default {
 	data: new SlashCommandBuilder()

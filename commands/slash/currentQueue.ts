@@ -1,15 +1,15 @@
-import type { Command } from "../lib/interaction"
+import type { Command } from "../../lib/interaction"
 
 import { SlashCommandBuilder } from 'discord.js'
 import {
 	getAudioPlayer,
 	getConnection,
 	songToString
-} from '../lib/voice/core'
+} from '../../lib/voice/core'
 import { EmbedBuilder, CommandInteraction } from 'discord.js'
 import { video_info } from 'play-dl'
-import { dcb } from '../lib/misc'
-import { misc } from '../lib/misc'
+import { dcb } from '../../lib/misc'
+import { misc } from '../../lib/misc'
 
 export default {
 	data: new SlashCommandBuilder()
