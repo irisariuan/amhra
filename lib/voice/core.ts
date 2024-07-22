@@ -33,7 +33,7 @@ export function createAudioPlayer(guildId: string, client: CustomClient, createO
 		if (player.isPlaying || player.queue.length > 0) {
 			return
 		}
-		dcb.log("Auto quitted for inactivity")
+		dcb.log(`Auto quitted for inactivity (${player.isPlaying ? 'Y' : 'N'}_${player.queue.length})`)
 		player.cleanStop()
 		const connection = getVoiceConnection(guildId)
 		destroyAudioPlayer(client, guildId)
