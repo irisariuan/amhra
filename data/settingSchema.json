@@ -81,6 +81,10 @@
 		"VOLUME_MODIFIER": {
 			"type": "number",
 			"description": "The volume modifier"
+		},
+		"AUTO_LEAVE": {
+			"type": "number",
+			"description": "Time in ms before auto leave"
 		}
 	},
 	"required": [

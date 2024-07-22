@@ -192,9 +192,9 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	clearIntervals() {
 		for (const id of this.timeoutList) {
-			this.timeoutList.splice(0, 1)
 			clearInterval(id)
 		}
+		this.timeoutList = []
 	}
 
 	playResource(resource: Resource) {
@@ -267,5 +267,11 @@ export class CustomAudioPlayer extends AudioPlayer {
 	}
 	addToQueue(link: string) {
 		this.queue.push(link)
+	}
+	newTimeout(callback: () => void, ms: number) {
+		if (ms < 0) return
+		if (ms === 0) return callback()
+		const id = setTimeout(callback, ms)
+		this.timeoutList.push(id)
 	}
 }
