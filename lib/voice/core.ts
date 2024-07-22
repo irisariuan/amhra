@@ -10,9 +10,7 @@ import {
 	type InfoData,
 	stream,
 	video_info,
-	YouTubeChannel,
 	yt_validate,
-	YouTubeStream,
 } from "play-dl"
 import ytdl from '@distube/ytdl-core'
 import { CustomAudioPlayer, type Resource, type CustomClient } from "../custom"
@@ -31,7 +29,7 @@ export function createAudioPlayer(guildId: string, client: CustomClient, createO
 	//create a player and initialize it if there isn't one
 	const player = new CustomAudioPlayer(guildId, createOpts)
 
-	player.timeoutList.push(setTimeout(() => {
+	const timeoutDetection = () => {
 		if (player.isPlaying || player.queue.length > 0) {
 			return
 		}
@@ -44,7 +42,9 @@ export function createAudioPlayer(guildId: string, client: CustomClient, createO
 			connection.destroy()
 		}
 		client.player.delete(guildId)
-	}, 15 * 60 * 1000))
+	}
+
+	player.timeoutList.push(setTimeout(timeoutDetection, 15 * 60 * 1000))
 
 	player.on(AudioPlayerStatus.Playing, () => {
 		if (!player.nowPlaying?.url) return
@@ -57,20 +57,7 @@ export function createAudioPlayer(guildId: string, client: CustomClient, createO
 			return
 		}
 		if (player.queue.length === 0) {
-			player.timeoutList.push(setTimeout(() => {
-				if (player.isPlaying || player.queue.length > 0) {
-					return
-				}
-				dcb.log("Auto quitted for inactivity")
-				player.cleanStop()
-				const connection = getVoiceConnection(guildId)
-				destroyAudioPlayer(client, guildId)
-				if (connection) {
-					connection.disconnect()
-					connection.destroy()
-				}
-				client.player.delete(guildId)
-			}, 15 * 60 * 1000))
+			player.timeoutList.push(setTimeout(timeoutDetection, 15 * 60 * 1000))
 		}
 
 		try {
