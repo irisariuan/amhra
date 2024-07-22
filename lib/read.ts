@@ -1,17 +1,18 @@
-import { readFile, writeFileSync, readFileSync } from 'node:fs'
+import { writeFileSync, readFileSync } from 'node:fs'
 import type { Setting } from './setting'
 
-export function readJson(file) {
-	return new Promise((resolve, reject) => {
-		readFile(file, 'utf8', (err, data) => {
-			if (err) { return reject(err) }
-			resolve(JSON.parse(data))
-		})
-	})
-}
+let setting = null
 
 export function readJsonSync(file = `${process.cwd()}/data/setting.json`): Setting {
-	return JSON.parse(readFileSync(file, 'utf8'))
+	if (setting === null) {
+		setting = JSON.parse(readFileSync(file, 'utf8'))
+	}
+	return setting ?? JSON.parse(readFileSync(file, 'utf8'))
+}
+
+export function reloadSetting(file = `${process.cwd()}/data/setting.json`) {
+	setting = JSON.parse(readFileSync(file, 'utf8'))
+	return setting
 }
 
 export function writeJsonSync(file, data) {

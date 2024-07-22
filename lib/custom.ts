@@ -9,7 +9,7 @@ import { readJsonSync } from './read'
 const setting = readJsonSync()
 
 export interface Resource {
-	resource: AudioResource<any>,
+	resource: AudioResource<unknown>,
 	channel: YouTubeChannel,
 	title: string,
 	details: YouTubeVideo,
@@ -79,20 +79,51 @@ export class CustomClient extends Client {
 
 export class CustomAudioPlayer extends AudioPlayer {
 
-	volume: number
-	nowPlaying: Resource | null
-	isPlaying: boolean
-	queue: string[]
 	guildId: string
-	isPaused: boolean
-	startTime: number
-	timeoutList: Timer[]
-	pauseCounter: number
-	pauseTimestamp: number
-	history: string[]
-	startFrom: number
-	looping: boolean
+
+	volume: number
 	isMuting: boolean
+
+	isPlaying: boolean
+	/**
+	 * @description Current playing resource or the last played resource
+	 */
+	nowPlaying: Resource | null
+
+	/**
+	 * @description URL of the music queued
+	 */
+	queue: string[]
+	/**
+	 * @description Distinctive URL of the music played
+	 */
+	history: string[]
+
+	isPaused: boolean
+	/**
+	 * @description Timestamp when the music is paused
+	 */
+	pauseTimestamp: number
+	/**
+	 * @description Time in ms where the music is paused
+	 */
+	pauseCounter: number
+
+	/**
+	 * @description Time in ms where the music to be started to play
+	 */
+	startFrom: number
+	/**
+	 * @description Timestamp when the music is played
+	 */
+	startTime: number
+
+	timeoutList: Timer[]
+
+	/**
+	 * @todo Implement looping
+	 */
+	looping: boolean
 
 	constructor(guildId: string, options?: CreateAudioPlayerOptions) {
 		super(options)
@@ -101,24 +132,24 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.volume = 1
 		this.isMuting = false
 
+
 		this.isPlaying = false
 		this.nowPlaying = null
 
 		this.queue = []
 		this.history = []
 
-		/**
-		 * @description Timestamp when the music is played
-		 */
+		
 		this.startTime = 0
-		/**
-		 * @description Time in ms when the music is started from 
-		 */
+		
 		this.startFrom = 0
 		this.isPaused = false
+		
 		this.pauseCounter = 0
+		
 		this.pauseTimestamp = 0
 
+		
 		this.looping = false
 
 		this.timeoutList = []
@@ -177,6 +208,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.updateStartTime()
 		this.play(resource.resource)
 	}
+
 	setVolume(volume: number) {
 		this.volume = volume
 		if (this.isPlaying && this.nowPlaying?.resource && !this.isMuting) {
@@ -196,7 +228,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	getData(): SongDataPacket {
 		return {
-			song: this.nowPlaying
+			song: this.isPlaying && this.nowPlaying
 				? {
 					link: this.nowPlaying.url,
 					channel: this.nowPlaying.channel.url,
