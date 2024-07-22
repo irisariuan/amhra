@@ -25,8 +25,7 @@ const setting = readJsonSync();
 	try {
 		console.log("Started refreshing application (/) commands.")
 
-		await rest.put(Routes.applicationCommands(clientId), { body: commands })
-		await rest.put(Routes.applicationCommands(clientId), { body: contextCommands })
+		await rest.put(Routes.applicationCommands(clientId), { body: [...commands, ...contextCommands] })
 
 		console.log("Successfully reloaded application (/) commands.")
 	} catch (error) {
