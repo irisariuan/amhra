@@ -19,11 +19,17 @@ import { event } from "../express/event"
 import NodeCache from "node-cache"
 import { readJsonSync } from "../read"
 import dotenv from 'dotenv'
+import fs from 'fs'
 import type { CommandInteraction, VoiceBasedChannel, VoiceChannel } from "discord.js"
 dotenv.config()
 
 const videoInfoCache = new NodeCache()
 const setting = readJsonSync()
+const cookies = JSON.parse(fs.readFileSync("cookies.json", 'utf8'))
+let agent: ytdl.Agent | undefined = undefined
+if (cookies) {
+	agent = ytdl.createAgent(cookies)
+}
 
 export function createAudioPlayer(guildId: string, client: CustomClient, createOpts?: CreateAudioPlayerOptions) {
 	//create a player and initialize it if there isn't one
@@ -132,7 +138,7 @@ export interface Stream { stream: any, type: StreamType }
 
 export async function createStream(url: string, seek?: number): Promise<Stream> {
 	if (setting.USE_YOUTUBE_DL) {
-		const stream = ytdl(url, { filter: 'audioonly', quality: 'highestaudio', begin: seek })
+		const stream = ytdl(url, { filter: 'audioonly', quality: 'highestaudio', begin: seek, agent })
 		return { stream, type: StreamType.Arbitrary }
 	}
 	const source = await stream(url, { seek })
