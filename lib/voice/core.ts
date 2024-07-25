@@ -19,16 +19,21 @@ import { event } from "../express/event"
 import NodeCache from "node-cache"
 import { readJsonSync } from "../read"
 import dotenv from 'dotenv'
-import fs from 'fs'
+import fs from 'node:fs'
 import type { CommandInteraction, VoiceBasedChannel, VoiceChannel } from "discord.js"
 dotenv.config()
 
 const videoInfoCache = new NodeCache()
 const setting = readJsonSync()
-const cookies = JSON.parse(fs.readFileSync("cookies.json", 'utf8'))
 let agent: ytdl.Agent | undefined = undefined
-if (cookies) {
-	agent = ytdl.createAgent(cookies)
+
+try {
+	const cookies = JSON.parse(fs.readFileSync("cookies.json", 'utf8'))
+	if (cookies && setting.USE_COOKIES) {
+		agent = ytdl.createAgent(cookies)
+	}
+} catch {
+	globalApp.warn("No cookies found")
 }
 
 export function createAudioPlayer(guildId: string, client: CustomClient, createOpts?: CreateAudioPlayerOptions) {

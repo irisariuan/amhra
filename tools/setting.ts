@@ -3,6 +3,7 @@ import chalk from 'chalk'
 import crypto from 'node:crypto'
 import { writeJsonSync } from '../lib/read';
 import type { Setting } from '../lib/setting';
+import { existsSync, writeFileSync } from 'node:fs';
 
 (async () => {
     const setting: Setting = {
@@ -71,5 +72,11 @@ import type { Setting } from '../lib/setting';
     } else {
         console.log(JSON.stringify(setting, null, 4))
     }
-    console.log(chalk.bold(`Use ${chalk.bgGrey.whiteBright('tool/register.js')} to register commands`))
+
+    if (!existsSync(`${process.cwd()}/data/cookies.json`)) {
+        writeFileSync(`${process.cwd()}/data/cookies.json`, '{"cookies": []}')
+        console.log('Created cookies.json, please fill it with your cookies if you want to use cookies')
+    }
+
+    console.log(chalk.bold(`Use ${chalk.bgGrey.whiteBright('tool/register.ts')} to register commands`))
 })()

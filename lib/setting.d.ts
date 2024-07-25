@@ -23,6 +23,7 @@ export interface Setting {
     SEEK: boolean,
     AUTO_LEAVE: number,
     PREFIX: string,
+    USE_COOKIES: boolean,
 
     VOLUME_MODIFIER: number,
 }

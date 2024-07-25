@@ -85,6 +85,10 @@
 		"AUTO_LEAVE": {
 			"type": "number",
 			"description": "Time in ms before auto leave"
+		},
+		"USE_COOKIES": {
+			"type": "boolean",
+			"description": "Use cookies while fetching data"
 		}
 	},
 	"required": [
