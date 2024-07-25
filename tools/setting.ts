@@ -25,7 +25,8 @@ import { existsSync, writeFileSync } from 'node:fs';
         SEEK: true,
         USE_YOUTUBE_DL: false,
         VOLUME_MODIFIER: 1,
-        AUTO_LEAVE: 15 * 60 * 1000
+        AUTO_LEAVE: 15 * 60 * 1000,
+        USE_COOKIES: false
     }
 
     const token = await input({ message: 'Bot Token' })
@@ -75,6 +76,9 @@ import { existsSync, writeFileSync } from 'node:fs';
 
     if (!existsSync(`${process.cwd()}/data/cookies.json`)) {
         writeFileSync(`${process.cwd()}/data/cookies.json`, '{"cookies": []}')
+        if (await confirm({ message: 'Would you like to use cookies?', default: false })) {
+            setting.USE_COOKIES = true
+        }
         console.log('Created cookies.json, please fill it with your cookies if you want to use cookies')
     }
 
