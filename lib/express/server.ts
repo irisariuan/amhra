@@ -4,7 +4,7 @@ import crypto from 'node:crypto'
 import { load } from '../log/load'
 import { search, video_info } from 'play-dl'
 import { initAuth } from './auth'
-import { event } from './event'
+import { ActionType, event } from './event'
 import youtubeSuggest from 'youtube-suggest'
 import bodyParser from 'body-parser'
 import {
@@ -12,7 +12,7 @@ import {
 	misc,
 	exp
 } from '../misc'
-import { readJsonSync } from '../read'
+import { readJsonSync, reloadSetting } from '../read'
 import chalk from 'chalk'
 import type { CustomClient } from '../custom'
 import NodeCache from 'node-cache'
@@ -265,13 +265,13 @@ export async function init(client: CustomClient) {
 				return res.sendStatus(400)
 			}
 			event.emitAction(req.body.action)
-			switch (req.body.action) {
-				case 'exit': {
+			switch (req.body.action as ActionType) {
+				case ActionType.Exit: {
 					globalApp.important(formatter('Received exit request, exiting...'))
 					process.exit(0)
 					break
 				}
-				case 'addAuth': {
+				case ActionType.AddAuth: {
 					globalApp.important(formatter('Creating server-based dashboard'))
 					if (!req.body.guildId) {
 						globalApp.warn('Failed to create server-based dashboard, missing guild ID')
@@ -282,9 +282,15 @@ export async function init(client: CustomClient) {
 					res.send(JSON.stringify({ token, guildId: req.body.guildId, level }))
 					break
 				}
-				case 'reload': {
+				case ActionType.ReloadCommands: {
 					globalApp.important(formatter('Reloading commands...'))
 					event.emitReloadCommands()
+					break
+				}
+				case ActionType.ReloadSetting: {
+					globalApp.important(formatter('Reloading settings...'))
+					event.emitAction(ActionType.ReloadSetting)
+					reloadSetting()
 					break
 				}
 				default: {

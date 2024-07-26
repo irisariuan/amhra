@@ -29,7 +29,8 @@ export type ExpressEventDetail = {
 export enum ActionType {
     Exit = 'exit',
     AddAuth = 'addAuth',
-    ReloadCommands = 'reload'
+    ReloadCommands = 'reload',
+    ReloadSetting = 'reloadSetting'
 }
 
 export class ExpressEvent extends EventEmitter {
