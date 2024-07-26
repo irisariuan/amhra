@@ -19,6 +19,7 @@
     "ffmpeg": "^0.0.4",
     "ffmpeg-static": "^5.1.0",
     "fluent-ffmpeg": "^2.1.2",
+    "grunt": "^1.6.1",
     "i": "^0.3.7",
     "inquirer": "^9.2.12",
     "libsodium-wrappers": "^0.7.13",
