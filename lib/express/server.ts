@@ -289,7 +289,6 @@ export async function init(client: CustomClient) {
 				}
 				case ActionType.ReloadSetting: {
 					globalApp.important(formatter('Reloading settings...'))
-					event.emitAction(ActionType.ReloadSetting)
 					reloadSetting()
 					break
 				}
