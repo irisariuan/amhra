@@ -181,9 +181,8 @@ event.on('songInterruption', async (guildId, action, detail) => {
 			break
 		}
 		case SongEditType.RemoveSong: {
-			if (!detail.index) {
-				console.log(detail)
-				return globalApp.err('Index is required, given detail:', detail)
+			if (detail.index === undefined) {
+				return globalApp.err('Index is required')
 			}
 			dcb.log('Removing song from dashboard')
 			const removedSong = player.queue.splice(detail.index, 1)
