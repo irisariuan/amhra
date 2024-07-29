@@ -44,7 +44,6 @@ export const dcb = {
 export const globalApp = {
 	err(...args) {
 		baseLog(chalk.red("[ERROR] ") + args.join())
-		console.error(...args)
 		event.emit("log", removeAnsi(args.join()), "error")
 		addLogLine(removeAnsi(args.join()), 'error')
 	},
