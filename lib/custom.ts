@@ -206,6 +206,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.pauseCounter = 0
 		this.startFrom = resource.startFrom ?? 0
 		this.updateStartTime()
+		this.history.push(resource.url)
 		this.play(resource.resource)
 	}
 
@@ -258,12 +259,11 @@ export class CustomAudioPlayer extends AudioPlayer {
 		return this.isPaused
 	}
 	unpause() {
-		super.unpause()
 		if (this.isPaused) {
 			this.pauseCounter += Date.now() - this.pauseTimestamp
 			this.isPaused = false
 		}
-		return this.isPaused
+		return super.unpause()
 	}
 	addToQueue(link: string) {
 		this.queue.push(link)

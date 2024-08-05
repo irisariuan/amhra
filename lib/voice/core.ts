@@ -60,8 +60,6 @@ export function createAudioPlayer(guildId: string, client: CustomClient, createO
 	player.on(AudioPlayerStatus.Playing, () => {
 		if (!player.nowPlaying?.url) return
 		player.isPlaying = true
-		player.history.push(player.nowPlaying.url)
-		player.updateStartTime()
 	})
 	//continue to play song after ending one
 	player.on(AudioPlayerStatus.Idle, async () => {
