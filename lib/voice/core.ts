@@ -57,6 +57,7 @@ export function createAudioPlayer(guildId: string, client: CustomClient, createO
 
 	player.newTimeout(timeoutDetection, setting.AUTO_LEAVE ?? 15 * 60 * 1000)
 
+	// will be triggered when player unpaused
 	player.on(AudioPlayerStatus.Playing, () => {
 		if (!player.nowPlaying?.url) return
 		player.isPlaying = true
