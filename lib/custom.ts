@@ -207,6 +207,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.startFrom = resource.startFrom ?? 0
 		this.updateStartTime()
 		this.history.push(resource.url)
+		this.clearIntervals()
 		this.play(resource.resource)
 	}
 
