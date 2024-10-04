@@ -9,5 +9,6 @@ biome.json
 prisma/migrations/*
 **/*.js
 dist/*
+data/setting.json
 
 !**/.gitkeep
