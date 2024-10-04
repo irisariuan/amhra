@@ -15,6 +15,10 @@ export function baseLog(...data) {
 	console.log(chalk.gray.italic(`T${Date.now()}`), ...data)
 }
 
+export function baseError(...data) {
+	console.error(chalk.gray.italic(`T${Date.now()}`), ...data)
+}
+
 export const exp = {
 	log(...args) {
 		baseLog(chalk.magenta("[EXPRESS] ") + args.join())
@@ -43,7 +47,7 @@ export const dcb = {
 
 export const globalApp = {
 	err(...args) {
-		baseLog(chalk.red("[ERROR] ") + args.join())
+		baseError(chalk.red('[ERROR]') ,...args)
 		event.emit("log", removeAnsi(args.join()), "error")
 		addLogLine(removeAnsi(args.join()), 'error')
 	},
