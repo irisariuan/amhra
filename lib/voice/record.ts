@@ -1,84 +1,39 @@
-import { getVoiceConnection, EndBehaviorType } from '@discordjs/voice'
-import fs from 'node:fs'
-import prism from 'prism-media'
-import { pipeline } from "node:stream"
-import { joinVoice } from "./core"
+import { VoiceRecorder } from "@kirdock/discordjs-voice-recorder"
+import { getConnection, joinVoice } from "./core"
+import { createWriteStream } from "node:fs"
 
-interface RecordOption {
-	filename?: string
-	format?: string
-}
+export const recordingList: Set<string> = new Set()
+export const voiceRecorder = new VoiceRecorder({ maxRecordTimeMinutes: 20 })
 
-export async function record(interaction, opts?: RecordOption) {
-	// return await interaction.reply({ content: 'Currently not supported!' })
+export async function startRecord(interaction) {
+	if (recordingList.has(interaction.guildId)) return false
+	recordingList.add(interaction.guildId)
 	//get voice connection, if there isn't one, create one
-	let connection = getVoiceConnection(interaction.guildId)
+	let connection = getConnection(interaction.guildId)
 	if (!connection) {
 		if (!interaction.member.voice.channel) return false
 		connection = joinVoice(interaction.member.voice.channel, interaction)
 		if (!connection) {
-			return
+			return false
 		}
 	}
-	const memberId = interaction.member.id
+	voiceRecorder.startRecording(connection)
+	return true
+}
 
-	//create the stream and setup events
-	const stream = connection.receiver.subscribe(memberId, {
-		end: {
-			behavior: EndBehaviorType.Manual,
-		},
-	})
-	stream.on("close", () => {
-		console.log("Data Stream closed")
-	})
-	stream.on("error", e => {
-		console.error(e)
-	})
-	//create the file stream
-	const writableStream = fs.createWriteStream(
-		`${opts?.filename || interaction.guild.name}.${opts?.format || "ogg"}`
-	)
-	console.log("Created the streams, started recording")
-	//todo: set the stream into client and stop it in another function
-	//now: record 5s
-	return setTimeout(async () => {
-		//stop the stream
-		stream.destroy()
-		await (
-			new Promise<void>(r => {
-				stream.on("close", () => {
-					r()
-				})
-			})
-		)
-		console.log("Stop recording")
-		const oggWriter = new prism.opus.OggLogicalBitstream({
-			opusHead: new prism.opus.OpusHead({
-				channelCount: 2,
-				sampleRate: 48000,
-			}),
-			pageSizeControl: {
-				maxPackets: 10,
-			},
-		})
+export async function stopRecord(interaction) {
+	recordingList.delete(interaction.guildId)
+	const connection = getConnection(interaction.guildId)
+	if (!connection) return false
+	voiceRecorder.stopRecording(connection)
+	return true
+}
 
-		try {
-			pipeline(stream, oggWriter, writableStream, e => {
-				console.error(e)
-			})
-		} catch (e) {
-			console.error(e)
-		}
-		// ffmpeg()
-		// .input(stream)
-		// .inputFormat('opus')
-		// .format('mp3')
-		// .output(`${interaction.guild.name}.mp3`)
-		// .on('close', () => {
-		// console.log('Stream closed')
-		// })
-		// .on('error', (e) => {
-		// console.error(e)
-		// })
-	}, 5000)
+export async function saveRecord(interaction, minutes, type: 'separate' | 'single' = 'separate') {
+	recordingList.delete(interaction.guildId)
+	const connection = getConnection(interaction.guildId)
+	if (!connection) return false
+	const fileStream = createWriteStream(`${process.cwd()}/data/recordings/${interaction.guildId}-${Date.now()}.${type === 'separate' ? 'zip' : 'mp3'}`)
+	return await voiceRecorder.getRecordedVoice(fileStream, interaction.guildId, type, minutes)
+	
 }

@@ -14,5 +14,5 @@
         "strict": true
 	},
 	"include": ["/**/*.ts"],
-	"exclude": ["/**/*.spec.ts", "node_modules", "dist", "/**/test/*"]
+	"exclude": ["/**/*.spec.ts", "node_modules/*", "dist", "/**/test/*"]
 }
