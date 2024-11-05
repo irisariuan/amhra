@@ -7,7 +7,7 @@ export default {
 		.setName('record')
 		.setDescription('Record your conversation'),
 	async execute(interaction, client) {
-		interaction.deferReply()
+		await interaction.deferReply()
 		if (!interaction.guildId) return
 		if (!await startRecord(interaction)) {
 			await saveRecord(interaction, 10)
