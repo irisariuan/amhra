@@ -53,6 +53,7 @@ export class CustomClient extends Client {
 	cache: SearchCache
 	levelMap: Map<string, { guilds: string[], level: number }>
 	savedLevelMap: Map<string, string>
+	record: Set<string>
 
 	constructor(clientOpt: ClientOptions) {
 		super(clientOpt)
@@ -60,6 +61,7 @@ export class CustomClient extends Client {
 		this.cache = new SearchCache()
 		this.levelMap = new Map()
 		this.savedLevelMap = new Map()
+		this.record = new Set()
 	}
 	newToken(guildId: string): Token {
 		const token = misc.generateToken(36)

@@ -10,5 +10,6 @@ prisma/migrations/*
 **/*.js
 dist/*
 data/setting.json
+data/recordings/*
 
 !**/.gitkeep

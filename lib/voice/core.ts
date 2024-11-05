@@ -20,7 +20,8 @@ import NodeCache from "node-cache"
 import { readJsonSync } from "../read"
 import dotenv from 'dotenv'
 import fs from 'node:fs'
-import type { CommandInteraction, VoiceBasedChannel, VoiceChannel } from "discord.js"
+import type { APIInteractionGuildMember, CacheType, CommandInteraction, GuildMember, VoiceBasedChannel, VoiceChannel } from "discord.js"
+import { saveRecord, startRecord } from "./record"
 dotenv.config()
 
 const videoInfoCache = new NodeCache()
@@ -181,17 +182,35 @@ export async function createResource(url: string, seek?: number): Promise<Resour
 	}
 }
 
-export function joinVoice(voiceChannel: VoiceChannel | VoiceBasedChannel, interaction: CommandInteraction) {
+export function ensureVoiceConnection(interaction: CommandInteraction<CacheType>) {
+	const connection = getConnection(interaction.guildId)
+	if (!connection) {
+		if (!interaction.member || !isGuildMember(interaction.member) || !interaction.member.voice.channel) return null
+		return joinVoice(interaction.member.voice.channel, interaction)
+	}
+	return connection
+}
+
+
+export function isGuildMember(member: GuildMember | APIInteractionGuildMember): member is GuildMember {
+	return 'voice' in member
+}
+
+export function joinVoice(voiceChannel: VoiceChannel | VoiceBasedChannel, interaction: CommandInteraction, record = true) {
 	if (!interaction.guild) {
 		return
 	}
-	return joinVoiceChannel({
+	const connection = joinVoiceChannel({
 		channelId: voiceChannel.id,
 		guildId: voiceChannel.guildId,
 		adapterCreator: interaction.guild.voiceAdapterCreator,
 		selfDeaf: false,
 		selfMute: false,
 	})
+	if (record) {
+		startRecord(interaction)
+	}
+	return connection
 }
 
 export function isYoutube(query: string) {
