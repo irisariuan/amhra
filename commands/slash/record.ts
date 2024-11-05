@@ -12,6 +12,7 @@ export default {
 		if (!interaction.guildId) return
 		if (record.includes(interaction.guildId)) {
 			await saveRecord(interaction, 20)
+			await startRecord(interaction)
 			return interaction.reply({ content: 'Saving!', ephemeral: true })
 		}
 		await startRecord(interaction)
