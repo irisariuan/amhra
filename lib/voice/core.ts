@@ -208,6 +208,7 @@ export function joinVoice(voiceChannel: VoiceChannel | VoiceBasedChannel, intera
 		selfMute: false,
 	})
 	if (record) {
+		dcb.log('Recording started')
 		startRecord(interaction)
 	}
 	return connection
