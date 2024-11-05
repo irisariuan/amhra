@@ -1,18 +1,16 @@
 import { ContextMenuCommandBuilder, ApplicationCommandType } from 'discord.js'
-import { destroyAudioPlayer, getConnection } from '../../lib/voice/core'
+import { destroyAudioPlayer, disconnectConnection, getConnection } from '../../lib/voice/core'
 import { dcb } from '../../lib/misc'
 import type { Command } from '../../lib/interaction'
 
 export default {
     data: new ContextMenuCommandBuilder()
-    .setName('disconnect')
-    .setType(ApplicationCommandType.User),
-	execute(interaction, client) {
+        .setName('disconnect')
+        .setType(ApplicationCommandType.User),
+    execute(interaction, client) {
         const connection = getConnection(interaction.guildId)
         if (connection) {
-            connection.disconnect()
-            connection.destroy()
-            
+            disconnectConnection(connection, interaction.guildId || '')
             dcb.log('Disconnected')
             interaction.reply({
                 content: 'Disconnected'
@@ -25,5 +23,5 @@ export default {
                 content: 'I am not connected to a voice channel'
             })
         }
-	}
+    }
 } as Command<ContextMenuCommandBuilder>

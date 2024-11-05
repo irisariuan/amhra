@@ -5,6 +5,7 @@ import {
 	getVoiceConnection,
 	StreamType,
 	type CreateAudioPlayerOptions,
+	VoiceConnection,
 } from "@discordjs/voice"
 import {
 	type InfoData,
@@ -21,7 +22,7 @@ import { readJsonSync } from "../read"
 import dotenv from 'dotenv'
 import fs from 'node:fs'
 import type { APIInteractionGuildMember, CacheType, CommandInteraction, GuildMember, VoiceBasedChannel, VoiceChannel } from "discord.js"
-import { saveRecord, startRecord } from "./record"
+import { recordingList, saveRecord, startRecord } from "./record"
 dotenv.config()
 
 const videoInfoCache = new NodeCache()
@@ -37,6 +38,12 @@ try {
 	globalApp.warn("No cookies found")
 }
 
+export function disconnectConnection(connection: VoiceConnection, guildId: string) {
+	connection.disconnect()
+	connection.destroy()
+	recordingList.delete(guildId)
+}
+
 export function createAudioPlayer(guildId: string, client: CustomClient, createOpts?: CreateAudioPlayerOptions) {
 	//create a player and initialize it if there isn't one
 	const player = new CustomAudioPlayer(guildId, createOpts)
@@ -50,8 +57,7 @@ export function createAudioPlayer(guildId: string, client: CustomClient, createO
 		const connection = getVoiceConnection(guildId)
 		destroyAudioPlayer(client, guildId)
 		if (connection) {
-			connection.disconnect()
-			connection.destroy()
+			disconnectConnection(connection, guildId)
 		}
 		client.player.delete(guildId)
 	}

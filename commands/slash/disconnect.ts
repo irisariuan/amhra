@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, CommandInteraction } from 'discord.js'
-import { destroyAudioPlayer, getConnection } from '../../lib/voice/core'
+import { destroyAudioPlayer, disconnectConnection, getConnection } from '../../lib/voice/core'
 import { dcb } from '../../lib/misc'
 import type { Command } from '../../lib/interaction'
 
@@ -11,8 +11,7 @@ export default {
         const connection = getConnection(interaction.guildId)
         if (connection) {
 
-            connection.disconnect()
-            connection.destroy()
+            disconnectConnection(connection, interaction.guildId || '')
             
             dcb.log('Disconnected')
             interaction.reply({
