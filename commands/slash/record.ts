@@ -13,7 +13,6 @@ export default {
 			startRecord(interaction)
 			return interaction.reply({content: 'Saving!', ephemeral: true})
 		}
-		startRecord(interaction)
 		interaction.reply({content: 'Recording started', ephemeral: true})
 	},
 } as Command<SlashCommandBuilder>
