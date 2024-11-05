@@ -22,7 +22,7 @@ import { readJsonSync } from "../read"
 import dotenv from 'dotenv'
 import fs from 'node:fs'
 import type { APIInteractionGuildMember, CacheType, CommandInteraction, GuildMember, VoiceBasedChannel, VoiceChannel } from "discord.js"
-import { recordingList, saveRecord, startRecord } from "./record"
+import { recordingList, saveRecord, startRecord, stopRecord } from "./record"
 dotenv.config()
 
 const videoInfoCache = new NodeCache()
@@ -41,6 +41,7 @@ try {
 export function disconnectConnection(connection: VoiceConnection, guildId: string) {
 	connection.disconnect()
 	connection.destroy()
+	stopRecord(guildId)
 	recordingList.delete(guildId)
 }
 
