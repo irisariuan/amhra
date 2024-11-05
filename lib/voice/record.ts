@@ -9,14 +9,16 @@ export const voiceRecorder = new VoiceRecorder({ maxRecordTimeMinutes: 20 })
  * Start the record if the guild is not recording
  * Returns if the record is currently started
  */
-export async function startRecord(interaction) {
+export async function startRecord(interaction, autoJoin = true) {
 	if (recordingList.has(interaction.guildId)) return false
 	recordingList.add(interaction.guildId)
 	//get voice connection, if there isn't one, create one
 	let connection = getConnection(interaction.guildId)
 	if (!connection) {
-		if (!interaction.member.voice.channel) return false
+		if (!interaction.member.voice.channel || !autoJoin) return false
+		// try to auto join the voice channel
 		connection = joinVoice(interaction.member.voice.channel, interaction)
+		// failed to join, return false
 		if (!connection) {
 			return false
 		}

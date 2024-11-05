@@ -7,12 +7,13 @@ export default {
 		.setName('record')
 		.setDescription('Record your conversation'),
 	async execute(interaction, client) {
+		interaction.deferReply()
 		if (!interaction.guildId) return
-		if (!startRecord(interaction)) {
-			saveRecord(interaction, 10)
-			startRecord(interaction)
-			return interaction.reply({content: 'Saving!', ephemeral: true})
+		if (!await startRecord(interaction)) {
+			await saveRecord(interaction, 10)
+			await startRecord(interaction)
+			return interaction.editReply({content: 'Saving!', ephemeral: true})
 		}
-		interaction.reply({content: 'Recording started', ephemeral: true})
+		interaction.editReply({content: 'Recording started', ephemeral: true})
 	},
 } as Command<SlashCommandBuilder>
