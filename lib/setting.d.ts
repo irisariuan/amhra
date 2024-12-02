@@ -26,4 +26,5 @@ export interface Setting {
     USE_COOKIES: boolean,
 
     VOLUME_MODIFIER: number,
+    BANNED_IDS: string[],
 }

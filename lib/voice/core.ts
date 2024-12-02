@@ -86,6 +86,9 @@ export function createAudioPlayer(guildId: string, client: CustomClient, createO
 				const nextUrl = player.queue.shift()
 				if (nextUrl) {
 					const resource = await createResource(nextUrl)
+					if (!resource) {
+						return globalApp.err('Failed to create resource')
+					}
 					event.emit("songInfo", nextUrl)
 					player.playResource(resource)
 					dcb.log("Playing next music")
@@ -167,9 +170,10 @@ export async function getVideoInfo(url: string): Promise<InfoData> {
 	return videoInfo
 }
 
-export async function createResource(url: string, seek?: number): Promise<Resource> {
-	const source = await createStream(url, seek)
+export async function createResource(url: string, seek?: number): Promise<Resource | null> {
 	const detail = (await getVideoInfo(url)).video_details
+	if (detail.id && setting.BANNED_IDS.includes(detail.id)) return null
+	const source = await createStream(url, seek)
 	const res = createAudioResource(source.stream, {
 		inputType: source.type as StreamType,
 		inlineVolume: true,

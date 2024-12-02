@@ -149,6 +149,9 @@ event.on('songInterruption', async (guildId, action, detail) => {
 			}
 
 			const res = await createResource(player.nowPlaying.url, detail.sec)
+			if (!res) {
+				return globalApp.err('Failed to create resource')
+			}
 			player.playResource(res)
 			dcb.log('Relocated the video')
 		}
@@ -163,6 +166,9 @@ event.on('songInterruption', async (guildId, action, detail) => {
 				const p = player.queue.shift()
 				if (!p) return
 				const res = await createResource(p)
+				if (!res) {
+					return globalApp.err('Failed to create resource')
+				}
 
 				event.emitSongInfo(p)
 				player.playResource(res)

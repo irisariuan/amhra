@@ -95,6 +95,9 @@ export default {
 					return interaction.editReply(misc.errorMessageObj)
 				}
 				const data = await createResource(videoUrl)
+				if (!data) {
+					return interaction.editReply(misc.errorMessageObj)
+				}
 				audioPlayer.playResource(data)
 
 				dcb.log(`Playing Searched URL ${videoUrl}`)
