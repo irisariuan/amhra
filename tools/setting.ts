@@ -26,7 +26,8 @@ import { existsSync, writeFileSync } from 'node:fs';
         USE_YOUTUBE_DL: false,
         VOLUME_MODIFIER: 1,
         AUTO_LEAVE: 15 * 60 * 1000,
-        USE_COOKIES: false
+        USE_COOKIES: false,
+        BANNED_IDS: []
     }
 
     const token = await input({ message: 'Bot Token' })

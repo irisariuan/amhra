@@ -89,6 +89,10 @@
 		"USE_COOKIES": {
 			"type": "boolean",
 			"description": "Use cookies while fetching data"
+		},
+		"BANNED_IDS": {
+			"type": "array",
+			"description": "Banned IDs"
 		}
 	},
 	"required": [
