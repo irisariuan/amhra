@@ -1,5 +1,6 @@
 import { ButtonBuilder, ButtonStyle, ActionRowBuilder, EmbedBuilder, time, ComponentType, type Message, type ChatInputCommandInteraction } from "discord.js"
 import type { TransformableResource } from "./voice/core";
+import moment from "moment";
 
 export enum PageAction {
     PREVIOUS = 'prev',
@@ -60,13 +61,13 @@ export function createEmbed(result: TransformableResource[], page: number) {
     return new EmbedBuilder()
         .setTitle('Queue')
         .setTimestamp(Date.now())
-        .setColor('Green')
+        .setColor('DarkRed')
         .addFields(...result
             .map(
                 (v, i) => ({
                     name: `${i + page * pageSize + 1} ${v.title}`,
                     value: [
-                        `${v.url} (${v.details.durationInSec}s)`
+                        `${v.url} (${moment.duration(v.details.durationInSec).humanize()})`
                     ].join('\n')
                 })
             )
