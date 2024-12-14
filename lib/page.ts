@@ -64,7 +64,7 @@ export function createEmbed(result: TransformableResource[], page: number) {
         .addFields(...result
             .map(
                 (v, i) => ({
-                    name: `\\${i + page * pageSize + 1}\\ ${v.title}`,
+                    name: `${i + page * pageSize + 1} ${v.title}`,
                     value: [
                         `${v.url} (${v.details.durationInSec}s)`
                     ].join('\n')

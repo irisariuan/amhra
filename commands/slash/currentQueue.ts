@@ -49,6 +49,9 @@ export default {
 					dcb.log('Founded cache, using cached URL')
 				}
 				const data = cachedUrl?.isVideo() ? cachedUrl?.value : (await video_info(songs[i])).video_details
+				if (!cachedUrl) {
+					client.cache.set(songs[i], data, "video")
+				}
 
 				transformedSongs.push({ details: { durationInSec: data.durationInSec }, title: data.title ?? '', url: songs[i] })
 			}
