@@ -5,7 +5,8 @@ import {
 	getVoiceConnection,
 	StreamType,
 	type CreateAudioPlayerOptions,
-	VoiceConnection,
+	type VoiceConnection,
+	type DiscordGatewayAdapterCreator,
 } from "@discordjs/voice"
 import {
 	type InfoData,
@@ -215,7 +216,7 @@ export function joinVoice(voiceChannel: VoiceChannel | VoiceBasedChannel, intera
 	const connection = joinVoiceChannel({
 		channelId: voiceChannel.id,
 		guildId: voiceChannel.guildId,
-		adapterCreator: interaction.guild.voiceAdapterCreator,
+		adapterCreator: interaction.guild.voiceAdapterCreator as DiscordGatewayAdapterCreator,
 		selfDeaf: false,
 		selfMute: false,
 	})
