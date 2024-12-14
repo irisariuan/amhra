@@ -4,12 +4,11 @@ import { SlashCommandBuilder } from 'discord.js'
 import {
 	getAudioPlayer,
 	getConnection,
-	songToString
+	type TransformableResource
 } from '../../lib/voice/core'
-import { EmbedBuilder, CommandInteraction } from 'discord.js'
 import { video_info } from 'play-dl'
 import { dcb } from '../../lib/misc'
-import { misc } from '../../lib/misc'
+import { pageSize, sendPaginationMessage } from "../../lib/page"
 
 export default {
 	data: new SlashCommandBuilder()
@@ -36,55 +35,24 @@ export default {
 			})
 		}
 
-		const pageNo = interaction.options.getInteger('page') ?? 1
-		let startPoint = pageNo > 0 ? (pageNo - 1) * 5 : 0
-		if (pageNo * 5 > player.queue.length) {
-			// set it to last page if the page over maximum
-			startPoint = Math.floor(player.queue.length / 5) * 5
-		}
+		const page = Math.min((interaction.options.getInteger('page') ?? 1) - 1, Math.ceil(player.queue.length / pageSize))
 
-		const endPoint =
-			startPoint + 5 >= player.queue.length
-				? player.queue.length
-				: startPoint + 5
+		sendPaginationMessage(async () => {
+			const songs = player.queue || []
+			const transformedSongs: TransformableResource[] = []
+			for (let i = 0; i < songs.length; i++) {
+				if (!songs[i]) {
+					continue
+				}
+				const cachedUrl = client.cache.getUrl(songs[i])
+				if (cachedUrl) {
+					dcb.log('Founded cache, using cached URL')
+				}
+				const data = cachedUrl?.isVideo() ? cachedUrl?.value : (await video_info(songs[i])).video_details
 
-		let result = ''
-		const songs = player.queue.slice(startPoint, endPoint)
-		for (let i = 0; i < songs.length; i++) {
-			if (!songs[i]) {
-				continue
+				transformedSongs.push({ details: { durationInSec: data.durationInSec }, title: data.title ?? '', url: songs[i] })
 			}
-			const cachedUrl = client.cache.getUrl(songs[i])
-			if (cachedUrl) {
-				dcb.log('Founded cache, using cached URL')
-			}
-			const data = cachedUrl?.isVideo() ? cachedUrl?.value : (await video_info(songs[i])).video_details
-
-			result += `${songToString({ details: { durationInSec: data.durationInSec }, title: data.title ?? '' }, i + 1 + startPoint)}\n`
-		}
-
-		if (!result) {
-			return await interaction.editReply(misc.errorMessage)
-		}
-
-		const embed = new EmbedBuilder()
-			.setTitle('Upcoming Songs')
-			.setColor('#CF2373')
-			.addFields({ name: 'In queue', value: result.slice(0, -1) })
-
-		const remainSongNo = player.queue.length - startPoint - 5
-		if (remainSongNo > 0) {
-			if (remainSongNo === 1) {
-				embed.setFooter({ text: 'There are 1 more song in the queue' })
-			}
-			embed.setFooter({
-				text: `There are ${remainSongNo} more songs in the queue`,
-			})
-		} else {
-			embed.setFooter({ text: 'This is the end of the queue!' })
-		}
-
-		dcb.log('Sent queue')
-		await interaction.editReply({ embeds: [embed] })
+			return transformedSongs
+		}, interaction, page)
 	},
 } as Command<SlashCommandBuilder>

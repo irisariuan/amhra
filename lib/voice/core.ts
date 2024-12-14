@@ -150,6 +150,7 @@ export function getConnection(guildId: string | null) {
 	return getVoiceConnection(guildId)
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: <explanation>
 export interface Stream { stream: any, type: StreamType }
 
 export async function createStream(url: string, seek?: number): Promise<Stream> {
@@ -262,11 +263,12 @@ export interface TransformableResource {
 	details: {
 		durationInSec: number
 	},
-	title: string
+	title: string,
+	url: string
 }
 
 export function songToString(d: TransformableResource, i?: number) {
-	return `${i ? `\`${i}.\` ` : ""}${d.title} \`${timeFormat(
+	return `${i ? `\`${i}.\` ` : ""}${d.title}(${d.url}) \`${timeFormat(
 		d.details.durationInSec,
 	)}\``
 }

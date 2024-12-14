@@ -75,6 +75,7 @@ export function record(userId: string, connection: VoiceConnection, endCallback:
 
 	stream.once('end', () => {
 		recordingStatus.set(userId, false)
+		convertedStream.end()
 		ffmpeg(convertedStream)
 			.inputFormat('s32le')
 			.audioChannels(2)
