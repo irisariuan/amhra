@@ -16,7 +16,7 @@ import { readJsonSync, reloadSetting } from '../read'
 import chalk from 'chalk'
 import type { CustomClient } from '../custom'
 import NodeCache from 'node-cache'
-import { countUser, getUser } from '../db/core'
+import { countUser, getUser, hasUser } from '../db/core'
 import { type Guild, getUserGuilds } from '../auth/core'
 import type { TextChannel } from 'discord.js'
 import { SongEditType } from '../express/event'
@@ -28,7 +28,7 @@ interface AuthOptions {
 	allowBearer: boolean
 }
 
-export async function init(client: CustomClient) {
+export async function initServer(client: CustomClient) {
 	function auth(authOptions: AuthOptions = { requirePassword: true, allowBearer: false }) {
 		return async (req: Request, res: Response, next: NextFunction) => {
 			const formatter = misc.prefixFormatter(`${chalk.bgGrey(`(IP: ${req.ip})`)}`)
@@ -37,7 +37,7 @@ export async function init(client: CustomClient) {
 				return res.sendStatus(401)
 			}
 			if (authOptions.allowBearer && req.headers.authorization.startsWith('Bearer')) {
-				if (await countUser(misc.removeBearer(req.headers.authorization)) > 0) {
+				if (await hasUser(misc.removeBearer(req.headers.authorization))) {
 					return next()
 				}
 				exp.error(formatter('Auth failed (NOT_MATCHING_DB)'))
@@ -385,7 +385,13 @@ export async function init(client: CustomClient) {
 		exp.log('Sent guild IDs')
 		res.send(JSON.stringify({ content }))
 	})
-	app.get('/api/guildIds', async (req, res) => {
+	app.get('/api/guildIds', auth({ allowBearer: true, requirePassword: true }), async (req, res) => {
+		if (!req.headers.authorization) return res.sendStatus(401)
+		const guilds = await getUserGuilds(misc.removeBearer(req.headers.authorization))
+		res.send(JSON.stringify({ content: guilds }))
+	})
+
+	app.get('/api/guildIds/all', auth(), async (req, res) => {
 		const content = (await client.guilds.fetch()).map(v => { return { id: v.id, name: v.name } })
 		exp.log('Sent guild IDs')
 		res.send(JSON.stringify({ content }))

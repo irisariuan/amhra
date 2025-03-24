@@ -29,6 +29,10 @@ export function countUser(accessToken) {
     return prisma.user.count({ where: { accessToken: misc.removeBearer(accessToken) } })
 }
 
+export async function hasUser(id) {
+    return (await prisma.user.count({ where: { accessToken: id } })) > 0
+}
+
 process.on('exit', async () => {
     globalApp.important('Disconnecting from database')
     await prisma.$disconnect()

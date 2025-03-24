@@ -1,4 +1,4 @@
-import { init } from "./lib/express/server"
+import { initServer } from "./lib/express/server"
 import { client } from "./lib/client"
 import { select } from "@inquirer/prompts"
 import chalk from "chalk"
@@ -34,7 +34,7 @@ const setting = readJsonSync()
 		}
 
 		const token = { prod: setting.TOKEN, dev: setting.TESTING_TOKEN }[result]
-		const app = await init(client)
+		const app = await initServer(client)
 		app.listen(setting.PORT, () =>
 			exp.log(
 				chalk.blue.bold("Listening on port ") +

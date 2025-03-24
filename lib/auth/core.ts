@@ -1,16 +1,16 @@
 import { readJsonSync } from '../read'
 const setting = readJsonSync()
-import { newUser, getUser, countUser } from '../db/core'
+import { newUser, getUser, countUser, hasUser } from '../db/core'
 
 export interface User {
-    id: string;
-    createdAt: Date;
-    updatedAt: Date;
-    token: string;
-    tokenType: string;
-    refreshToken: string;
-    accessToken: string;
-    refreshTokenExpiresAt: number;
+	id: string;
+	createdAt: Date;
+	updatedAt: Date;
+	token: string;
+	tokenType: string;
+	refreshToken: string;
+	accessToken: string;
+	refreshTokenExpiresAt: number;
 }
 
 export interface Guild {
@@ -45,9 +45,8 @@ export async function exchangeCode(code: string) {
 	}
 }
 
-export async function refreshToken(refreshCode: string): Promise<User | undefined> {
-	// todo: perform check in db to see if the token is valid
-	if (!(await countUser(refreshCode) > 0)) {
+export async function refreshToken(user: Pick<User, 'accessToken' | 'refreshToken' | 'refreshTokenExpiresAt'>): Promise<User | undefined> {
+	if (!hasUser(user.accessToken) || user.refreshTokenExpiresAt < Date.now()) {
 		return
 	}
 	try {
@@ -56,7 +55,7 @@ export async function refreshToken(refreshCode: string): Promise<User | undefine
 			body: new URLSearchParams({
 				client_id: setting.CLIENT_ID,
 				client_secret: setting.OAUTH_TOKEN,
-				refresh_token: refreshCode,
+				refresh_token: user.refreshToken,
 				grant_type: 'refresh_token',
 			}).toString(),
 			headers: {
@@ -114,7 +113,7 @@ export async function getUserGuilds(accessToken: string): Promise<Guild[] | null
 		},
 	})
 	if (!userResult.ok) {
-		const refreshedUser = await refreshToken(user.refreshToken)
+		const refreshedUser = await refreshToken(user)
 		if (!refreshedUser) {
 			return null
 		}
