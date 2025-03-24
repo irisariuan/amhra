@@ -135,7 +135,7 @@ export function destroyAudioPlayer(client: CustomClient, guildId: string): boole
 	if (client.player.has(guildId)) {
 		// reset player to the init status
 		client.player.get(guildId)?.resetAll()
-		client.deleteToken(guildId)
+		client.deleteTokenByGuilds([guildId])
 		client.player.delete(guildId)
 		return true
 	}
