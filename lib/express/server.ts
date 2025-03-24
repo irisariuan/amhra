@@ -3,7 +3,6 @@ import { rateLimit } from 'express-rate-limit'
 import crypto from 'node:crypto'
 import { load } from '../log/load'
 import { search, video_info } from 'play-dl'
-import { initAuth } from './auth'
 import { ActionType, event } from './event'
 import youtubeSuggest from 'youtube-suggest'
 import bodyParser from 'body-parser'
@@ -17,7 +16,7 @@ import chalk from 'chalk'
 import type { CustomClient } from '../custom'
 import NodeCache from 'node-cache'
 import { getUser, hasUser } from '../db/core'
-import { type Guild, getUserGuilds } from '../auth/core'
+import { type Guild, getUserGuilds, register } from '../auth/core'
 import type { TextChannel } from 'discord.js'
 import { SongEditType } from '../express/event'
 
@@ -141,6 +140,17 @@ export async function initServer(client: CustomClient) {
 
 	event.on('action', (action) => exp.log(`Received action: ${action}`))
 
+	app.post('/api/register', jsonParser, basicCheckBuilder(['code']), async (req, res) => {
+		if (!req.body.code) {
+			return res.sendStatus(400)
+		}
+		const result = await register(req.body.code)
+		if (!result) {
+			return res.sendStatus(400)
+		}
+		return res.send(JSON.stringify({ token: result.accessToken }))
+	})
+
 	app.get('/api/new', auth({ allowBearer: true, requirePassword: true }), (req, res) => {
 		exp.log(`New IP fetched: ${req.ip}`)
 		res.sendStatus(200)
@@ -156,14 +166,14 @@ export async function initServer(client: CustomClient) {
 		auth({ requirePassword: false, allowBearer: true }),
 		basicCheckBuilder(['action', 'guildId']),
 		checkGuildMiddleware,
-		(req, res) => {
+		(req: Request, res: Response) => {
 			const formatter = misc.prefixFormatter(
 				chalk.bgGrey(`(Guild ID: ${req.body.guildId}, IP: ${req.ip})`)
 			)
-			const cLog = (...data) => {
+			const cLog = (...data: (string | number)[]) => {
 				exp.log(formatter(data.join()))
 			}
-			const cError = (...data) => {
+			const cError = (...data: (string | number)[]) => {
 				exp.error(formatter(data.join()))
 			}
 			const action: SongEditType = req.body.action
@@ -434,8 +444,6 @@ export async function initServer(client: CustomClient) {
 		const data = client.player.get(req.params.guildId)?.getData()
 		return res.send(JSON.stringify(data ?? null))
 	})
-
-	initAuth(app, jsonParser, basicCheckBuilder)
 
 	return app
 }

@@ -1,7 +1,7 @@
 import { writeFileSync, readFileSync } from 'node:fs'
 import type { Setting } from './setting'
 
-let setting = null
+let setting: Setting | null = null
 
 export function readJsonSync(file = `${process.cwd()}/data/setting.json`): Setting {
 	if (setting === null) {
@@ -15,6 +15,6 @@ export function reloadSetting(file = `${process.cwd()}/data/setting.json`) {
 	return setting
 }
 
-export function writeJsonSync(file, data) {
+export function writeJsonSync(file: string, data: Setting) {
 	return writeFileSync(file, JSON.stringify(data, null, 4))
 }

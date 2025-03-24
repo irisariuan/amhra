@@ -39,7 +39,8 @@ export class ExpressEvent extends EventEmitter {
     on(event: 'reloadCommands', listener: () => void | Promise<void>): this
     on(event: 'page', listener: (path: string) => void | Promise<void>): this
     on(event: 'songInterruption', listener: (<T extends SongEditType>(guildId: string, action: T, detail: ExpressEventDetail) => void | Promise<void>) | ((guildId: string, action: SongEditType) => void | Promise<void>)): this
-    on(event: string, listener: (...any) => void | Promise<void>) {
+    // biome-ignore lint/suspicious/noExplicitAny: Function overloaded
+    on(event: string, listener: (...args: any[]) => void | Promise<void>) {
         return super.on(event, listener)
     }
     emitSong<T extends SongEditType>(guildId: string, action: T, detail: ExpressEventDetail) {

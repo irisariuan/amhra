@@ -1,4 +1,4 @@
-import type { APIInteractionGuildMember, GuildMember } from "discord.js"
+import type { GuildMember } from "discord.js"
 import chalk from "chalk"
 import { event } from "./express/event"
 import { appendFile } from 'node:fs/promises'
@@ -6,26 +6,26 @@ import { removeAnsi } from 'ansi-parser'
 
 export const errorMessage = 'An error occurred during running this command'
 
-export async function addLogLine(data, logCategory) {
+export async function addLogLine(data: string, logCategory: string) {
 	appendFile(`${process.cwd()}/data/log/${logCategory}.log`, `T${Date.now()}: ${data}\n`, {
 		encoding: 'utf8'
 	})
 }
-export function baseLog(...data) {
+export function baseLog(...data: unknown[]) {
 	console.log(chalk.gray.italic(`T${Date.now()}`), ...data)
 }
 
-export function baseError(...data) {
+export function baseError(...data: unknown[]) {
 	console.error(chalk.gray.italic(`T${Date.now()}`), ...data)
 }
 
 export const exp = {
-	log(...args) {
+	log(...args: unknown[]) {
 		baseLog(chalk.magenta("[EXPRESS] ") + args.join())
 		event.emit("log", removeAnsi(args.join()), "explog")
 		addLogLine(removeAnsi(args.join()), 'express')
 	},
-	error(...args) {
+	error(...args: unknown[]) {
 		baseLog(chalk.redBright("[EXPRESS_ERROR] ") + args.join())
 		event.emit("log", removeAnsi(args.join()), "experr")
 		addLogLine(`Express: ${removeAnsi(args.join())}`, 'error')
@@ -33,12 +33,12 @@ export const exp = {
 }
 
 export const dcb = {
-	log(...args) {
+	log(...args: unknown[]) {
 		baseLog(chalk.blue("[DISCORD] ") + args.join())
 		event.emit("log", removeAnsi(args.join()), "dcblog")
 		addLogLine(removeAnsi(args.join()), 'main')
 	},
-	messageLog(...args) {
+	messageLog(...args: unknown[]) {
 		baseLog(`${chalk.blue("[DISCORD] ") + chalk.bgCyanBright.grey("[MESSAGE]")} ${args.join()}`)
 		event.emit("log", removeAnsi(args.join()), "dcbmsg")
 		addLogLine(removeAnsi(args.join()), 'message')
@@ -46,17 +46,17 @@ export const dcb = {
 }
 
 export const globalApp = {
-	err(...args) {
+	err(...args: unknown[]) {
 		baseError(chalk.red('[ERROR]') ,...args)
 		event.emit("log", removeAnsi(args.join()), "error")
 		addLogLine(removeAnsi(args.join()), 'error')
 	},
-	warn(...args) {
+	warn(...args: unknown[]) {
 		baseLog(chalk.yellow("[WARN] ") + args.join())
 		event.emit("log", removeAnsi(args.join()), "warn")
 		addLogLine(`Warn: ${removeAnsi(args.join())}`, 'errwn')
 	},
-	important(...args) {
+	important(...args: unknown[]) {
 		baseLog(
 			`${chalk.bgYellowBright.whiteBright.bold("[IMPORTANT]")} ${args.join()}`
 		)

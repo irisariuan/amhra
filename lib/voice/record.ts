@@ -5,6 +5,7 @@ import { EndBehaviorType, type VoiceConnection } from "@discordjs/voice"
 import { PassThrough, Transform } from "node:stream"
 import { OpusEncoder } from "@discordjs/opus"
 import ffmpeg from 'fluent-ffmpeg'
+import type { CommandInteraction } from "discord.js"
 
 export const recordingList: Set<string> = new Set()
 export const voiceRecorder = new VoiceRecorder({ maxRecordTimeMinutes: 20 })
@@ -13,13 +14,14 @@ export const voiceRecorder = new VoiceRecorder({ maxRecordTimeMinutes: 20 })
  * Start the record if the guild is not recording
  * Returns if the record is currently started
 */
-export async function startRecord(interaction, autoJoin = true) {
+export async function startRecord(interaction: CommandInteraction, autoJoin = true) {
+	if (!interaction.guildId) return false
 	if (recordingList.has(interaction.guildId)) return false
 	recordingList.add(interaction.guildId)
 	//get voice connection, if there isn't one, create one
 	let connection = getConnection(interaction.guildId)
 	if (!connection) {
-		if (!interaction.member.voice.channel || !autoJoin) return false
+		if (!interaction.member || !('voice' in interaction.member) || !interaction.member.voice.channel || !autoJoin) return false
 		// try to auto join the voice channel
 		connection = joinVoice(interaction.member.voice.channel, interaction)
 		// failed to join, return false
@@ -31,9 +33,9 @@ export async function startRecord(interaction, autoJoin = true) {
 	return true
 }
 
-export async function stopRecord(interaction) {
-	recordingList.delete(interaction.guildId)
-	const connection = getConnection(interaction.guildId)
+export async function stopRecord(guildId: string) {
+	recordingList.delete(guildId)
+	const connection = getConnection(guildId)
 	if (!connection) return false
 	voiceRecorder.stopRecording(connection)
 	return true
@@ -42,7 +44,8 @@ export async function stopRecord(interaction) {
 /**
  * Clear the recording status and save the recording into file
 */
-export async function saveRecord(interaction, minutes, type: 'separate' | 'single' = 'separate') {
+export async function saveRecord(interaction: CommandInteraction, minutes: number, type: 'separate' | 'single' = 'separate') {
+	if (!interaction.guildId) return false
 	recordingList.delete(interaction.guildId)
 	const connection = getConnection(interaction.guildId)
 	if (!connection) return false

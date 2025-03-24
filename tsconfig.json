@@ -3,7 +3,6 @@
 		"target": "ESNext",
 		"module": "NodeNext",
 		"moduleResolution": "nodenext",
-		"noImplicitAny": true,
 		"removeComments": true,
 		"preserveConstEnums": true,
 		"sourceMap": true,
