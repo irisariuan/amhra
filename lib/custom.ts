@@ -17,12 +17,6 @@ export interface Resource {
 	startFrom?: number
 }
 
-interface Token {
-	token: string,
-	guilds: string[],
-	level: number
-}
-
 export interface SongDataPacket {
 	song: {
 		link: string,
@@ -45,37 +39,80 @@ export interface SongDataPacket {
 	isMuting: boolean
 }
 
+export interface TokenReturn {
+	token: string,
+	guilds: string[]
+}
+
 export class CustomClient extends Client {
 	/**
 	 * @description GuildID, AudioPlayer
 	*/
 	player: Map<string, CustomAudioPlayer>
 	cache: SearchCache
-	levelMap: Map<string, { guilds: string[], level: number }>
-	savedLevelMap: Map<string, string>
+	private tokenMap: Map<string, string[]>
 	record: Set<string>
 
 	constructor(clientOpt: ClientOptions) {
 		super(clientOpt)
 		this.player = new Map()
 		this.cache = new SearchCache()
-		this.levelMap = new Map()
-		this.savedLevelMap = new Map()
+		this.tokenMap = new Map()
 		this.record = new Set()
 	}
-	newToken(guildId: string): Token {
+	/**
+	 * @private Should not be called by users, use `CustomClient.createToken` instead
+	 */
+	newToken(guildIds: string[]) {
 		const token = misc.generateToken(36)
-		const level = 1
-		this.levelMap.set(token, { guilds: [guildId], level })
-		return { token, guilds: [guildId], level }
+		this.tokenMap.set(token, guildIds)
+		return { token, guildIds }
 	}
-	createToken(guildId: string): string | null {
-		if (this.savedLevelMap.has(guildId)) {
-			return this.savedLevelMap.get(guildId) ?? null
-		}
-		const { token } = this.newToken(guildId)
-		this.savedLevelMap.set(guildId, token)
+	createToken(guildIds: string[]): string | null {
+		const existingToken = this.getToken(guildIds)
+		if (existingToken) return existingToken.token
+		const { token } = this.newToken(guildIds)
 		return token
+	}
+	appendGuildsByToken(token: string, guildIds: string[]): void {
+		const existingToken = this.tokenMap.get(token)
+		if (existingToken) {
+			this.tokenMap.set(token, Array.from(new Set([...existingToken, ...guildIds])))
+		}
+	}
+	appendGuilds(guildId: string, guilds: string[]): void {
+		const existingToken = this.getToken(guildId)
+		if (!existingToken) return
+		this.appendGuildsByToken(existingToken.token, guilds)
+	}
+	getToken(guildIds: string): TokenReturn | null
+	getToken(guildIds: string[]): TokenReturn | null
+	getToken(guildId: string | string[]): TokenReturn | null {
+		const entries = this.tokenMap.entries()
+		if (Array.isArray(guildId)) {
+			const entry = entries.find(([_, guildIds]) => guildIds.every(id => guildId.includes(id)))
+			if (entry) return { guilds: entry[1], token: entry[0] }
+		} else {
+			const entry = entries.find(([_, guildIds]) => guildIds.includes(guildId))
+			if (entry) return { guilds: entry[1], token: entry[0] }
+		}
+		return null
+	}
+	deleteTokenByGuilds(guilds: string[]) {
+		let token = this.getToken(guilds)
+		while (token) {
+			if (token) {
+				this.tokenMap.delete(token.token)
+			}
+			token = this.getToken(guilds)
+		}
+	}
+	deleteToken(token: string): boolean {
+		if (this.tokenMap.has(token)) {
+			this.tokenMap.delete(token)
+			return true
+		}
+		return false
 	}
 }
 
@@ -141,17 +178,17 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.queue = []
 		this.history = []
 
-		
+
 		this.startTime = 0
-		
+
 		this.startFrom = 0
 		this.isPaused = false
-		
+
 		this.pauseCounter = 0
-		
+
 		this.pauseTimestamp = 0
 
-		
+
 		this.looping = false
 
 		this.timeoutList = []

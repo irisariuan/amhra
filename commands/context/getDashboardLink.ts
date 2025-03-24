@@ -8,7 +8,7 @@ export default {
 		.setType(ApplicationCommandType.User),
 	async execute(interaction, client) {
 		if (!interaction.guildId) return
-		const token = client.createToken(interaction.guildId)
+		const token = client.createToken([interaction.guildId])
 		if (!token) {
 			return interaction.reply({ content: 'An error occurred while processing this command', ephemeral: true })
 		}

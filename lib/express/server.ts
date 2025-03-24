@@ -16,91 +16,92 @@ import { readJsonSync, reloadSetting } from '../read'
 import chalk from 'chalk'
 import type { CustomClient } from '../custom'
 import NodeCache from 'node-cache'
-import { countUser, getUser, hasUser } from '../db/core'
+import { getUser, hasUser } from '../db/core'
 import { type Guild, getUserGuilds } from '../auth/core'
 import type { TextChannel } from 'discord.js'
 import { SongEditType } from '../express/event'
 
 const YoutubeVideoRegex = /http(?:s?):\/\/(?:www\.)?youtu(?:be\.com\/watch\?v=|\.be\/)([\w\-_]*)(&(amp;)?[\w?=]*)?/
+const setting = readJsonSync(`${process.cwd()}/data/setting.json`)
 
 interface AuthOptions {
 	requirePassword: boolean
 	allowBearer: boolean
 }
 
-export async function initServer(client: CustomClient) {
-	function auth(authOptions: AuthOptions = { requirePassword: true, allowBearer: false }) {
-		return async (req: Request, res: Response, next: NextFunction) => {
-			const formatter = misc.prefixFormatter(`${chalk.bgGrey(`(IP: ${req.ip})`)}`)
-			if (!req.headers.authorization) {
-				exp.error(formatter('Auth failed (NOT_FOUND)'))
-				return res.sendStatus(401)
-			}
-			if (authOptions.allowBearer && req.headers.authorization.startsWith('Bearer')) {
-				if (await hasUser(misc.removeBearer(req.headers.authorization))) {
-					return next()
-				}
-				exp.error(formatter('Auth failed (NOT_MATCHING_DB)'))
-			}
-			if (authOptions.requirePassword || req.headers.authorization.startsWith('Basic')) {
-				if (!req.headers.authorization.startsWith('Basic')) {
-					return res.sendStatus(401)
-				}
-				const auth = Buffer.from(req.headers.authorization, 'utf8')
-				const hashed = crypto.createHash('sha256').update(auth).digest('hex')
-				if (hashed === setting.AUTH_TOKEN || authLevel.has(hashed)) {
-					return next()
-				}
-				exp.error(formatter('Auth failed (NOT_MATCHING)'))
-			}
-			if (!authOptions.requirePassword && !req.headers.authorization.startsWith('Basic') && !req.headers.authorization.startsWith('Bearer')) {
-				return next()
-			}
+function auth(authOptions: AuthOptions = { requirePassword: true, allowBearer: false }) {
+	return async (req: Request, res: Response, next: NextFunction) => {
+		const formatter = misc.prefixFormatter(`${chalk.bgGrey(`(IP: ${req.ip})`)}`)
+		if (!req.headers.authorization) {
+			exp.error(formatter('Auth failed (NOT_FOUND)'))
 			return res.sendStatus(401)
 		}
-	}
-
-	function basicCheckBuilder(checklist: string[]) {
-		return (req: Request, res: Response, next: NextFunction) => {
-			for (const i of checklist) {
-				if (!(i in (req.body ?? []))) {
-					exp.error(
-						`Missing '${i}' from requesting ${req.path} (Body: ${JSON.stringify(
-							req.body
-						)})`
-					)
-					return res.sendStatus(400)
-				}
+		if (authOptions.allowBearer && req.headers.authorization.startsWith('Bearer')) {
+			if (await hasUser(misc.removeBearer(req.headers.authorization))) {
+				return next()
 			}
-			next()
+			exp.error(formatter('Auth failed (NOT_MATCHING_DB)'))
 		}
+		if (authOptions.requirePassword || req.headers.authorization.startsWith('Basic')) {
+			if (!req.headers.authorization.startsWith('Basic')) {
+				return res.sendStatus(401)
+			}
+			const auth = Buffer.from(req.headers.authorization, 'utf8')
+			const hashed = crypto.createHash('sha256').update(auth).digest('hex')
+			if (crypto.timingSafeEqual(Buffer.from(hashed, 'hex'), Buffer.from(setting.AUTH_TOKEN, 'hex'))) {
+				return next()
+			}
+			exp.error(formatter('Auth failed (NOT_MATCHING)'))
+		}
+		if (!authOptions.requirePassword && !req.headers.authorization.startsWith('Basic') && !req.headers.authorization.startsWith('Bearer')) {
+			return next()
+		}
+		return res.sendStatus(401)
 	}
+}
+function basicCheckBuilder(checklist: string[]) {
+	return (req: Request, res: Response, next: NextFunction) => {
+		for (const i of checklist) {
+			if (!(i in (req.body ?? []))) {
+				exp.error(
+					`Missing '${i}' from requesting ${req.path} (Body: ${JSON.stringify(
+						req.body
+					)})`
+				)
+				return res.sendStatus(400)
+			}
+		}
+		next()
+	}
+}
 
-	function checkGuildMiddleware(req: Request, res: Response, next: NextFunction) {
-		if (checkGuild(req.headers.authorization ?? '', req.body?.guildId)) {
+function checkGuildMiddleware(client: CustomClient) {
+	return (req: Request, res: Response, next: NextFunction) => {
+		if (!req.headers.authorization) return res.sendStatus(401)
+		if (checkBearerWithGuild(client, req.headers.authorization, req.body?.guildId)) {
 			return next()
 		}
 		exp.error('Guild not found')
 		res.sendStatus(401)
 	}
+}
 
-	function checkGuild(auth: string, guildId = '') {
-		if (auth.startsWith('Basic') || client.levelMap.get(auth)?.guilds?.includes(guildId)) {
-			return true
-		}
-		return false
+function checkBearerWithGuild(client: CustomClient, auth: string, guildId: string | null = null) {
+	const token = guildId && client.getToken(guildId)?.token
+	if (auth.startsWith('Basic') || token && crypto.timingSafeEqual(Buffer.from(token), Buffer.from(misc.removeBearer(auth)))) {
+		return true
 	}
+	return false
+}
 
+export async function initServer(client: CustomClient) {
 	const app = express()
 	const jsonParser = bodyParser.json()
-	const setting = readJsonSync(`${process.cwd()}/data/setting.json`)
 
 	const logQueue = await load(...setting.PRELOAD ?? [])
 	// TTL set to 5 days
 	const videoCache = new NodeCache({ stdTTL: 60 * 60 * 24 * 5 })
 	const userGuildCache = new NodeCache({ stdTTL: 60 * 60 * 3 })
-
-	const authLevel: Map<string, { guilds: string[], level: number }> = new Map()
 
 	app.use((req, res, next) => {
 		const formatter = misc.prefixFormatter(`${chalk.bgGrey(`(IP: ${req.ip})`)}`)
@@ -277,9 +278,9 @@ export async function initServer(client: CustomClient) {
 						globalApp.warn('Failed to create server-based dashboard, missing guild ID')
 						return res.sendStatus(400)
 					}
-					const { token, level } = client.newToken(req.body.guildId)
+					const { token } = client.newToken(req.body.guildId)
 					exp.log('Successfully created server-based dashboard')
-					res.send(JSON.stringify({ token, guildId: req.body.guildId, level }))
+					res.send(JSON.stringify({ token, guildId: req.body.guildId }))
 					break
 				}
 				case ActionType.ReloadCommands: {
@@ -351,7 +352,7 @@ export async function initServer(client: CustomClient) {
 		return res.send(JSON.stringify({ content: suggestion }))
 	})
 
-	app.post('/api/live', jsonParser, basicCheckBuilder(['guildId']), checkGuildMiddleware, async (req, res) => {
+	app.post('/api/live', jsonParser, basicCheckBuilder(['guildId']), checkGuildMiddleware(client), async (req, res) => {
 		exp.log('Live!')
 		return res.sendStatus(200)
 	})
@@ -376,7 +377,7 @@ export async function initServer(client: CustomClient) {
 				userGuildCache.set(user.id, rawGuilds)
 			}
 			const guilds = rawGuilds.map(v => v.id)
-			client.levelMap.set(req.headers.authorization, { guilds, level: 0 })
+			client.appendGuildsByToken(misc.removeBearer(req.headers.authorization), guilds)
 			if (!guilds) {
 				return res.sendStatus(401)
 			}
@@ -385,6 +386,7 @@ export async function initServer(client: CustomClient) {
 		exp.log('Sent guild IDs')
 		res.send(JSON.stringify({ content }))
 	})
+
 	app.get('/api/guildIds', auth({ allowBearer: true, requirePassword: true }), async (req, res) => {
 		if (!req.headers.authorization) return res.sendStatus(401)
 		const guilds = await getUserGuilds(misc.removeBearer(req.headers.authorization))
@@ -426,7 +428,7 @@ export async function initServer(client: CustomClient) {
 	})
 
 	app.get('/api/song/get/:guildId', auth({ requirePassword: false, allowBearer: true }), (req, res) => {
-		if (!checkGuild(req.headers.authorization ?? '', req.params.guildId)) {
+		if (!checkBearerWithGuild(client, req.headers.authorization ?? '', req.params.guildId)) {
 			return res.sendStatus(401)
 		}
 		const data = client.player.get(req.params.guildId)?.getData()

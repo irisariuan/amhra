@@ -1,6 +1,5 @@
 import { type ContextMenuCommandBuilder, GatewayIntentBits, type SlashCommandBuilder, type GuildMember } from 'discord.js'
 import { loadCommands } from './core'
-import fs from 'node:fs'
 import { CustomClient } from './custom'
 import { event } from './express/event'
 import { dcb, globalApp, misc } from './misc'
@@ -8,7 +7,6 @@ import { readJsonSync } from './read'
 import { createResource, destroyAudioPlayer, getConnection } from './voice/core'
 import { yt_validate } from 'play-dl'
 import chalk from 'chalk'
-import type { Command } from './interaction'
 import { SongEditType } from './express/event'
 
 const setting = readJsonSync()

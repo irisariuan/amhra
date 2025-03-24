@@ -1,6 +1,9 @@
 import { readJsonSync } from '../read'
 const setting = readJsonSync()
-import { newUser, getUser, countUser, hasUser } from '../db/core'
+import { newUser, getUser, hasUser } from '../db/core'
+import NodeCache from 'node-cache';
+import { client } from '../client';
+import { misc } from '../misc';
 
 export interface User {
 	id: string;
@@ -17,6 +20,8 @@ export interface Guild {
 	id: string,
 	name: string
 }
+
+const userGuildCache = new NodeCache({ stdTTL: 60 * 3 })
 
 export async function exchangeCode(code: string) {
 	try {
@@ -124,4 +129,20 @@ export async function getUserGuilds(accessToken: string): Promise<Guild[] | null
 		})).json() ?? null
 	}
 	return await userResult.json()
+}
+
+export function getAllGuilds() {
+	return Promise.all(Array.from(client.player.keys()).map(async v => { return { id: v, name: (await client.guilds.fetch(v)).name ?? null } }))
+}
+
+export async function getUserGuild(user: User, auth: string) {
+	const allGuilds = await getAllGuilds()
+	let rawGuilds: Guild[] | undefined = userGuildCache.get(user.id)
+	if (rawGuilds === undefined) {
+		rawGuilds = await getUserGuilds(misc.removeBearer(auth)) ?? []
+		userGuildCache.set(user.id, rawGuilds)
+	}
+	const guilds = rawGuilds.map(v => v.id)
+	client.appendGuildsByToken(auth, guilds)
+	return allGuilds.filter(v => guilds.includes(v.id))
 }
