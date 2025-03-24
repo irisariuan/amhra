@@ -11,8 +11,8 @@
 		"outDir": "dist",
 		"declaration": true,
         "esModuleInterop": true,
-        "strict": true
+        "strict": true,
+		"skipLibCheck": true
 	},
-	"include": ["/**/*.ts"],
-	"exclude": ["/**/*.spec.ts", "node_modules/*", "dist", "/**/test/*"]
+	"exclude": ["**/*.spec.ts", "**/node_modules/*", "**/dist/*", "**/test/*"]
 }
