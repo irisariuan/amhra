@@ -1,5 +1,5 @@
 import type { Command } from "../../lib/interaction"
-import { SlashCommandBuilder } from 'discord.js'
+import { MessageFlags, SlashCommandBuilder } from 'discord.js'
 import { saveRecord, startRecord } from "../../lib/voice/record"
 
 export default {
@@ -7,13 +7,13 @@ export default {
 		.setName('record')
 		.setDescription('Record your conversation'),
 	async execute(interaction, client) {
-		await interaction.deferReply()
+		await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 		if (!interaction.guildId) return
 		if (!await startRecord(interaction)) {
 			await saveRecord(interaction, 10)
 			await startRecord(interaction)
-			return interaction.editReply({content: 'Saving!', ephemeral: true})
+			return interaction.editReply({ content: 'Saving!' })
 		}
-		interaction.editReply({content: 'Recording started', ephemeral: true})
+		interaction.editReply({ content: 'Recording started' })
 	},
 } as Command<SlashCommandBuilder>
