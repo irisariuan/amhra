@@ -165,7 +165,7 @@ export async function initServer(client: CustomClient) {
 		jsonParser,
 		auth({ requirePassword: false, allowBearer: true }),
 		basicCheckBuilder(['action', 'guildId']),
-		checkGuildMiddleware,
+		checkGuildMiddleware(client),
 		(req: Request, res: Response) => {
 			const formatter = misc.prefixFormatter(
 				chalk.bgGrey(`(Guild ID: ${req.body.guildId}, IP: ${req.ip})`)
