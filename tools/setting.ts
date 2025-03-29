@@ -27,7 +27,8 @@ import { existsSync, writeFileSync } from 'node:fs';
         VOLUME_MODIFIER: 1,
         AUTO_LEAVE: 15 * 60 * 1000,
         USE_COOKIES: false,
-        BANNED_IDS: []
+        BANNED_IDS: [],
+        MAX_CACHE_IN_GB: 10,
     }
 
     const token = await input({ message: 'Bot Token' })
@@ -66,6 +67,8 @@ import { existsSync, writeFileSync } from 'node:fs';
             setting.HTTPS = true
         }
     }
+    const maxCacheSize = await input({ message: 'Set up your maximum cache size in GB', validate: v => !Number.isNaN(Number(v)) && Number(v) > 0, default: '10' })
+    setting.MAX_CACHE_IN_GB = Number(maxCacheSize)
     const queueSize = await input({ message: 'Set up your cache size for logs', validate: v => Number.parseInt(v) > 0, default: '4000' })
     setting.QUEUE_SIZE = Number.parseInt(queueSize)
     if (await confirm({ message: 'Write to setting.json?', default: true })) {
