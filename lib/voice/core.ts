@@ -24,6 +24,7 @@ import dotenv from 'dotenv'
 import fs from 'node:fs'
 import type { APIInteractionGuildMember, CacheType, CommandInteraction, GuildMember, VoiceBasedChannel, VoiceChannel } from "discord.js"
 import { recordingList, saveRecord, startRecord, stopRecord } from "./record"
+import { createYtDlpStream } from "./stream"
 dotenv.config()
 
 const videoInfoCache = new NodeCache()
@@ -152,7 +153,8 @@ export interface Stream { stream: any, type: StreamType }
 
 export async function createStream(url: string, seek?: number): Promise<Stream> {
 	if (setting.USE_YOUTUBE_DL) {
-		const stream = ytdl(url, { filter: 'audioonly', quality: 'highestaudio', begin: seek, agent })
+		const stream = createYtDlpStream(url, seek)
+		// const stream = ytdl(url, { filter: 'audioonly', quality: 'highestaudio', begin: seek, agent })
 		return { stream, type: StreamType.Arbitrary }
 	}
 	const source = await stream(url, { seek })
