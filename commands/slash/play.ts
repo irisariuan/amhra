@@ -58,15 +58,13 @@ export default {
 		} else if (isPlaylist(input)) {
 			let playlist: YouTubePlayList
 			const cached = client.cache.get(input)
-			if (cached && !cached.isVideo()) {
+			if (cached?.isPlaylist()) {
 				playlist = cached.value
 			} else {
 				playlist = await playlist_info(input, { incomplete: true })
 				client.cache.set(input, playlist, 'playlist')
 			}
-			audioPlayer.queue = audioPlayer.queue.concat(
-				...(await playlist.all_videos()).map(v => v.url)
-			)
+			audioPlayer.queue = audioPlayer.queue.concat((await playlist.all_videos()).map(v => v.url))
 			videoUrl = audioPlayer.queue.shift()
 			if (!videoUrl) return interaction.editReply('The playlist is empty!')
 		} else {

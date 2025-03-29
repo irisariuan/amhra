@@ -1,9 +1,9 @@
 import { REST, Routes, type SlashCommandBuilder } from "discord.js"
-import { readJsonSync } from "../lib/read"
+import { readSetting } from "../lib/read"
 import { select } from "@inquirer/prompts"
 import { loadCommandsJson } from "../lib/core"
 
-const setting = readJsonSync();
+const setting = readSetting();
 
 (async () => {
 	const commands = await loadCommandsJson<SlashCommandBuilder>('slash')

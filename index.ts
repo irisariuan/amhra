@@ -2,10 +2,10 @@ import { initServer } from "./lib/express/server"
 import { client } from "./lib/client"
 import { select } from "@inquirer/prompts"
 import chalk from "chalk"
-import { readJsonSync } from "./lib/read"
+import { readSetting } from "./lib/read"
 import { exp, globalApp } from "./lib/misc"
 
-const setting = readJsonSync()
+const setting = readSetting()
 
 	; (async () => {
 		let result: 'prod' | 'dev'

@@ -4,9 +4,9 @@ import { SearchCache } from "./cache"
 import type { AudioResource } from "@discordjs/voice"
 import type { YouTubeChannel, YouTubeVideo } from "play-dl"
 import { misc } from './misc'
-import { readJsonSync } from './read'
+import { readSetting } from './read'
 
-const setting = readJsonSync()
+const setting = readSetting()
 
 export interface Resource {
 	resource: AudioResource<unknown>,

@@ -3,13 +3,13 @@ import { loadCommands } from './core'
 import { CustomClient } from './custom'
 import { event } from './express/event'
 import { dcb, globalApp, misc } from './misc'
-import { readJsonSync } from './read'
+import { readSetting } from './read'
 import { createResource, destroyAudioPlayer, getConnection } from './voice/core'
 import { yt_validate } from 'play-dl'
 import chalk from 'chalk'
 import { SongEditType } from './express/event'
 
-const setting = readJsonSync()
+const setting = readSetting()
 export const client = new CustomClient({
 	intents: [
 		GatewayIntentBits.GuildVoiceStates,

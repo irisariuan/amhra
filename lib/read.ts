@@ -3,7 +3,7 @@ import type { Setting } from './setting'
 
 let setting: Setting | null = null
 
-export function readJsonSync(file = `${process.cwd()}/data/setting.json`): Setting {
+export function readSetting(file = `${process.cwd()}/data/setting.json`): Setting {
 	if (setting === null) {
 		setting = JSON.parse(readFileSync(file, 'utf8'))
 	}

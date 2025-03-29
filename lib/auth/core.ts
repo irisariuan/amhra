@@ -1,5 +1,5 @@
-import { readJsonSync } from '../read'
-const setting = readJsonSync()
+import { readSetting } from '../read'
+const setting = readSetting()
 import { newUser, getUser, hasUser } from '../db/core'
 import NodeCache from 'node-cache';
 import { client } from '../client';

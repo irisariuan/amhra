@@ -4,6 +4,7 @@ export interface SearchCacheData<T extends YouTubeVideo | YouTubePlayList> {
     value: T,
     type: T extends YouTubeVideo ? 'video' : 'playlist',
     isVideo: () => this is SearchCacheData<YouTubeVideo>,
+    isPlaylist: () => this is SearchCacheData<YouTubePlayList>,
     ttl: number
 }
 
@@ -50,7 +51,8 @@ export class SearchCache {
             value,
             ttl: Date.now() + ttl,
             type,
-            isVideo: () => type === 'video'
+            isVideo: () => type === 'video',
+            isPlaylist: () => type === 'playlist'
         } as SearchCacheData<YouTubeVideo> | SearchCacheData<YouTubePlayList>
         this.cache.set(key, data)
         if (value.url) {

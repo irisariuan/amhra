@@ -11,7 +11,7 @@ import {
 	misc,
 	exp
 } from '../misc'
-import { readJsonSync, reloadSetting } from '../read'
+import { readSetting, reloadSetting } from '../read'
 import chalk from 'chalk'
 import type { CustomClient } from '../custom'
 import NodeCache from 'node-cache'
@@ -21,7 +21,7 @@ import type { TextChannel } from 'discord.js'
 import { SongEditType } from '../express/event'
 
 const YoutubeVideoRegex = /http(?:s?):\/\/(?:www\.)?youtu(?:be\.com\/watch\?v=|\.be\/)([\w\-_]*)(&(amp;)?[\w?=]*)?/
-const setting = readJsonSync(`${process.cwd()}/data/setting.json`)
+const setting = readSetting(`${process.cwd()}/data/setting.json`)
 
 interface AuthOptions {
 	requirePassword: boolean

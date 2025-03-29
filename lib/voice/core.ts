@@ -9,6 +9,7 @@ import {
 	type DiscordGatewayAdapterCreator,
 } from "@discordjs/voice"
 import {
+	extractID,
 	type InfoData,
 	stream,
 	video_info,
@@ -19,16 +20,17 @@ import { CustomAudioPlayer, type Resource, type CustomClient } from "../custom"
 import { dcb, globalApp } from "../misc"
 import { event } from "../express/event"
 import NodeCache from "node-cache"
-import { readJsonSync } from "../read"
+import { readSetting } from "../read"
 import dotenv from 'dotenv'
 import fs from 'node:fs'
 import type { APIInteractionGuildMember, CacheType, CommandInteraction, GuildMember, VoiceBasedChannel, VoiceChannel } from "discord.js"
 import { recordingList, saveRecord, startRecord, stopRecord } from "./record"
 import { createYtDlpStream } from "./stream"
+import type { Readable } from "node:stream"
 dotenv.config()
 
 const videoInfoCache = new NodeCache()
-const setting = readJsonSync()
+const setting = readSetting()
 let agent: ytdl.Agent | undefined = undefined
 
 try {
@@ -148,8 +150,7 @@ export function getConnection(guildId: string | null) {
 	return getVoiceConnection(guildId)
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: <explanation>
-export interface Stream { stream: any, type: StreamType }
+export interface Stream { stream: Readable, type: StreamType }
 
 export async function createStream(url: string, seek?: number): Promise<Stream> {
 	if (setting.USE_YOUTUBE_DL) {
@@ -161,18 +162,20 @@ export async function createStream(url: string, seek?: number): Promise<Stream> 
 	return { stream: source.stream, type: source.type as StreamType }
 }
 
-export async function getVideoInfo(url: string): Promise<InfoData> {
-	if (videoInfoCache.get(url)) {
-		return videoInfoCache.get(url) as InfoData
+export async function getVideoInfo(url: string): Promise<InfoData | null> {
+	if (!isYoutube(url)) return null
+	const id = extractID(url)
+	if (videoInfoCache.get(id)) {
+		return videoInfoCache.get(id) as InfoData
 	}
-	const videoInfo = await video_info(url)
-	videoInfoCache.set(url, videoInfo)
+	const videoInfo = await video_info(id)
+	videoInfoCache.set(id, videoInfo)
 	return videoInfo
 }
 
 export async function createResource(url: string, seek?: number): Promise<Resource | null> {
-	const detail = (await getVideoInfo(url)).video_details
-	if (detail.id && setting.BANNED_IDS.includes(detail.id)) return null
+	const detail = (await getVideoInfo(url))?.video_details
+	if (!detail || detail.id && setting.BANNED_IDS.includes(detail.id)) return null
 	const source = await createStream(url, seek)
 	const res = createAudioResource(source.stream, {
 		inputType: source.type as StreamType,

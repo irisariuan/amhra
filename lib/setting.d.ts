@@ -24,6 +24,7 @@ export interface Setting {
     AUTO_LEAVE: number,
     PREFIX: string,
     USE_COOKIES: boolean,
+    MAX_CACHE_IN_GB: number,
 
     VOLUME_MODIFIER: number,
     BANNED_IDS: string[],

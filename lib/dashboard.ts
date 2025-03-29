@@ -1,8 +1,8 @@
 import NodeCache from "node-cache"
-import { readJsonSync } from './read'
+import { readSetting } from './read'
 const ipCache = new NodeCache()
 
-const setting = readJsonSync()
+const setting = readSetting()
 
 export async function createLink(guildId: string, token: string) {
     const prefix = setting.HTTPS ? 'https' : 'http'
