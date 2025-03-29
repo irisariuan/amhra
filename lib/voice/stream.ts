@@ -5,6 +5,7 @@ import { extractID } from "play-dl";
 import { createWriteStream, renameSync, existsSync, createReadStream, readdirSync, writeFileSync } from 'node:fs'
 import { readFile, writeFile, stat, unlink } from "node:fs/promises";
 import { readSetting } from "../read";
+import { dcb } from "../misc";
 
 if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
     writeFileSync(`${process.cwd()}/data/lastUsed.record`, '')
@@ -14,6 +15,7 @@ async function reviewCaches() {
     const maxSize = readSetting().MAX_CACHE_IN_GB * 1024 * 1024 * 1024
     let { size } = await stat(`${process.cwd()}/cache`)
     if (size < maxSize) return
+    dcb.log(`Reviewing caches, cache size: ${size} / ${maxSize}`)
     const data = (await readFile(`${process.cwd()}/data/lastUsed.record`, 'utf8')).split('\n')
     const actualCaches = readdirSync(`${process.cwd()}/cache`)
     const deletedFiles = []
@@ -22,6 +24,7 @@ async function reviewCaches() {
         if (actualCaches.includes(`${id}.music`)) {
             const lastUsed = Number(lastUsedStr)
             if (size >= maxSize && lastUsed < Date.now() - 1000 * 60 * 60 * 24) {
+                dcb.log(`Deleting cache: ${id}`)
                 const metadata = await stat(`${process.cwd()}/cache/${id}.music`)
                 unlink(`${process.cwd()}/cache/${id}.music`).catch(() => { })
                 size -= metadata.size
@@ -67,10 +70,11 @@ function parseTime(seek: number) {
     return `*${str}-inf`
 }
 
-export function createYtDlpStream(url: string, seek?: number): Readable {
+export function createYtDlpStream(url: string, seek?: number, force = false): Readable {
     const id = extractID(url)
-    if (existsSync(`${process.cwd()}/cache/${id}.music`)) {
+    if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
         updateLastUsed([id])
+        dcb.log(`Cache hit: ${id}`)
         return createReadStream(`${process.cwd()}/cache/${id}.music`)
     }
     const stream = spawn('yt-dlp', [
