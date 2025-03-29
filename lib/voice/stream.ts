@@ -83,7 +83,6 @@ export function createYtDlpStream(url: string, seek?: number, force = false): Re
         '-q',
         '--no-playlist',
         '--force-ipv4',
-        '--download-sections',
         ...(seek ? ['--download-sections', parseTime(seek)] : []),
         '-o', '-',
     ], {
