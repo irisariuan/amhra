@@ -12,6 +12,7 @@ export function createYtDlpStream(url: string, seek?: number): PassThrough {
     const stream = spawn('yt-dlp', [
         parseUrl(url, seek),
         '--format', 'bestaudio',
+        '-q',
         '--no-playlist',
         '--force-ipv4',
         '-o', '-',
