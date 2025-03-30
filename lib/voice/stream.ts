@@ -3,29 +3,29 @@ import { spawn } from "node:child_process";
 import { PassThrough, type Readable } from "node:stream";
 import { extractID } from "play-dl";
 import { createWriteStream, renameSync, existsSync, createReadStream, readdirSync, writeFileSync } from 'node:fs'
-import { readFile, writeFile, stat, unlink } from "node:fs/promises";
+import { readFile, writeFile, stat, unlink, rename } from "node:fs/promises";
 import { readSetting } from "../read";
-import { dcb } from "../misc";
+import { dcb, globalApp } from "../misc";
 
 if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
     writeFileSync(`${process.cwd()}/data/lastUsed.record`, '')
 }
 
-async function reviewCaches() {
+async function reviewCaches(forceReview = false) {
     const maxSize = readSetting().MAX_CACHE_IN_GB * 1024 * 1024 * 1024
     let { size } = await stat(`${process.cwd()}/cache`)
-    if (size < maxSize) return
+    if (size < maxSize && !forceReview) return
     dcb.log(`Reviewing caches, cache size: ${size} / ${maxSize}`)
     const data = (await readFile(`${process.cwd()}/data/lastUsed.record`, 'utf8')).split('\n')
     const actualCaches = readdirSync(`${process.cwd()}/cache`)
     const deletedFiles = []
     for (const line of data) {
         const [id, lastUsedStr] = line.split('=')
+        const lastUsed = Number(lastUsedStr)
         if (actualCaches.includes(`${id}.music`)) {
-            const lastUsed = Number(lastUsedStr)
-            if (size >= maxSize && lastUsed < Date.now() - 1000 * 60 * 60 * 24) {
+            const metadata = await stat(`${process.cwd()}/cache/${id}.music`)
+            if (metadata.size === 0 || size >= maxSize && !forceReview && lastUsed < Date.now() - 1000 * 60 * 60 * 24) {
                 dcb.log(`Deleting cache: ${id}`)
-                const metadata = await stat(`${process.cwd()}/cache/${id}.music`)
                 unlink(`${process.cwd()}/cache/${id}.music`).catch(() => { })
                 size -= metadata.size
                 deletedFiles.push(id)
@@ -93,11 +93,18 @@ export function createYtDlpStream(url: string, seek?: number, force = false): Re
     const fileStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
     stream.stdout.pipe(resultStream)
     stream.stdout.pipe(fileStream)
-    fileStream.on('finish', () => {
-        renameSync(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
-        updateLastUsed([id])
-        reviewCaches()
+    fileStream.on('finish', async () => {
         fileStream.close()
+        dcb.log(`Downloaded: ${id}`)
+        const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
+        if (size === 0) {
+            globalApp.warn(`Downloaded file is empty: ${id}, deleting it`)
+            await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch(() => { })
+            return
+        }
+        await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
+        await updateLastUsed([id])
+        await reviewCaches()
     })
     return resultStream
 }
