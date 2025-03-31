@@ -22,8 +22,14 @@ const streams = new Map<string, YtDlpStream>()
 async function closeAllStreams() {
     globalApp.important('Closing all streams')
     for (const [id, stream] of streams) {
-        dcb.log(`Waiting for stream: ${id}`)
+        dcb.log(`Killing stream: ${id}`)
+        stream.readStream?.destroy()
+        stream.writeStream?.destroy()
         await stream.promise
+        if (await existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
+            dcb.log(`Deleting temp file: ${id}`)
+            await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch(() => { })
+        }
         dcb.log(`Stream finished: ${id}`)
     }
     globalApp.important('All streams closed')
@@ -112,6 +118,7 @@ export async function prefetch(url: string, seek?: number) {
         shell: true,
         stdio: ['ignore', 'pipe', 'inherit'],
     })
+    dcb.log(`Downloading: ${id}`)
     const resultStream = new PassThrough()
     const fileStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
     stream.stdout.pipe(resultStream)

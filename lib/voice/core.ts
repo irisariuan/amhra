@@ -212,7 +212,7 @@ export function isGuildMember(member: GuildMember | APIInteractionGuildMember): 
 
 export function joinVoice(voiceChannel: VoiceChannel | VoiceBasedChannel, interaction: CommandInteraction, record = true) {
 	if (!interaction.guild) {
-		return
+		return null
 	}
 	const connection = joinVoiceChannel({
 		channelId: voiceChannel.id,

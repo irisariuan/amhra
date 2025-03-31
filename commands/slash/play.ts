@@ -6,7 +6,7 @@ import {
 	createResource,
 	isVideo,
 	isPlaylist,
-	joinVoice,
+	ensureVoiceConnection,
 } from "../../lib/voice/core"
 import { type YouTubePlayList, playlist_info, search } from "play-dl"
 import { dcb, globalApp } from "../../lib/misc"
@@ -33,19 +33,21 @@ export default {
 		const input = interaction.options.getString("search", true)
 
 		const voiceChannel = interaction.member?.voice?.channel
-		if (!voiceChannel) {
+
+		const connection = ensureVoiceConnection(interaction)
+
+		if (!voiceChannel || !connection) {
 			interaction.editReply('You need to be in a voice channel to play music')
 			return
 		}
-
-		const connection = joinVoice(voiceChannel, interaction)
+		
 		dcb.log(`Connected to voice channel (ID: ${voiceChannel.id}, Guild ID: ${interaction.guildId})`)
 
 		const audioPlayer = getAudioPlayer(client, interaction, {
 			createPlayer: true,
 		})
 
-		if (typeof audioPlayer === "boolean" || !audioPlayer || !connection) {
+		if (!audioPlayer || !connection) {
 			throw new Error("Execution Error")
 		}
 		connection.subscribe(audioPlayer)
