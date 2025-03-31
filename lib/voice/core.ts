@@ -87,7 +87,7 @@ export function createAudioPlayer(guildId: string, client: CustomClient, createO
 			dcb.log("Finished music playing")
 			if (player.queue.length > 0) {
 				player.clearIntervals()
-				const nextUrl = player.queue.shift()
+				const nextUrl = player.getNextQueueItem()
 				if (nextUrl) {
 					const resource = await createResource(nextUrl)
 					if (!resource) {

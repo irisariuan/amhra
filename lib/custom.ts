@@ -27,7 +27,7 @@ export interface SongDataPacket {
 		startFrom: number,
 		startTime: number
 	} | null,
-	queue: string[],
+	queue: QueueItem[],
 	volume: number,
 	isPlaying: boolean,
 	history: string[],
@@ -116,6 +116,11 @@ export class CustomClient extends Client {
 	}
 }
 
+interface QueueItem {
+	url: string,
+	repeating: boolean
+}
+
 export class CustomAudioPlayer extends AudioPlayer {
 
 	guildId: string
@@ -132,7 +137,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 	/**
 	 * @description URL of the music queued
 	 */
-	queue: string[]
+	queue: QueueItem[]
 	/**
 	 * @description Distinctive URL of the music played
 	 */
@@ -159,9 +164,6 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	timeoutList: Timer[]
 
-	/**
-	 * @todo Implement looping
-	 */
 	looping: boolean
 
 	constructor(guildId: string, options?: CreateAudioPlayerOptions) {
@@ -188,7 +190,6 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 		this.pauseTimestamp = 0
 
-
 		this.looping = false
 
 		this.timeoutList = []
@@ -213,10 +214,16 @@ export class CustomAudioPlayer extends AudioPlayer {
 	reset() {
 		this.pauseCounter = 0
 		this.pauseTimestamp = 0
+
 		this.queue = []
+		this.history = []
+
 		this.isPlaying = false
-		this.nowPlaying = null
 		this.isPaused = false
+		this.nowPlaying = null
+
+		this.looping = false
+
 		this.startTime = 0
 		this.startFrom = 0
 	}
@@ -235,6 +242,33 @@ export class CustomAudioPlayer extends AudioPlayer {
 		}
 		this.timeoutList = []
 	}
+
+	enableLoop() {
+		this.looping = true
+	}
+	disableLoop() {
+		this.looping = false
+		for (let i = 0; i < this.queue.length; i++) {
+			if (this.queue[i].repeating) {
+				this.queue.splice(i, 1)
+				i--
+			}
+		}
+	}
+
+	getNextQueueItem() {
+		if (this.queue.length === 0) return null
+		const item = this.queue.shift()
+		if (!item) return null
+		if (item.repeating) {
+			this.queue.push({
+				repeating: true,
+				url: item.url
+			})
+		}
+		return item.url
+	}
+
 
 	playResource(resource: Resource) {
 		resource.resource.volume?.setVolume((this.isMuting ? 0 : this.volume) * (setting.VOLUME_MODIFIER ?? 1))
@@ -306,7 +340,10 @@ export class CustomAudioPlayer extends AudioPlayer {
 		return super.unpause()
 	}
 	addToQueue(link: string) {
-		this.queue.push(link)
+		this.queue.push({
+			repeating: false,
+			url: link
+		})
 	}
 	newTimeout(callback: () => void, ms: number) {
 		if (ms < 0) return
