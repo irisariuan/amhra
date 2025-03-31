@@ -16,7 +16,7 @@ export default {
 		}
 		if (index > player.queue.length) return await interaction.reply({ content: 'Out of index!' })
 		const removed = player.queue.splice(index - 1, 1)[0]
-		const videoDetail = client.cache.getUrl(removed)?.value
+		const videoDetail = client.cache.getUrl(removed.url)?.value
 		if (videoDetail) return interaction.reply({ content: `Removed ${videoDetail.title} (\`${removed}\`)` })
 		return interaction.reply({ content: `Removed \`${removed}\`!` })
 	},

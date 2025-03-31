@@ -44,16 +44,16 @@ export default {
 				if (!songs[i]) {
 					continue
 				}
-				const cachedUrl = client.cache.getUrl(songs[i])
+				const cachedUrl = client.cache.getUrl(songs[i].url)
 				if (cachedUrl) {
 					dcb.log('Founded cache, using cached URL')
 				}
-				const data = cachedUrl?.isVideo() ? cachedUrl?.value : (await video_info(songs[i])).video_details
+				const data = cachedUrl?.isVideo() ? cachedUrl?.value : (await video_info(songs[i].url)).video_details
 				if (!cachedUrl) {
-					client.cache.set(songs[i], data, "video")
+					client.cache.set(songs[i].url, data, "video")
 				}
 
-				transformedSongs.push({ details: { durationInSec: data.durationInSec }, title: data.title ?? '', url: songs[i] })
+				transformedSongs.push({ details: { durationInSec: data.durationInSec }, title: data.title ?? '', url: songs[i].url })
 			}
 			return transformedSongs
 		}, interaction, page)
