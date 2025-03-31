@@ -247,8 +247,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	enableLoop() {
 		this.looping = true
-		if (this.nowPlaying) {
-			this.addToQueue(this.nowPlaying.url)
+		if (this.nowPlaying && (this.queue.length === 0 || this.queue.at(-1)?.url !== this.nowPlaying.url && !this.queue.at(-1)?.repeating)) {
+			this.addToQueue(this.nowPlaying.url, true)
 		}
 	}
 	disableLoop() {
@@ -345,12 +345,12 @@ export class CustomAudioPlayer extends AudioPlayer {
 		}
 		return super.unpause()
 	}
-	addToQueue(link: string) {
+	addToQueue(link: string, repeating = false) {
 		if (setting.USE_YOUTUBE_DL && (this.queue.length > 0 || this.isPlaying)) {
 			prefetch(link)
 		}
 		this.queue.push({
-			repeating: false,
+			repeating,
 			url: link
 		})
 	}
