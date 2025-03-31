@@ -255,6 +255,11 @@ export async function initServer(client: CustomClient) {
 					event.emitSong(req.body.guildId, action, {})
 					break
 				}
+				case SongEditType.Loop: {
+					cLog('Setting loop from dashboard')
+					event.emitSong(req.body.guildId, action, req.body.detail)
+					break
+				}
 				default:
 					cError(`Invalid action: ${action}`)
 					return res.sendStatus(400)

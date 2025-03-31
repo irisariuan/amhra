@@ -15,7 +15,8 @@ export enum SongEditType {
     SetQueue = 'setQueue',
     Quit = 'quit',
     Mute = 'mute',
-    Unmute = 'unmute'
+    Unmute = 'unmute',
+    Loop = 'loop',
 }
 
 export type ExpressEventDetail = {
@@ -24,7 +25,8 @@ export type ExpressEventDetail = {
     index?: number
     volume?: string
     queue?: QueueItem[]
-    time?: number
+    time?: number,
+    loop?: boolean,
 }
 
 export enum ActionType {
@@ -39,7 +41,7 @@ export class ExpressEvent extends EventEmitter {
     on(event: 'log', listener: (message: string, type: LogType) => void | Promise<void>): this
     on(event: 'reloadCommands', listener: () => void | Promise<void>): this
     on(event: 'page', listener: (path: string) => void | Promise<void>): this
-    on(event: 'songInterruption', listener: (<T extends SongEditType>(guildId: string, action: T, detail: ExpressEventDetail) => void | Promise<void>) | ((guildId: string, action: SongEditType) => void | Promise<void>)): this
+    on(event: 'songInterruption', listener: ((guildId: string, action: SongEditType, detail: ExpressEventDetail) => void | Promise<void>) | ((guildId: string, action: SongEditType) => void | Promise<void>)): this
     // biome-ignore lint/suspicious/noExplicitAny: Function overloaded
     on(event: string, listener: (...args: any[]) => void | Promise<void>) {
         return super.on(event, listener)

@@ -232,6 +232,17 @@ event.on('songInterruption', async (guildId, action, detail) => {
 			player.mute()
 			break
 		}
+		case SongEditType.Loop: {
+			dcb.log('Setting loop from dashboard')
+			if (detail.loop) {
+				dcb.log('Enabled loop')
+				player.enableLoop()
+			} else {
+				dcb.log('Disabled loop')
+				player.disableLoop()
+			}
+			break
+		}
 		default:
 			break
 	}
