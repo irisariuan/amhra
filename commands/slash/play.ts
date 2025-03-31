@@ -101,9 +101,9 @@ export default {
 				}
 				audioPlayer.playResource(data)
 
-				dcb.log(`Playing Searched URL ${videoUrl}`)
+				dcb.log(`Playing Searched URL ${videoUrl.url}`)
 				return await interaction.editReply({
-					content: `Playing ${data.title} (${videoUrl})`,
+					content: `Playing ${data.title} (${videoUrl.url})`,
 				})
 			} catch (e) {
 				globalApp.err(
