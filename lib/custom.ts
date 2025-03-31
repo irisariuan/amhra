@@ -37,7 +37,8 @@ export interface SongDataPacket {
 	paused: boolean,
 	pausedInMs: number,
 	pausedTimestamp: number,
-	isMuting: boolean
+	isMuting: boolean,
+	loop: boolean
 }
 
 export interface TokenReturn {
@@ -324,7 +325,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 			pausedInMs: this.pauseCounter,
 			pausedTimestamp: this.pauseTimestamp,
 			useYoutubeDl: setting.USE_YOUTUBE_DL,
-			canSeek: setting.SEEK
+			canSeek: setting.SEEK,
+			loop: this.looping
 		}
 	}
 	pause() {
