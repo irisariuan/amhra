@@ -24,7 +24,7 @@ import { readSetting } from "../read"
 import dotenv from 'dotenv'
 import fs from 'node:fs'
 import type { APIInteractionGuildMember, CacheType, CommandInteraction, GuildMember, VoiceBasedChannel, VoiceChannel } from "discord.js"
-import { recordingList, saveRecord, startRecord, stopRecord } from "./record"
+import { recordingList, startRecord, stopRecord } from "./record"
 import { createYtDlpStream } from "./stream"
 import type { Readable } from "node:stream"
 dotenv.config()
@@ -154,7 +154,7 @@ export interface Stream { stream: Readable, type: StreamType }
 
 export async function createStream(url: string, seek?: number): Promise<Stream> {
 	if (setting.USE_YOUTUBE_DL) {
-		const stream = createYtDlpStream(url, seek)
+		const stream = await createYtDlpStream(url, seek)
 		// const stream = ytdl(url, { filter: 'audioonly', quality: 'highestaudio', begin: seek, agent })
 		return { stream, type: StreamType.Arbitrary }
 	}

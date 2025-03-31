@@ -11,6 +11,14 @@ if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
     writeFileSync(`${process.cwd()}/data/lastUsed.record`, '')
 }
 
+interface YtDlpStream {
+    stream: Readable,
+    fileStream: NodeJS.WritableStream,
+    promise: Promise<void>,
+}
+
+const streams = new Map<string, YtDlpStream>()
+
 async function reviewCaches(forceReview = false) {
     const maxSize = readSetting().MAX_CACHE_IN_GB * 1024 * 1024 * 1024
     let { size } = await stat(`${process.cwd()}/cache`)
@@ -70,11 +78,19 @@ function parseTime(seek: number) {
     return `*${str}-inf`
 }
 
-export function createYtDlpStream(url: string, seek?: number, force = false): Readable {
+export async function createYtDlpStream(url: string, seek?: number, force = false): Promise<Readable> {
     const id = extractID(url)
+    const fetchedStream = streams.get(id)
+    if (fetchedStream && !force) {
+        dcb.log(`Stream hit: ${id}`)
+        if (fetchedStream.stream.readable) {
+            return fetchedStream.stream
+        }
+        await fetchedStream.promise
+    }
     if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
-        updateLastUsed([id])
         dcb.log(`Cache hit: ${id}`)
+        updateLastUsed([id])
         return createReadStream(`${process.cwd()}/cache/${id}.music`)
     }
     const stream = spawn('yt-dlp', [
@@ -93,7 +109,7 @@ export function createYtDlpStream(url: string, seek?: number, force = false): Re
     const fileStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
     stream.stdout.pipe(resultStream)
     stream.stdout.pipe(fileStream)
-    fileStream.on('finish', async () => {
+    const promise = new Promise<void>(r => fileStream.once('finish', async () => {
         fileStream.close()
         dcb.log(`Downloaded: ${id}`)
         const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
@@ -105,6 +121,10 @@ export function createYtDlpStream(url: string, seek?: number, force = false): Re
         await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
         await updateLastUsed([id])
         await reviewCaches()
-    })
+        streams.delete(id)
+        dcb.log(`Stream finished: ${id}`)
+        r()
+    }))
+    streams.set(id, { stream: resultStream, fileStream, promise })
     return resultStream
 }
