@@ -1,6 +1,6 @@
 import moment from "moment";
 import { spawn } from "node:child_process";
-import { PassThrough, type Readable } from "node:stream";
+import { PassThrough, type Writable, type Readable } from "node:stream";
 import { extractID } from "play-dl";
 import { createWriteStream, renameSync, existsSync, createReadStream, readdirSync, writeFileSync } from 'node:fs'
 import { readFile, writeFile, stat, unlink, rename } from "node:fs/promises";
@@ -12,8 +12,8 @@ if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
 }
 
 interface YtDlpStream {
-    stream: Readable,
-    fileStream: NodeJS.WritableStream,
+    readStream?: Readable,
+    writeStream?: Writable,
     promise: Promise<void>,
 }
 
@@ -81,11 +81,11 @@ function parseTime(seek: number) {
 export async function createYtDlpStream(url: string, seek?: number, force = false): Promise<Readable> {
     const id = extractID(url)
     const fetchedStream = streams.get(id)
-    if (fetchedStream && !force) {
+    if (fetchedStream) {
         dcb.log(`Stream hit: ${id}`)
-        if (fetchedStream.stream.readable) {
+        if (fetchedStream.readStream?.readable) {
             dcb.log(`Stream is readable: ${id}`)
-            return fetchedStream.stream
+            return fetchedStream.readStream
         }
         dcb.log(`Stream is not readable: ${id}`)
         await fetchedStream.promise
@@ -94,7 +94,16 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
     if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
         dcb.log(`Cache hit: ${id}`)
         updateLastUsed([id])
-        return createReadStream(`${process.cwd()}/cache/${id}.music`)
+        const stream = createReadStream(`${process.cwd()}/cache/${id}.music`)
+        dcb.log(`Stream created: ${id}`)
+        const promise = new Promise<void>(r => stream.on('end', async () => {
+            dcb.log(`Stream ended: ${id}`)
+            streams.delete(id)
+            r()
+            await reviewCaches()
+        }))
+        streams.set(id, { readStream: stream, promise })
+        return stream
     }
     const stream = spawn('yt-dlp', [
         url,
@@ -128,6 +137,6 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
         dcb.log(`Stream finished: ${id}`)
         r()
     }))
-    streams.set(id, { stream: resultStream, fileStream, promise })
+    streams.set(id, { readStream: resultStream, writeStream: fileStream, promise })
     return resultStream
 }
