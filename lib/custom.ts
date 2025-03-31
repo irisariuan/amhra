@@ -247,7 +247,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	enableLoop() {
 		this.looping = true
-		if (this.nowPlaying && (this.queue.length === 0 || this.queue.at(-1)?.url !== this.nowPlaying.url && !this.queue.at(-1)?.repeating)) {
+		const lastItem = this.queue.at(-1)
+		if (this.nowPlaying && (!lastItem || (lastItem.url !== this.nowPlaying.url && !lastItem.repeating))) {
 			this.addToQueue(this.nowPlaying.url, true)
 		}
 	}
