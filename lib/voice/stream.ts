@@ -84,9 +84,12 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
     if (fetchedStream && !force) {
         dcb.log(`Stream hit: ${id}`)
         if (fetchedStream.stream.readable) {
+            dcb.log(`Stream is readable: ${id}`)
             return fetchedStream.stream
         }
+        dcb.log(`Stream is not readable: ${id}`)
         await fetchedStream.promise
+        dcb.log(`Stream finished: ${id}`)
     }
     if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
         dcb.log(`Cache hit: ${id}`)
