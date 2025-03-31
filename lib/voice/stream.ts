@@ -122,22 +122,29 @@ export async function prefetch(url: string, seek?: number) {
     const fileStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
     stream.stdout.pipe(resultStream)
     stream.stdout.pipe(fileStream)
-    const promise = new Promise<void>(r => fileStream.once('finish', async () => {
-        fileStream.close()
-        dcb.log(`Downloaded: ${id}`)
-        const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
-        if (size === 0) {
-            globalApp.warn(`Downloaded file is empty: ${id}, deleting it`)
-            await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch(() => { })
-            return
-        }
-        await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
-        await updateLastUsed([id])
-        await reviewCaches()
-        streams.delete(id)
-        dcb.log(`Stream finished: ${id}`)
-        r()
-    }))
+    const promise = new Promise<void>((r, err) => {
+        fileStream.once('finish', async () => {
+            fileStream.close()
+            dcb.log(`Downloaded: ${id}`)
+            const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
+            if (size === 0) {
+                globalApp.warn(`Downloaded file is empty: ${id}, deleting it`)
+                await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch(() => { })
+                return
+            }
+            await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
+            await updateLastUsed([id])
+            await reviewCaches()
+            streams.delete(id)
+            dcb.log(`Stream finished: ${id}`)
+            r()
+        })
+        fileStream.on('error', (error) => {
+            globalApp.err(`File stream error: ${id}`, error)
+            streams.delete(id)
+            err(error)
+        })
+    })
     streams.set(id, { readStream: resultStream, writeStream: fileStream, promise })
 }
 
@@ -159,12 +166,19 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
         updateLastUsed([id])
         const stream = createReadStream(`${process.cwd()}/cache/${id}.music`)
         dcb.log(`Stream created: ${id}`)
-        const promise = new Promise<void>(r => stream.on('end', async () => {
-            dcb.log(`Stream ended: ${id}`)
-            streams.delete(id)
-            r()
-            await reviewCaches()
-        }))
+        const promise = new Promise<void>((r, err) => {
+            stream.on('end', async () => {
+                dcb.log(`Stream ended: ${id}`)
+                streams.delete(id)
+                r()
+                await reviewCaches()
+            })
+            stream.on('error', (error) => {
+                globalApp.err(`Stream error: ${id}`, error)
+                streams.delete(id)
+                err(error)
+            })
+        })
         streams.set(id, { readStream: stream, promise })
         if (seek) {
             dcb.log(`Seek requested: ${id}`)
