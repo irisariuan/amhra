@@ -78,34 +78,12 @@ function parseTime(seek: number) {
     return `*${str}-inf`
 }
 
-export async function createYtDlpStream(url: string, seek?: number, force = false): Promise<Readable> {
+export async function prefetch(url: string, seek?: number) {
     const id = extractID(url)
-    const fetchedStream = streams.get(id)
-    if (fetchedStream) {
-        dcb.log(`Stream hit: ${id}`)
-        if (fetchedStream.readStream?.readable) {
-            dcb.log(`Stream is readable: ${id}`)
-            return fetchedStream.readStream
-        }
-        dcb.log(`Stream is not readable: ${id}`)
-        await fetchedStream.promise
-        dcb.log(`Stream finished: ${id}`)
+    if (existsSync(`${process.cwd()}/cache/${id}.music`) || streams.has(id)) {
+        dcb.log(`Cache hit: ${id}, skipping prefetch`)
+        return
     }
-    if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
-        dcb.log(`Cache hit: ${id}`)
-        updateLastUsed([id])
-        const stream = createReadStream(`${process.cwd()}/cache/${id}.music`)
-        dcb.log(`Stream created: ${id}`)
-        const promise = new Promise<void>(r => stream.on('end', async () => {
-            dcb.log(`Stream ended: ${id}`)
-            streams.delete(id)
-            r()
-            await reviewCaches()
-        }))
-        streams.set(id, { readStream: stream, promise })
-        return stream
-    }
-    dcb.log(`Cache miss: ${id}, downloading...`)
     const stream = spawn('yt-dlp', [
         url,
         '--format', 'bestaudio',
@@ -139,5 +117,57 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
         r()
     }))
     streams.set(id, { readStream: resultStream, writeStream: fileStream, promise })
-    return resultStream
+}
+
+export async function createYtDlpStream(url: string, seek?: number, force = false): Promise<Readable> {
+    const id = extractID(url)
+    const fetchedStream = streams.get(id)
+    if (fetchedStream) {
+        dcb.log(`Stream hit: ${id}`)
+        if (fetchedStream.readStream?.readable) {
+            dcb.log(`Stream is readable: ${id}`)
+            return fetchedStream.readStream
+        }
+        dcb.log(`Stream is not readable: ${id}`)
+        await fetchedStream.promise
+        dcb.log(`Stream finished: ${id}`)
+    }
+    if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
+        dcb.log(`Cache hit: ${id}`)
+        updateLastUsed([id])
+        const stream = createReadStream(`${process.cwd()}/cache/${id}.music`)
+        dcb.log(`Stream created: ${id}`)
+        const promise = new Promise<void>(r => stream.on('end', async () => {
+            dcb.log(`Stream ended: ${id}`)
+            streams.delete(id)
+            r()
+            await reviewCaches()
+        }))
+        streams.set(id, { readStream: stream, promise })
+        if (seek) {
+            dcb.log(`Seek requested: ${id}`)
+            const ffmpegStream = spawn('ffmpeg', [
+                '-i', 'pipe:0',
+                '-ss', seek.toString(),
+                '-f', 'opus',
+                'pipe:1'
+            ], {
+                shell: true,
+                stdio: ['pipe', 'pipe', 'inherit'],
+            })
+            const resultStream = new PassThrough()
+            stream.pipe(ffmpegStream.stdin)
+            ffmpegStream.stdout.pipe(resultStream)
+            return resultStream
+        }
+        return stream
+    }
+    dcb.log(`Cache miss: ${id}, downloading...`)
+    await prefetch(url, seek)
+    const resultStream = streams.get(id)
+    if (!resultStream?.readStream) {
+        dcb.log(`Stream not found: ${id}`)
+        throw new Error(`Stream not found: ${id}`)
+    }
+    return resultStream.readStream
 }
