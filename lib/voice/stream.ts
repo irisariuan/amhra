@@ -105,6 +105,7 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
         streams.set(id, { readStream: stream, promise })
         return stream
     }
+    dcb.log(`Cache miss: ${id}, downloading...`)
     const stream = spawn('yt-dlp', [
         url,
         '--format', 'bestaudio',
