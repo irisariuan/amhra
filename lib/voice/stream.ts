@@ -36,6 +36,10 @@ async function closeAllStreams() {
 }
 
 process.on('beforeExit', closeAllStreams)
+process.on('SIGINT', async () => {
+    await closeAllStreams()
+    process.exit(0)
+})
 
 async function reviewCaches(forceReview = false) {
     const maxSize = readSetting().MAX_CACHE_IN_GB * 1024 * 1024 * 1024
