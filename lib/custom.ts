@@ -116,7 +116,7 @@ export class CustomClient extends Client {
 	}
 }
 
-interface QueueItem {
+export interface QueueItem {
 	url: string,
 	repeating: boolean
 }

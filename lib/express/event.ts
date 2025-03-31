@@ -1,3 +1,4 @@
+import type { QueueItem } from "../custom";
 import type { LogType } from "../log/load";
 
 const EventEmitter = require('node:events')
@@ -22,7 +23,7 @@ export type ExpressEventDetail = {
     sec?: number
     index?: number
     volume?: string
-    queue?: string[]
+    queue?: QueueItem[]
     time?: number
 }
 
