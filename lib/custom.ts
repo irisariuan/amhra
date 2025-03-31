@@ -5,6 +5,7 @@ import type { AudioResource } from "@discordjs/voice"
 import type { YouTubeChannel, YouTubeVideo } from "play-dl"
 import { misc } from './misc'
 import { readSetting } from './read'
+import { prefetch } from "./voice/stream"
 
 const setting = readSetting()
 
@@ -340,6 +341,9 @@ export class CustomAudioPlayer extends AudioPlayer {
 		return super.unpause()
 	}
 	addToQueue(link: string) {
+		if (setting.USE_YOUTUBE_DL) {
+			prefetch(link)
+		}
 		this.queue.push({
 			repeating: false,
 			url: link

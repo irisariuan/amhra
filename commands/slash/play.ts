@@ -91,19 +91,19 @@ export default {
 		if (!audioPlayer.isPlaying) {
 			dcb.log("Started to play music")
 			try {
-				const videoUrl = audioPlayer.queue.shift()
+				const videoUrl = audioPlayer.getNextQueueItem()
 				if (!videoUrl) {
 					return interaction.editReply(misc.errorMessageObj)
 				}
-				const data = await createResource(videoUrl.url)
+				const data = await createResource(videoUrl)
 				if (!data) {
 					return interaction.editReply(misc.errorMessageObj)
 				}
 				audioPlayer.playResource(data)
 
-				dcb.log(`Playing Searched URL ${videoUrl.url}`)
+				dcb.log(`Playing Searched URL ${videoUrl}`)
 				return await interaction.editReply({
-					content: `Playing ${data.title} (${videoUrl.url})`,
+					content: `Playing ${data.title} (${videoUrl})`,
 				})
 			} catch (e) {
 				globalApp.err(

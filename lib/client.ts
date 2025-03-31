@@ -161,14 +161,14 @@ event.on('songInterruption', async (guildId, action, detail) => {
 			}
 			player.addToQueue(detail.url)
 			if (!player.isPlaying) {
-				const p = player.queue.shift()
+				const p = player.getNextQueueItem()
 				if (!p) return
-				const res = await createResource(p.url)
+				const res = await createResource(p)
 				if (!res) {
 					return globalApp.err('Failed to create resource')
 				}
 
-				event.emitSongInfo(p.url)
+				event.emitSongInfo(p)
 				player.playResource(res)
 				dcb.log('Started playing song from queue')
 			}
