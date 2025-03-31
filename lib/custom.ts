@@ -341,7 +341,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		return super.unpause()
 	}
 	addToQueue(link: string) {
-		if (setting.USE_YOUTUBE_DL && this.queue.length > 0) {
+		if (setting.USE_YOUTUBE_DL && (this.queue.length > 0 || this.isPlaying)) {
 			prefetch(link)
 		}
 		this.queue.push({
