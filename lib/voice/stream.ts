@@ -19,6 +19,22 @@ interface YtDlpStream {
 
 const streams = new Map<string, YtDlpStream>()
 
+async function closeAllStreams() {
+    globalApp.important('Closing all streams')
+    for (const [id, stream] of streams) {
+        dcb.log(`Waiting for stream: ${id}`)
+        await stream.promise
+        dcb.log(`Stream finished: ${id}`)
+    }
+    globalApp.important('All streams closed')
+
+}
+
+process.on('SIGINT', closeAllStreams)
+process.on('SIGUSR1', closeAllStreams)
+process.on('SIGUSR2', closeAllStreams)
+process.on('exit', closeAllStreams)
+
 async function reviewCaches(forceReview = false) {
     const maxSize = readSetting().MAX_CACHE_IN_GB * 1024 * 1024 * 1024
     let { size } = await stat(`${process.cwd()}/cache`)
