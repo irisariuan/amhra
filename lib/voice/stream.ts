@@ -25,7 +25,6 @@ async function closeAllStreams() {
         dcb.log(`Killing stream: ${id}`)
         stream.readStream?.destroy()
         stream.writeStream?.destroy()
-        await stream.promise
         if (await existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
             dcb.log(`Deleting temp file: ${id}`)
             await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch(() => { })
