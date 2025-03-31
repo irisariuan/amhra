@@ -247,6 +247,9 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	enableLoop() {
 		this.looping = true
+		if (this.nowPlaying) {
+			this.addToQueue(this.nowPlaying.url)
+		}
 	}
 	disableLoop() {
 		this.looping = false
