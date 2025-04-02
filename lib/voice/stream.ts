@@ -154,6 +154,7 @@ export async function prefetch(url: string, seek?: number) {
         })
         fileStream.on('error', errorHandler)
         resultStream.on('error', errorHandler)
+        stream.on('error', errorHandler)
     })
     streams.set(id, { readStream: resultStream, writeStream: fileStream, promise })
 }
