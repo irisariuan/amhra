@@ -27,7 +27,7 @@ async function closeAllStreams() {
         stream.writeStream?.destroy()
         if (await existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
             dcb.log(`Deleting temp file: ${id}`)
-            await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch(() => { })
+            await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch()
         }
         dcb.log(`Stream finished: ${id}`)
     }
@@ -55,7 +55,7 @@ async function reviewCaches(forceReview = false) {
             const metadata = await stat(`${process.cwd()}/cache/${id}.music`)
             if (metadata.size === 0 || size >= maxSize && !forceReview && lastUsed < Date.now() - 1000 * 60 * 60 * 24) {
                 dcb.log(`Deleting cache: ${id}`)
-                unlink(`${process.cwd()}/cache/${id}.music`).catch(() => { })
+                unlink(`${process.cwd()}/cache/${id}.music`).catch()
                 size -= metadata.size
                 deletedFiles.push(id)
             }
@@ -67,6 +67,7 @@ async function reviewCaches(forceReview = false) {
 async function updateLastUsed(updateIds: string[], deleteIds?: string[]) {
     const data = (await readFile(`${process.cwd()}/data/lastUsed.record`, 'utf8')).split('\n');
     (() => {
+        if (!updateIds.length) return
         for (let i = 0; i < data.length; i++) {
             const line = data[i]
             for (const id of updateIds) {
@@ -79,7 +80,7 @@ async function updateLastUsed(updateIds: string[], deleteIds?: string[]) {
         data.push(`${updateIds}=${Date.now()}`)
     })();
     (() => {
-        if (!deleteIds) return
+        if (!deleteIds?.length) return
         for (let i = 0; i < data.length; i++) {
             const line = data[i]
             for (const id of deleteIds) {
@@ -123,13 +124,25 @@ export async function prefetch(url: string, seek?: number) {
     stream.stdout.pipe(resultStream)
     stream.stdout.pipe(fileStream)
     const promise = new Promise<void>((r, err) => {
+        const errorHandler = async (error: Error) => {
+            globalApp.err(`File stream error: ${id}`, error)
+            streams.delete(id)
+            fileStream.close()
+            resultStream.destroy()
+            const temp = await unlink(`${process.cwd()}/cache/${id}.temp.music`).then(() => true).catch(() => false)
+            const actual = await unlink(`${process.cwd()}/cache/${id}.music`).then(() => true).catch(() => false)
+            await updateLastUsed([], [id])
+            if (temp) dcb.log(`Deleted temp: ${id}`)
+            if (actual) dcb.log(`Deleted cache: ${id}`)
+            err(error)
+        }
         fileStream.once('finish', async () => {
             fileStream.close()
             dcb.log(`Downloaded: ${id}`)
             const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
             if (size === 0) {
                 globalApp.warn(`Downloaded file is empty: ${id}, deleting it`)
-                await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch(() => { })
+                await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch()
                 return
             }
             await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
@@ -139,11 +152,8 @@ export async function prefetch(url: string, seek?: number) {
             dcb.log(`Stream finished: ${id}`)
             r()
         })
-        fileStream.on('error', (error) => {
-            globalApp.err(`File stream error: ${id}`, error)
-            streams.delete(id)
-            err(error)
-        })
+        fileStream.on('error', errorHandler)
+        resultStream.on('error', errorHandler)
     })
     streams.set(id, { readStream: resultStream, writeStream: fileStream, promise })
 }
