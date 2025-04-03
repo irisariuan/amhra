@@ -132,9 +132,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
     const rawOutputStream = spawnedProcess.stdout
     const writeStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
     const data: (string | Buffer)[] = []
-    rawOutputStream.on('data', chunk => {
-        writeStream.write(chunk)
-    })
+    rawOutputStream.pipe(writeStream)
 
     rawOutputStream.on('end', () => {
         dcb.log(`Stream closed: ${id}`)
