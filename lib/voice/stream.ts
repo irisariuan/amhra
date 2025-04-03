@@ -150,23 +150,25 @@ export async function prefetch(url: string, seek?: number, force = false) {
     })
 
     const promise = new Promise<void>((r, err) => {
-        const errorHandler = async (error: Error) => {
-            globalApp.err(`File stream error: ${id}`, error)
-            streams.delete(id)
+        const errorHandler = (streamType: 'result' | 'raw' | 'file') => {
+            return async (error: Error) => {
+                globalApp.err(`File stream error (${streamType}): ${id}`, error)
+                streams.delete(id)
 
-            rawStream.kill()
-            resultStream.destroy()
-            fileStream.close()
+                rawStream.kill()
+                resultStream.destroy()
+                fileStream.close()
 
-            const temp = await unlink(`${process.cwd()}/cache/${id}.temp.music`).then(() => true).catch(() => false)
-            if (temp) dcb.log(`Deleted temp: ${id}`)
-            await updateLastUsed([], [id])
-            err(error)
+                const temp = await unlink(`${process.cwd()}/cache/${id}.temp.music`).then(() => true).catch(() => false)
+                if (temp) dcb.log(`Deleted temp: ${id}`)
+                await updateLastUsed([], [id])
+                err(error)
+            }
         }
 
-        resultStream.on('error', errorHandler)
-        rawStream.on('error', errorHandler)
-        fileStream.on('error', errorHandler)
+        resultStream.on('error', errorHandler('result'))
+        rawStream.on('error', errorHandler('raw'))
+        fileStream.on('error', errorHandler('file'))
         fileStream.once('close', r)
     })
     streams.set(id, { readStream: resultStream, writeStream: fileStream, promise })
