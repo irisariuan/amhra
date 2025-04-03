@@ -133,7 +133,6 @@ export async function prefetch(url: string, seek?: number, force = false) {
     const writeStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
     const data: (string | Buffer)[] = []
     rawOutputStream.on('data', chunk => {
-        console.log(`Received chunk: ${chunk.length} bytes`)
         writeStream.write(chunk)
     })
 
