@@ -133,9 +133,9 @@ export async function prefetch(url: string, seek?: number) {
         globalApp.err(`File stream error: ${id}`, error)
         streams.delete(id)
 
-        fileStream.close()
-        resultStream.destroy()
         rawStream.kill()
+        resultStream.destroy()
+        fileStream.close()
 
         const temp = await unlink(`${process.cwd()}/cache/${id}.temp.music`).then(() => true).catch(() => false)
         if (temp) dcb.log(`Deleted temp: ${id}`)
@@ -143,7 +143,6 @@ export async function prefetch(url: string, seek?: number) {
     }
 
     fileStream.once('finish', async () => {
-        fileStream.close()
         dcb.log(`Downloaded: ${id}`)
         const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
         if (size === 0) {
