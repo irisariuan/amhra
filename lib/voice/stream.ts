@@ -171,7 +171,9 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
         }
         if (fetchedStream.readStream?.readable) {
             dcb.log(`Stream is readable: ${id}`)
-            return fetchedStream.readStream
+            const passThrough = new PassThrough()
+            fetchedStream.readStream.pipe(passThrough)
+            return passThrough
         }
         dcb.log(`Stream is not readable: ${id}`)
         await fetchedStream.promise
