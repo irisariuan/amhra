@@ -132,7 +132,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
     const fileStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
 
     rawStream.stdout.pipe(resultStream)
-    rawStream.stdout.pipe(fileStream)
+    rawStream.stdout.pipe(fileStream, { end: true })
 
     const errorHandler = async (error: Error) => {
         globalApp.err(`File stream error: ${id}`, error)
@@ -155,8 +155,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
         fileStream.on('error', err)
         resultStream.on('error', err)
         rawStream.on('error', err)
-        fileStream.once('finish', async () => {
-            fileStream.close()
+        fileStream.once('end', async () => {
             dcb.log(`Downloaded: ${id}`)
             const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
             if (size === 0) {
