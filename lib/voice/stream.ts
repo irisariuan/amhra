@@ -110,6 +110,7 @@ export async function prefetch(url: string, seek?: number) {
     const rawStream = spawn('yt-dlp', [
         url,
         '--format', 'bestaudio',
+        '--verbose',
         '-q',
         '--no-playlist',
         '--force-ipv4',
