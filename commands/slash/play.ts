@@ -60,7 +60,7 @@ export default {
 
 		//searching data on youtube and add to queue
 		// find if there is cache, cache is saved in YoutubeVideo form
-		let videoUrl: string | undefined | null
+		let videoUrl: string
 		if (isVideo(input)) {
 			videoUrl = input
 		} else if (isPlaylist(input)) {
@@ -72,11 +72,13 @@ export default {
 				playlist = await playlist_info(input, { incomplete: true })
 				client.cache.set(input, playlist, 'playlist')
 			}
-			audioPlayer.queue = audioPlayer.queue.concat((await playlist.all_videos()).map(v => ({
+			const allVideos = await playlist.all_videos()
+
+			audioPlayer.queue = audioPlayer.queue.concat(allVideos.map(v => ({
 				repeating: false,
 				url: v.url,
 			})))
-			videoUrl = audioPlayer.getNextQueueItem()
+			videoUrl = audioPlayer.getNextQueueItem() ?? allVideos[0].url
 			if (!videoUrl) return interaction.editReply('The playlist is empty!')
 		} else {
 			const cached = client.cache.get(input)
