@@ -136,16 +136,14 @@ export async function prefetch(url: string, seek?: number, force = false) {
 
     rawOutputStream.on('end', () => {
         dcb.log(`Stream closed: ${id}`)
-        writeStream.end()
-    })
-
-    writeStream.on('finish', async () => {
-        dcb.log(`Download completed: ${id}`)
-        writeStream.close()
-        streams.delete(id)
-        await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
-        await updateLastUsed([id])
-        await reviewCaches()
+        writeStream.end(async () => {
+            dcb.log(`Download completed: ${id}`)
+            writeStream.close()
+            streams.delete(id)
+            await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
+            await updateLastUsed([id])
+            await reviewCaches()
+        })
     })
 
     writeStream.on('error', async (error) => {
