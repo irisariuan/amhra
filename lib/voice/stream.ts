@@ -38,6 +38,7 @@ process.on('beforeExit', async (code) => {
     if (code === 64) return
     globalApp.important('Process exiting, closing all streams')
     await closeAllStreams()
+    process.exit(64)
 })
 process.on('SIGINT', async () => {
     await closeAllStreams()
