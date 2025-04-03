@@ -34,10 +34,14 @@ async function closeAllStreams() {
     globalApp.important('All streams closed')
 }
 
-process.on('beforeExit', closeAllStreams)
+process.on('beforeExit', async (code) => {
+    if (code === 64) return
+    globalApp.important('Process exiting, closing all streams')
+    await closeAllStreams()
+})
 process.on('SIGINT', async () => {
     await closeAllStreams()
-    process.exit(0)
+    process.exit(64)
 })
 
 async function reviewCaches(forceReview = false) {
