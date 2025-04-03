@@ -102,15 +102,15 @@ function parseTime(seek: number) {
 
 export async function prefetch(url: string, seek?: number) {
     const id = extractID(url)
+    const processedUrl = `"https://www.youtube.com/watch?v=${id}"`
     if (existsSync(`${process.cwd()}/cache/${id}.music`) || streams.has(id)) {
         dcb.log(`Cache hit: ${id}, skipping prefetch`)
         return
     }
 
     const args = [
-        url,
+        processedUrl,
         '--format', 'bestaudio',
-        '--verbose',
         '-q',
         '--no-playlist',
         '--force-ipv4',
@@ -118,7 +118,7 @@ export async function prefetch(url: string, seek?: number) {
         '-o', '-',
     ]
 
-    dcb.log(`Downloading: ${id} (${url}, yt-dlp ${args.join(' ')})`)
+    dcb.log(`Downloading: ${id} (${processedUrl}, yt-dlp ${args.join(' ')})`)
     const rawStream = spawn('yt-dlp', args, {
         shell: true,
         stdio: ['ignore', 'pipe', 'inherit'],
