@@ -145,6 +145,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
             streams.delete(id)
             await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
             await reviewCaches()
+            await updateLastUsed([id])
             r()
         })
         rawStream.on('error', (error) => {
