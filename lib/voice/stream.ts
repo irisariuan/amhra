@@ -106,6 +106,7 @@ export async function prefetch(url: string, seek?: number) {
         dcb.log(`Cache hit: ${id}, skipping prefetch`)
         return
     }
+    dcb.log(`Downloading: ${id} (${url})`)
     const rawStream = spawn('yt-dlp', [
         url,
         '--format', 'bestaudio',
@@ -118,7 +119,6 @@ export async function prefetch(url: string, seek?: number) {
         shell: true,
         stdio: ['ignore', 'pipe', 'inherit'],
     })
-    dcb.log(`Downloading: ${id}`)
     const resultStream = new PassThrough()
     const fileStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
 
