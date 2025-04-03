@@ -106,7 +106,7 @@ export async function prefetch(url: string, seek?: number) {
         dcb.log(`Cache hit: ${id}, skipping prefetch`)
         return
     }
-    const stream = spawn('yt-dlp', [
+    const rawStream = spawn('yt-dlp', [
         url,
         '--format', 'bestaudio',
         '-q',
@@ -121,40 +121,48 @@ export async function prefetch(url: string, seek?: number) {
     dcb.log(`Downloading: ${id}`)
     const resultStream = new PassThrough()
     const fileStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
-    stream.stdout.pipe(resultStream)
-    stream.stdout.pipe(fileStream)
+
+    rawStream.stdout.pipe(resultStream)
+    rawStream.stdout.pipe(fileStream)
+    
+    const errorHandler = async (error: Error) => {
+        globalApp.err(`File stream error: ${id}`, error)
+        streams.delete(id)
+
+        fileStream.close()
+        resultStream.destroy()
+        rawStream.kill()
+
+        const temp = await unlink(`${process.cwd()}/cache/${id}.temp.music`).then(() => true).catch(() => false)
+        if (temp) dcb.log(`Deleted temp: ${id}`)
+        await updateLastUsed([], [id])
+    }
+
+    fileStream.once('finish', async () => {
+        fileStream.close()
+        dcb.log(`Downloaded: ${id}`)
+        const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
+        if (size === 0) {
+            globalApp.warn(`Downloaded file is empty: ${id}, deleting it`)
+            await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch()
+            return
+        }
+        await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
+        await updateLastUsed([id])
+        await reviewCaches()
+        streams.delete(id)
+        dcb.log(`Stream finished: ${id}`)
+    })
+
     const promise = new Promise<void>((r, err) => {
-        const errorHandler = async (error: Error) => {
-            globalApp.err(`File stream error: ${id}`, error)
-            streams.delete(id)
-            fileStream.close()
-            resultStream.destroy()
-            const temp = await unlink(`${process.cwd()}/cache/${id}.temp.music`).then(() => true).catch(() => false)
-            const actual = await unlink(`${process.cwd()}/cache/${id}.music`).then(() => true).catch(() => false)
-            await updateLastUsed([], [id])
-            if (temp) dcb.log(`Deleted temp: ${id}`)
-            if (actual) dcb.log(`Deleted cache: ${id}`)
+        const wrappedErrorHandler = (error: Error) => {
+            errorHandler(error)
             err(error)
         }
-        fileStream.once('finish', async () => {
-            fileStream.close()
-            dcb.log(`Downloaded: ${id}`)
-            const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
-            if (size === 0) {
-                globalApp.warn(`Downloaded file is empty: ${id}, deleting it`)
-                await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch()
-                return
-            }
-            await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
-            await updateLastUsed([id])
-            await reviewCaches()
-            streams.delete(id)
-            dcb.log(`Stream finished: ${id}`)
-            r()
-        })
-        fileStream.on('error', errorHandler)
-        resultStream.on('error', errorHandler)
-        stream.on('error', errorHandler)
+        fileStream.on('error', wrappedErrorHandler)
+        resultStream.on('error', wrappedErrorHandler)
+        rawStream.on('error', wrappedErrorHandler)
+        fileStream.once('finish', r)
     })
     streams.set(id, { readStream: resultStream, writeStream: fileStream, promise })
 }
