@@ -16,6 +16,7 @@ interface YtDlpStream {
     writeStream?: Writable,
     rawStream?: Readable,
     promise: Promise<void>,
+    data: (Buffer | string)[]
 }
 
 const streams = new Map<string, YtDlpStream>()
@@ -132,9 +133,14 @@ export async function prefetch(url: string, seek?: number, force = false) {
     const resultStream = new PassThrough()
     const writeFileStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
 
+    const data: (Buffer | string)[] = []
+
     rawStream.stdout.pipe(writeFileStream)
     rawStream.stdout.pipe(resultStream)
 
+    rawStream.stdout.on('data', (chunk) => {
+        data.push(chunk)
+    })
     rawStream.stdout.on('end', () => {
         dcb.log(`Download finished: ${id}`)
         writeFileStream.end()
@@ -155,7 +161,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
             err(error)
         })
     })
-    streams.set(id, { readStream: resultStream, writeStream: writeFileStream, promise, rawStream: rawStream.stdout })
+    streams.set(id, { readStream: resultStream, writeStream: writeFileStream, promise, rawStream: rawStream.stdout, data })
 }
 
 export async function createYtDlpStream(url: string, seek?: number, force = false): Promise<Readable> {
@@ -172,6 +178,9 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
         if (fetchedStream.readStream?.readable) {
             dcb.log(`Stream is readable: ${id}`)
             const passThrough = new PassThrough()
+            for (const chunk of fetchedStream.data) {
+                passThrough.write(chunk)
+            }
             fetchedStream.readStream.pipe(passThrough)
             return passThrough
         }
@@ -184,6 +193,10 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
         await updateLastUsed([id])
         const stream = createReadStream(`${process.cwd()}/cache/${id}.music`)
         dcb.log(`Stream created: ${id}`)
+        const data: (Buffer | string)[] = []
+        stream.on('data', (chunk) => {
+            data.push(chunk)
+        })
         const promise = new Promise<void>((r, err) => {
             stream.on('end', async () => {
                 dcb.log(`Stream ended: ${id}`)
@@ -197,7 +210,7 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
                 err(error)
             })
         })
-        streams.set(id, { readStream: stream, promise })
+        streams.set(id, { readStream: stream, promise, data })
         if (seek) {
             dcb.log(`Seek requested: ${id}`)
             const ffmpegStream = spawn('ffmpeg', [
