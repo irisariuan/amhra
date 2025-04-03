@@ -136,7 +136,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
     const data: (Buffer | string)[] = []
 
     rawStream.stdout.pipe(writeFileStream)
-    rawStream.stdout.pipe(resultStream, { end: false })
+    rawStream.stdout.pipe(resultStream)
 
     rawStream.stdout.on('data', (chunk) => {
         data.push(chunk)
