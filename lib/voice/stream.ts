@@ -150,7 +150,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
     })
 
     const promise = new Promise<void>((r, err) => {
-        const errorHandler = (streamType: 'result' | 'raw' | 'file') => {
+        const errorHandler = (streamType: 'raw' | 'file') => {
             return async (error: Error) => {
                 globalApp.err(`File stream error (${streamType}): ${id}`, error)
                 streams.delete(id)
@@ -166,7 +166,6 @@ export async function prefetch(url: string, seek?: number, force = false) {
             }
         }
 
-        resultStream.on('error', errorHandler('result'))
         rawStream.on('error', errorHandler('raw'))
         fileStream.on('error', errorHandler('file'))
         fileStream.once('close', r)
