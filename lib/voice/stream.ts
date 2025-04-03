@@ -134,6 +134,21 @@ export async function prefetch(url: string, seek?: number, force = false) {
     rawStream.stdout.pipe(resultStream)
     rawStream.stdout.pipe(fileStream)
 
+    fileStream.once('close', async () => {
+        dcb.log(`Downloaded: ${id}`)
+        const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
+        if (size === 0) {
+            globalApp.warn(`Downloaded file is empty: ${id}, deleting it`)
+            await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch()
+            return
+        }
+        await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
+        await updateLastUsed([id])
+        await reviewCaches()
+        streams.delete(id)
+        dcb.log(`Stream finished: ${id}`)
+    })
+
     const promise = new Promise<void>((r, err) => {
         const errorHandler = async (error: Error) => {
             globalApp.err(`File stream error: ${id}`, error)
@@ -148,26 +163,11 @@ export async function prefetch(url: string, seek?: number, force = false) {
             await updateLastUsed([], [id])
             err(error)
         }
-        
+
         resultStream.on('error', errorHandler)
         rawStream.on('error', errorHandler)
         fileStream.on('error', errorHandler)
-
-        fileStream.once('close', async () => {
-            dcb.log(`Downloaded: ${id}`)
-            const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
-            if (size === 0) {
-                globalApp.warn(`Downloaded file is empty: ${id}, deleting it`)
-                await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch()
-                return
-            }
-            await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
-            await updateLastUsed([id])
-            await reviewCaches()
-            streams.delete(id)
-            dcb.log(`Stream finished: ${id}`)
-            r()
-        })
+        fileStream.once('close', r)
     })
     streams.set(id, { readStream: resultStream, writeStream: fileStream, promise })
 }
