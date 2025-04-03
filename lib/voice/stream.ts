@@ -153,15 +153,14 @@ export async function prefetch(url: string, seek?: number) {
         streams.delete(id)
         dcb.log(`Stream finished: ${id}`)
     })
+    fileStream.on('error', errorHandler)
+    resultStream.on('error', errorHandler)
+    rawStream.on('error', errorHandler)
 
     const promise = new Promise<void>((r, err) => {
-        const wrappedErrorHandler = (error: Error) => {
-            errorHandler(error)
-            err(error)
-        }
-        fileStream.on('error', wrappedErrorHandler)
-        resultStream.on('error', wrappedErrorHandler)
-        rawStream.on('error', wrappedErrorHandler)
+        fileStream.on('error', err)
+        resultStream.on('error', err)
+        rawStream.on('error', err)
         fileStream.once('finish', r)
     })
     streams.set(id, { readStream: resultStream, writeStream: fileStream, promise })
