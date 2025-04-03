@@ -152,9 +152,9 @@ export function getConnection(guildId: string | null) {
 
 export interface Stream { stream: Readable, type: StreamType }
 
-export async function createStream(url: string, seek?: number): Promise<Stream> {
+export async function createStream(url: string, seek?: number, skipCache = false): Promise<Stream> {
 	if (setting.USE_YOUTUBE_DL) {
-		const stream = await createYtDlpStream(url, seek)
+		const stream = await createYtDlpStream(url, seek, skipCache)
 		// const stream = ytdl(url, { filter: 'audioonly', quality: 'highestaudio', begin: seek, agent })
 		return { stream, type: StreamType.Arbitrary }
 	}
@@ -173,10 +173,10 @@ export async function getVideoInfo(url: string): Promise<InfoData | null> {
 	return videoInfo
 }
 
-export async function createResource(url: string, seek?: number): Promise<Resource | null> {
+export async function createResource(url: string, seek?: number, skipCache = false): Promise<Resource | null> {
 	const detail = (await getVideoInfo(url))?.video_details
 	if (!detail || detail.id && setting.BANNED_IDS.includes(detail.id)) return null
-	const source = await createStream(url, seek)
+	const source = await createStream(url, seek, skipCache)
 	const res = createAudioResource(source.stream, {
 		inputType: source.type as StreamType,
 		inlineVolume: true,

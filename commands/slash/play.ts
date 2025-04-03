@@ -21,6 +21,11 @@ export default {
 				.setName("search")
 				.setDescription("Play a link or searching on YouTube")
 				.setRequired(true)
+		)
+		.addBooleanOption(opt =>
+			opt
+				.setName("force")
+				.setDescription("Skip the cache and force to download, only use when the song is not playing correctly")
 		),
 	async execute(interaction, client) {
 		//prevent error caused by long response time
@@ -31,6 +36,7 @@ export default {
 		}
 
 		const input = interaction.options.getString("search", true)
+		const force = interaction.options.getBoolean("force") ?? false
 
 		const voiceChannel = interaction.member?.voice?.channel
 
@@ -40,7 +46,7 @@ export default {
 			interaction.editReply('You need to be in a voice channel to play music')
 			return
 		}
-		
+
 		dcb.log(`Connected to voice channel (ID: ${voiceChannel.id}, Guild ID: ${interaction.guildId})`)
 
 		const audioPlayer = getAudioPlayer(client, interaction, {
@@ -97,7 +103,7 @@ export default {
 				if (!videoUrl) {
 					return interaction.editReply(misc.errorMessageObj)
 				}
-				const data = await createResource(videoUrl)
+				const data = await createResource(videoUrl, undefined, force)
 				if (!data) {
 					return interaction.editReply(misc.errorMessageObj)
 				}
