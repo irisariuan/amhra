@@ -100,10 +100,10 @@ function parseTime(seek: number) {
     return `*${str}-inf`
 }
 
-export async function prefetch(url: string, seek?: number) {
+export async function prefetch(url: string, seek?: number, force = false) {
     const id = extractID(url)
     const processedUrl = `"https://www.youtube.com/watch?v=${id}"`
-    if (existsSync(`${process.cwd()}/cache/${id}.music`) || streams.has(id)) {
+    if ((existsSync(`${process.cwd()}/cache/${id}.music`) || streams.has(id)) && !force) {
         dcb.log(`Cache hit: ${id}, skipping prefetch`)
         return
     }
