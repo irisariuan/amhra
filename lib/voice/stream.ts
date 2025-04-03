@@ -23,7 +23,7 @@ async function closeAllStreams() {
     globalApp.important('Closing all streams')
     for (const [id, stream] of streams) {
         dcb.log(`Killing stream: ${id}`)
-        stream.readStream?.destroy()
+        stream.rawStream?.destroy()
         stream.writeStream?.destroy()
         if (await existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
             dcb.log(`Deleting temp file: ${id}`)
@@ -130,20 +130,30 @@ export async function prefetch(url: string, seek?: number, force = false) {
     })
     const rawOutputStream = spawnedProcess.stdout
     const writeStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
-    rawOutputStream.on('data', chunk => {
-        writeStream.write(chunk)
-    })
-    rawOutputStream.on('end', async () => {
+    rawOutputStream.pipe(writeStream)
+
+    writeStream.on('finish', async () => {
         dcb.log(`Download completed: ${id}`)
-        writeStream.end()
+        writeStream.close()
+        streams.delete(id)
         await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
         await updateLastUsed([id])
         await reviewCaches()
     })
+
+    writeStream.on('error', async (error) => {
+        globalApp.err(`Write error: ${id}`, error)
+        await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch()
+        await updateLastUsed([], [id])
+        await reviewCaches()
+    })
+
     rawOutputStream.on('error', (error) => {
         globalApp.err(`Download error: ${id}`, error)
-        writeStream.end()
+        writeStream.destroy(new Error('Download error'))
+        streams.delete(id)
     })
+
     streams.set(id, {
         rawStream: rawOutputStream,
         promise: new Promise<void>((r, e) => {
@@ -171,7 +181,7 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
             fetchedStream.rawStream.pipe(passThrough)
             return passThrough
         }
-
+        throw new Error(`Stream not readable: ${id}`)
     }
     if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
         dcb.log(`Cache hit: ${id}`)
