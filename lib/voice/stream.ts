@@ -183,14 +183,13 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
     const fetchedStream = streams.get(id)
     if (fetchedStream) {
         dcb.log(`Stream hit: ${id}`)
-        if (fetchedStream.rawStream?.readable) {
-            const passThrough = new PassThrough()
-            fetchedStream.rawStream.pipe(passThrough)
-            return passThrough
-        }
         const passThrough = new PassThrough()
         for (const chunk of fetchedStream.data) {
             passThrough.write(chunk)
+        }
+        if (fetchedStream.rawStream?.readable) {
+            fetchedStream.rawStream.pipe(passThrough)
+            return passThrough
         }
         passThrough.end()
         return passThrough
