@@ -138,7 +138,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
             if (code !== 0) {
                 globalApp.err(`Download failed: ${id}`)
                 streams.delete(id)
-                err(new Error(`Download failed: ${id}`))
+                err({ code, id })
                 return
             }
             dcb.log(`Download finished: ${id}`)
