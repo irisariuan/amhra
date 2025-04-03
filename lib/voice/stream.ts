@@ -180,7 +180,7 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
     if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
         dcb.log(`Cache hit: ${id}`)
         await updateLastUsed([id])
-        const stream = createReadStream(`${process.cwd()}/cache/${id}.music`, { encoding: 'binary' })
+        const stream = createReadStream(`${process.cwd()}/cache/${id}.music`)
         dcb.log(`Stream created: ${id}`)
         const promise = new Promise<void>((r, err) => {
             stream.on('end', async () => {
