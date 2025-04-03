@@ -106,8 +106,8 @@ export async function prefetch(url: string, seek?: number) {
         dcb.log(`Cache hit: ${id}, skipping prefetch`)
         return
     }
-    dcb.log(`Downloading: ${id} (${url})`)
-    const rawStream = spawn('yt-dlp', [
+
+    const args = [
         url,
         '--format', 'bestaudio',
         '--verbose',
@@ -116,7 +116,10 @@ export async function prefetch(url: string, seek?: number) {
         '--force-ipv4',
         ...(seek ? ['--download-sections', parseTime(seek)] : []),
         '-o', '-',
-    ], {
+    ]
+
+    dcb.log(`Downloading: ${id} (${url}, yt-dlp ${args.join(' ')})`)
+    const rawStream = spawn('yt-dlp', args, {
         shell: true,
         stdio: ['ignore', 'pipe', 'inherit'],
     })
@@ -125,7 +128,7 @@ export async function prefetch(url: string, seek?: number) {
 
     rawStream.stdout.pipe(resultStream)
     rawStream.stdout.pipe(fileStream)
-    
+
     const errorHandler = async (error: Error) => {
         globalApp.err(`File stream error: ${id}`, error)
         streams.delete(id)
