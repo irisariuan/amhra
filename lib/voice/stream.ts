@@ -147,20 +147,6 @@ export async function prefetch(url: string, seek?: number, force = false) {
         await updateLastUsed([], [id])
     }
 
-    fileStream.once('end', async () => {
-        dcb.log(`Downloaded: ${id}`)
-        const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
-        if (size === 0) {
-            globalApp.warn(`Downloaded file is empty: ${id}, deleting it`)
-            await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch()
-            return
-        }
-        await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
-        await updateLastUsed([id])
-        await reviewCaches()
-        streams.delete(id)
-        dcb.log(`Stream finished: ${id}`)
-    })
     fileStream.on('error', errorHandler)
     resultStream.on('error', errorHandler)
     rawStream.on('error', errorHandler)
@@ -169,7 +155,22 @@ export async function prefetch(url: string, seek?: number, force = false) {
         fileStream.on('error', err)
         resultStream.on('error', err)
         rawStream.on('error', err)
-        fileStream.once('finish', r)
+        fileStream.once('finish', async () => {
+            fileStream.close()
+            dcb.log(`Downloaded: ${id}`)
+            const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
+            if (size === 0) {
+                globalApp.warn(`Downloaded file is empty: ${id}, deleting it`)
+                await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch()
+                return
+            }
+            await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
+            await updateLastUsed([id])
+            await reviewCaches()
+            streams.delete(id)
+            dcb.log(`Stream finished: ${id}`)
+            r()
+        })
     })
     streams.set(id, { readStream: resultStream, writeStream: fileStream, promise })
 }
