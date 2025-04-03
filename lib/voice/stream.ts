@@ -1,6 +1,6 @@
 import moment from "moment";
 import { spawn } from "node:child_process";
-import { PassThrough, type Writable, type Readable } from "node:stream";
+import { PassThrough, type Readable, type Writable } from "node:stream";
 import { extractID } from "play-dl";
 import { createWriteStream, existsSync, createReadStream, readdirSync, writeFileSync } from 'node:fs'
 import { readFile, writeFile, stat, unlink, rename } from "node:fs/promises";
@@ -15,6 +15,7 @@ interface YtDlpStream {
     writeStream?: Writable,
     rawStream?: Readable,
     promise: Promise<void>,
+    data: (string | Buffer)[],
 }
 
 const streams = new Map<string, YtDlpStream>()
@@ -130,6 +131,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
     })
     const rawOutputStream = spawnedProcess.stdout
     const writeStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
+    const data: (string | Buffer)[] = []
     rawOutputStream.pipe(writeStream)
 
     writeStream.on('finish', async () => {
@@ -154,6 +156,10 @@ export async function prefetch(url: string, seek?: number, force = false) {
         streams.delete(id)
     })
 
+    rawOutputStream.on('data', chunk => {
+        data.push(chunk)
+    })
+
     streams.set(id, {
         rawStream: rawOutputStream,
         promise: new Promise<void>((r, e) => {
@@ -167,7 +173,8 @@ export async function prefetch(url: string, seek?: number, force = false) {
                 streams.delete(id)
                 e(error)
             })
-        })
+        }),
+        data
     })
 }
 
@@ -181,7 +188,12 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
             fetchedStream.rawStream.pipe(passThrough)
             return passThrough
         }
-        throw new Error(`Stream not readable: ${id}`)
+        const passThrough = new PassThrough()
+        for (const chunk of fetchedStream.data) {
+            passThrough.write(chunk)
+        }
+        passThrough.end()
+        return passThrough
     }
     if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
         dcb.log(`Cache hit: ${id}`)
