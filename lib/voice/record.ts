@@ -23,7 +23,7 @@ export async function startRecord(interaction: CommandInteraction, autoJoin = tr
 	if (!connection) {
 		if (!interaction.member || !('voice' in interaction.member) || !interaction.member.voice.channel || !autoJoin) return false
 		// try to auto join the voice channel
-		connection = joinVoice(interaction.member.voice.channel, interaction)
+		connection = joinVoice(interaction.member.voice.channel, interaction) || undefined
 		// failed to join, return false
 		if (!connection) {
 			return false

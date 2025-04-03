@@ -132,22 +132,28 @@ export async function prefetch(url: string, seek?: number, force = false) {
     const resultStream = new PassThrough()
     const writeFileStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
     rawStream.stdout.pipe(resultStream)
-    rawStream.stdout.pipe(writeFileStream)
+
+    rawStream.stdout.on('data', data => {
+        writeFileStream.write(data)
+    })
+    rawStream.stdout.on('close', () => {
+        writeFileStream.end()
+    })
+
     const promise = new Promise<void>((r, err) => {
-        rawStream.on('close', async (code) => {
-            if (code !== 0) {
-                globalApp.err(`Download failed: ${id}`)
-                streams.delete(id)
-                err({ code, id })
-                return
-            }
+        rawStream.stdout.on('end', async () => {
             dcb.log(`Download finished: ${id}`)
             streams.delete(id)
+            resultStream.end()
+        })
+
+        resultStream.on('end', async () => {
             await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
             await reviewCaches()
             await updateLastUsed([id])
             r()
         })
+
         rawStream.on('error', (error) => {
             globalApp.err(`Download error: ${id}`, error)
             streams.delete(id)
@@ -167,10 +173,6 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
             const passThrough = new PassThrough()
             fetchedStream.rawStream.pipe(passThrough)
             return passThrough
-        }
-        if (fetchedStream.readStream?.readable) {
-            dcb.log(`Stream is readable: ${id}`)
-            return fetchedStream.readStream
         }
         dcb.log(`Stream is not readable: ${id}`)
         await fetchedStream.promise
