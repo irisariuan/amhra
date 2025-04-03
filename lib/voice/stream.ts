@@ -134,28 +134,28 @@ export async function prefetch(url: string, seek?: number, force = false) {
     rawStream.stdout.pipe(resultStream)
     rawStream.stdout.pipe(fileStream)
 
-    const errorHandler = async (error: Error) => {
-        globalApp.err(`File stream error: ${id}`, error)
-        streams.delete(id)
 
-        rawStream.kill()
-        resultStream.destroy()
-        fileStream.close()
-
-        const temp = await unlink(`${process.cwd()}/cache/${id}.temp.music`).then(() => true).catch(() => false)
-        if (temp) dcb.log(`Deleted temp: ${id}`)
-        await updateLastUsed([], [id])
-    }
-
-    fileStream.on('error', errorHandler)
-    resultStream.on('error', errorHandler)
-    rawStream.on('error', errorHandler)
 
     const promise = new Promise<void>((r, err) => {
-        fileStream.on('error', err)
-        resultStream.on('error', err)
-        rawStream.on('error', err)
-        rawStream.once('end', async () => {
+        const errorHandler = async (error: Error) => {
+            globalApp.err(`File stream error: ${id}`, error)
+            streams.delete(id)
+
+            rawStream.kill()
+            resultStream.destroy()
+            fileStream.close()
+
+            const temp = await unlink(`${process.cwd()}/cache/${id}.temp.music`).then(() => true).catch(() => false)
+            if (temp) dcb.log(`Deleted temp: ${id}`)
+            await updateLastUsed([], [id])
+            err(error)
+        }
+        
+        resultStream.on('error', errorHandler)
+        rawStream.on('error', errorHandler)
+        fileStream.on('error', errorHandler)
+
+        fileStream.once('finish', async () => {
             fileStream.close()
             dcb.log(`Downloaded: ${id}`)
             const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
