@@ -131,7 +131,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
     })
     const resultStream = new PassThrough()
     const writeFileStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
-    
+
     rawStream.stdout.pipe(writeFileStream)
     rawStream.stdout.pipe(resultStream)
 
@@ -164,13 +164,17 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
             fetchedStream.rawStream.pipe(passThrough)
             return passThrough
         }
+        if (fetchedStream.readStream?.readable) {
+            dcb.log(`Stream is readable: ${id}`)
+            return fetchedStream.readStream
+        }
         dcb.log(`Stream is not readable: ${id}`)
         await fetchedStream.promise
-        dcb.log(`Stream finished: ${id}`)
+        dcb.log(`Stream promise resolved: ${id}`)
     }
     if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
         dcb.log(`Cache hit: ${id}`)
-        updateLastUsed([id])
+        await updateLastUsed([id])
         const stream = createReadStream(`${process.cwd()}/cache/${id}.music`)
         dcb.log(`Stream created: ${id}`)
         const promise = new Promise<void>((r, err) => {
