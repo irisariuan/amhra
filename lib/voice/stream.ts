@@ -147,7 +147,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
             resultStream.end()
         })
 
-        resultStream.on('end', async () => {
+        writeFileStream.on('end', async () => {
             await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
             await reviewCaches()
             await updateLastUsed([id])
