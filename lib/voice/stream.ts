@@ -129,10 +129,10 @@ export async function prefetch(url: string, seek?: number, force = false) {
         stdio: ['ignore', 'pipe', 'inherit'],
     })
     const resultStream = new PassThrough()
-    const fileStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
+    const writeFileStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
 
     rawStream.stdout.pipe(resultStream, { end: true })
-    rawStream.stdout.pipe(fileStream, { end: true })
+    const fileStream = rawStream.stdout.pipe(writeFileStream, { end: true })
 
     fileStream.once('close', async () => {
         dcb.log(`Downloaded: ${id}`)
