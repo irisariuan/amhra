@@ -141,7 +141,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
     })
 
     const promise = new Promise<void>((r, err) => {
-        writeFileStream.on('end', async () => {
+        writeFileStream.on('finish', async () => {
             dcb.log(`File written: ${id}`)
             await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
             await reviewCaches()
