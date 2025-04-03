@@ -147,7 +147,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
         await updateLastUsed([], [id])
     }
 
-    fileStream.once('finish', async () => {
+    fileStream.once('end', async () => {
         dcb.log(`Downloaded: ${id}`)
         const { size } = await stat(`${process.cwd()}/cache/${id}.temp.music`)
         if (size === 0) {
