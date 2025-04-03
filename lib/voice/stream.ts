@@ -123,7 +123,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
         '-o', '-',
     ]
 
-    dcb.log(`Downloading: ${id} (${processedUrl}, yt-dlp ${args.join(' ')})`)
+    dcb.log(`Downloading: ${id} (yt-dlp ${args.join(' ')})`)
     const rawStream = spawn('yt-dlp', args, {
         shell: true,
         stdio: ['ignore', 'pipe', 'inherit'],
@@ -133,11 +133,6 @@ export async function prefetch(url: string, seek?: number, force = false) {
 
     rawStream.stdout.pipe(resultStream, { end: true })
     rawStream.stdout.pipe(fileStream, { end: true })
-
-    rawStream.once('exit', () => {
-        dcb.log(`Raw stream finished: ${id}`)
-        fileStream.end()
-    })
 
     fileStream.once('close', async () => {
         dcb.log(`Downloaded: ${id}`)
@@ -173,7 +168,11 @@ export async function prefetch(url: string, seek?: number, force = false) {
 
         rawStream.on('error', errorHandler('raw'))
         fileStream.on('error', errorHandler('file'))
-        fileStream.once('close', r)
+        fileStream.once('finish', () => {
+            dcb.log(`File stream finished: ${id}`)
+            fileStream.close()
+            r()
+        })
     })
     streams.set(id, { readStream: resultStream, writeStream: fileStream, promise })
 }
