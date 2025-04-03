@@ -131,27 +131,22 @@ export async function prefetch(url: string, seek?: number, force = false) {
     })
     const resultStream = new PassThrough()
     const writeFileStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
+    
     rawStream.stdout.pipe(writeFileStream)
     rawStream.stdout.pipe(resultStream)
 
     const promise = new Promise<void>((r, err) => {
-        rawStream.stdout.on('end', async () => {
-            dcb.log(`Download finished: ${id}`)
-            streams.delete(id)
-            resultStream.end()
-        })
-
-        writeFileStream.on('finish', async () => {
+        writeFileStream.once('finish', async () => {
             dcb.log(`File written: ${id}`)
             await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
             await reviewCaches()
             await updateLastUsed([id])
             r()
         })
-
-        rawStream.on('error', (error) => {
+        writeFileStream.on('error', async (error) => {
             globalApp.err(`Download error: ${id}`, error)
             streams.delete(id)
+            await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch()
             err(error)
         })
     })
