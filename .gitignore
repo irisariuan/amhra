@@ -1,16 +1,25 @@
 .env
 node_modules/*
+biome.json
+
 test/*
 !test/**/**.test.*
+
 package-lock.json
 bun.lockb
+
 .vscode/*
-data/log/*
-biome.json
+
 prisma/migrations/*
+
 **/*.js
 dist/*
+
+data/log/*
 data/setting.json
 data/recordings/*
+data/lastUsed.record
+
+cache/*
 
 !**/.gitkeep
