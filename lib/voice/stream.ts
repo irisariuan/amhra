@@ -132,18 +132,23 @@ export async function prefetch(url: string, seek?: number, force = false) {
     const rawOutputStream = spawnedProcess.stdout
     const writeStream = createWriteStream(`${process.cwd()}/cache/${id}.temp.music`)
     const data: (string | Buffer)[] = []
-    rawOutputStream.pipe(writeStream)
+    rawOutputStream.on('data', chunk => {
+        console.log(`Received chunk: ${chunk.length} bytes`)
+        writeStream.write(chunk)
+    })
 
     rawOutputStream.on('end', () => {
         dcb.log(`Stream closed: ${id}`)
-        writeStream.end(async () => {
-            dcb.log(`Download completed: ${id}`)
-            writeStream.close()
-            streams.delete(id)
-            await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
-            await updateLastUsed([id])
-            await reviewCaches()
-        })
+        writeStream.end()
+    })
+
+    writeStream.on('close', async () => {
+        dcb.log(`Download completed: ${id}`)
+        writeStream.close()
+        streams.delete(id)
+        await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
+        await updateLastUsed([id])
+        await reviewCaches()
     })
 
     writeStream.on('error', async (error) => {
