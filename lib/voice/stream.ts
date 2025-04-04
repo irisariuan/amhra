@@ -202,6 +202,14 @@ export async function createYtDlpStream(url: string, seek?: number, force = fals
         dcb.log(`Cache hit: ${id}`)
         await updateLastUsed([id])
         const stream = createReadStream(`${process.cwd()}/cache/${id}.music`)
+        const data: (string | Buffer)[] = []
+        stream.on('data', chunk => data.push(chunk))
+        const promise = new Promise<void>(r => stream.on('end', r))
+        streams.set(id, {
+            promise,
+            rawStream: stream,
+            data
+        })
         dcb.log(`Stream created: ${id}`)
         if (seek) {
             dcb.log(`Seek requested: ${id}`)
