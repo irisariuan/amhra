@@ -24,7 +24,6 @@ import { readSetting } from "../read"
 import dotenv from 'dotenv'
 import fs from 'node:fs'
 import type { APIInteractionGuildMember, CacheType, CommandInteraction, GuildMember, VoiceBasedChannel, VoiceChannel } from "discord.js"
-import { recordingList, startRecord, stopRecord } from "./record"
 import { createYtDlpStream } from "./stream"
 import type { Readable } from "node:stream"
 dotenv.config()
@@ -45,8 +44,6 @@ try {
 export function disconnectConnection(connection: VoiceConnection, guildId: string) {
 	connection.disconnect()
 	connection.destroy()
-	stopRecord(guildId)
-	recordingList.delete(guildId)
 }
 
 export function createAudioPlayer(guildId: string, client: CustomClient, createOpts?: CreateAudioPlayerOptions) {
@@ -223,7 +220,7 @@ export function joinVoice(voiceChannel: VoiceChannel | VoiceBasedChannel, intera
 	})
 	if (record) {
 		dcb.log('Recording started')
-		startRecord(interaction)
+		// startRecord(interaction)
 	}
 	return connection
 }

@@ -6,7 +6,7 @@ test/*
 !test/**/**.test.*
 
 package-lock.json
-bun.lockb
+bun.lock*
 
 .vscode/*
 
@@ -21,5 +21,7 @@ data/recordings/*
 data/lastUsed.record
 
 cache/*
+
+.DS_Store
 
 !**/.gitkeep
