@@ -134,10 +134,6 @@ export async function prefetch(url: string, seek?: number, force = false) {
     const data: (string | Buffer)[] = []
     rawOutputStream.pipe(writeStream)
 
-    rawOutputStream.on('end', () => {
-        dcb.log(`Stream closed: ${id}`)
-    })
-
     writeStream.on('close', async () => {
         dcb.log(`Download completed: ${id}`)
         writeStream.close()
