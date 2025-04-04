@@ -136,20 +136,24 @@ export async function prefetch(url: string, seek?: number, force = false) {
 
     rawOutputStream.on('end', () => {
         dcb.log(`Stream closed: ${id}`)
-        writeStream.end()
     })
 
     writeStream.on('close', async () => {
         dcb.log(`Download completed: ${id}`)
         writeStream.close()
         streams.delete(id)
-        await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
-        await updateLastUsed([id])
+        if (await existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
+            await rename(`${process.cwd()}/cache/${id}.temp.music`, `${process.cwd()}/cache/${id}.music`)
+            await updateLastUsed([id])
+        } else {
+            globalApp.warn(`Temp file not found: ${id}`)
+        }
         await reviewCaches()
     })
 
     writeStream.on('error', async (error) => {
         globalApp.err(`Write error: ${id}`, error)
+        streams.delete(id)
         await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch()
         await updateLastUsed([], [id])
         await reviewCaches()
@@ -158,7 +162,6 @@ export async function prefetch(url: string, seek?: number, force = false) {
     rawOutputStream.on('error', (error) => {
         globalApp.err(`Download error: ${id}`, error)
         writeStream.destroy(new Error('Download error'))
-        streams.delete(id)
     })
 
     rawOutputStream.on('data', chunk => {
