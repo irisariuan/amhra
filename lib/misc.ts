@@ -1,13 +1,19 @@
 import type { GuildMember } from "discord.js"
 import chalk from "chalk"
 import { event } from "./express/event"
-import { appendFile } from 'node:fs/promises'
-import { removeAnsi } from 'ansi-parser'
+import { appendFile, writeFile } from 'node:fs/promises'
+import removeAnsi from 'strip-ansi'
+import { existsSync } from "node:fs"
+
+
 
 export const errorMessage = 'An error occurred during running this command'
 
 export async function addLogLine(data: string, logCategory: string) {
-	appendFile(`${process.cwd()}/data/log/${logCategory}.log`, `T${Date.now()}: ${data}\n`, {
+	if (!existsSync(`${process.cwd()}/data/log/${logCategory}.log`)) {
+		await writeFile(`${process.cwd()}/data/log/${logCategory}.log`, '');
+	}
+	await appendFile(`${process.cwd()}/data/log/${logCategory}.log`, `T${Date.now()}: ${data}\n`, {
 		encoding: 'utf8'
 	})
 }
