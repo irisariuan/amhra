@@ -28,8 +28,9 @@ const streams = new Map<string, YtDlpStream>();
 async function closeAllStreams() {
 	globalApp.important("Closing all streams");
 	for (const [id, stream] of streams) {
+		if (stream.rawStream?.destroyed) continue;
 		dcb.log(`Killing stream: ${id}`);
-		stream.rawStream?.destroy();
+		stream.rawStream?.destroy(new Error("Force stream closed"));
 		if (existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
 			dcb.log(`Deleting temp file: ${id}`);
 			await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch();
@@ -160,32 +161,32 @@ export async function prefetch(url: string, seek?: number, force = false) {
 	const data: (string | Buffer)[] = [];
 	rawOutputStream.pipe(writeStream);
 
-	writeStream.on("close", async () => {
-		dcb.log(`Download completed: ${id}`);
-		streams.delete(id);
-		if (existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
-			await rename(
-				`${process.cwd()}/cache/${id}.temp.music`,
-				`${process.cwd()}/cache/${id}.music`,
-			);
-			await updateLastUsed([id]);
-		} else {
-			globalApp.warn(`Temp file not found: ${id}`);
-		}
-		await reviewCaches();
-	});
+	const promise = new Promise<void>((resolve, err) => {
+		writeStream.on("close", async () => {
+			dcb.log(`Download completed: ${id}`);
+			streams.delete(id);
+			if (existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
+				await rename(
+					`${process.cwd()}/cache/${id}.temp.music`,
+					`${process.cwd()}/cache/${id}.music`,
+				);
+				await updateLastUsed([id]);
+			} else {
+				globalApp.warn(`Temp file not found: ${id}`);
+			}
+			await reviewCaches();
+			resolve();
+		});
 
-	writeStream.on("error", async (error) => {
-		globalApp.err(`Write error: ${id}`, error);
-		streams.delete(id);
-		await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch();
-		await updateLastUsed([], [id]);
-		await reviewCaches();
-	});
-
-	rawOutputStream.on("error", (error) => {
-		globalApp.err(`Download error: ${id}`, error);
-		writeStream.destroy(new Error("Download error"));
+		writeStream.on("error", async (error) => {
+			globalApp.err(`Write error: ${id}`, error);
+			streams.delete(id);
+			await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch();
+			await unlink(`${process.cwd()}/cache/${id}.music`).catch();
+			await updateLastUsed([], [id]);
+			await reviewCaches();
+			err(error);
+		});
 	});
 
 	rawOutputStream.on("data", (chunk) => {
@@ -194,18 +195,7 @@ export async function prefetch(url: string, seek?: number, force = false) {
 
 	streams.set(id, {
 		rawStream: rawOutputStream,
-		promise: new Promise<void>((r, e) => {
-			rawOutputStream.on("end", async () => {
-				dcb.log(`Stream ended: ${id}`);
-				streams.delete(id);
-				r();
-			});
-			rawOutputStream.on("error", (error) => {
-				globalApp.err(`Stream error: ${id}`, error);
-				streams.delete(id);
-				e(error);
-			});
-		}),
+		promise,
 		data,
 	});
 	return rawOutputStream;
@@ -219,18 +209,30 @@ export async function createYtDlpStream(
 	const id = extractID(url);
 	const fetchedStream = streams.get(id);
 	if (fetchedStream) {
+		// it is still being fetched or already fetched in current process
 		dcb.log(`Stream hit: ${id}`);
 		const passThrough = new PassThrough();
 		for (const chunk of fetchedStream.data) {
 			passThrough.write(chunk);
 		}
 		if (fetchedStream.rawStream?.readable) {
-			fetchedStream.rawStream.pipe(passThrough);
+			// data is still being fetched, so we can pipe it
+			fetchedStream.rawStream.on("data", (chunk) => {
+				if (!passThrough.writable)
+					return globalApp.warn("Cannot write to PassThrough");
+				passThrough.write(chunk);
+			});
+			fetchedStream.rawStream.on("end", () => {
+				dcb.log(`Ending pass through: ${id}`);
+				passThrough.end();
+			});
 			return passThrough;
 		}
+		// all data is already in memory, so we can just end the stream
 		passThrough.end();
 		return passThrough;
 	}
+	// Check if the file is already cached (fetched in previous process)
 	if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
 		dcb.log(`Cache hit: ${id}`);
 		await updateLastUsed([id]);
@@ -269,6 +271,7 @@ export async function createYtDlpStream(
 		}
 		return stream;
 	}
+	// Cache miss, we need to download the file
 	dcb.log(`Cache miss: ${id}, downloading...`);
 	const resultStream = await prefetch(url, seek, force);
 	if (!resultStream?.readable) {
@@ -276,6 +279,7 @@ export async function createYtDlpStream(
 		throw new Error(`Stream not found or not readable: ${id}`);
 	}
 	const passThrough = new PassThrough();
+	// We don't use .pipe to prevent destroying the download stream when the PassThrough is closed early
 	resultStream.on("data", (chunk) => {
 		if (!passThrough.writable) {
 			globalApp.warn(`PassThrough stream not writable: ${id}`);
@@ -284,7 +288,7 @@ export async function createYtDlpStream(
 		passThrough.write(chunk);
 	});
 	resultStream.on("end", () => {
-		dcb.log(`Stream ended: ${id}`);
+		dcb.log(`Stopping pass through: ${id}`);
 		passThrough.end();
 	});
 	return passThrough;
