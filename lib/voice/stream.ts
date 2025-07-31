@@ -181,8 +181,17 @@ export async function prefetch(url: string, seek?: number, force = false) {
 		writeStream.on("error", async (error) => {
 			globalApp.err(`Write error: ${id}`, error);
 			streams.delete(id);
-			await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch();
-			await unlink(`${process.cwd()}/cache/${id}.music`).catch();
+			if (existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
+				globalApp.err(
+					`Deleting ${id}.temp.music due to ${error.message}`,
+				);
+				await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch();
+			}
+
+			if (existsSync(`${process.cwd()}/cache/${id}.music`)) {
+				globalApp.err(`Deleting ${id}.music due to ${error.message}`);
+				await unlink(`${process.cwd()}/cache/${id}.music`).catch();
+			}
 			await updateLastUsed([], [id]);
 			await reviewCaches();
 			err(error);
