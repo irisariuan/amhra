@@ -1,7 +1,6 @@
 import type { QueueItem } from "../custom";
 import type { LogType } from "../log/load";
-
-const EventEmitter = require('node:events')
+import EventEmitter from 'node:events'
 
 export enum SongEditType {
     Pause = 'pause',
@@ -23,7 +22,7 @@ export type ExpressEventDetail = {
     url?: string
     sec?: number
     index?: number
-    volume?: string
+    volume?: number
     queue?: QueueItem[]
     time?: number,
     loop?: boolean,

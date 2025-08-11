@@ -12,6 +12,7 @@ import {
 import { readFile, writeFile, stat, unlink, rename } from "node:fs/promises";
 import { readSetting } from "../read";
 import { dcb, globalApp } from "../misc";
+import { pipeline } from "node:stream/promises";
 
 if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
 	writeFileSync(`${process.cwd()}/data/lastUsed.record`, "");
@@ -126,9 +127,12 @@ function parseTime(seek: number) {
 	return `*${str}-inf`;
 }
 
-export async function prefetch(url: string, seek?: number, force = false) {
+/**
+ * Return the streams from yt-dlp, pre-streamed to file
+ */
+export async function prefetch(url: string, force = false) {
 	const id = extractID(url);
-	const processedUrl = `"https://www.youtube.com/watch?v=${id}"`;
+	const processedUrl = `https://www.youtube.com/watch?v=${id}`;
 	if (
 		(existsSync(`${process.cwd()}/cache/${id}.music`) || streams.has(id)) &&
 		!force
@@ -144,14 +148,12 @@ export async function prefetch(url: string, seek?: number, force = false) {
 		"-q",
 		"--no-playlist",
 		"--force-ipv4",
-		...(seek ? ["--download-sections", parseTime(seek)] : []),
 		"-o",
 		"-",
 	];
 
 	dcb.log(`Downloading: ${id} (yt-dlp ${args.join(" ")})`);
 	const spawnedProcess = spawn("yt-dlp", args, {
-		shell: true,
 		stdio: ["ignore", "pipe", "inherit"],
 	});
 	const rawOutputStream = spawnedProcess.stdout;
@@ -207,35 +209,82 @@ export async function prefetch(url: string, seek?: number, force = false) {
 		promise,
 		data,
 	});
-	return rawOutputStream;
+	return { rawOutputStream, copiedStream: copyStreamSafe(rawOutputStream) };
+}
+
+function copyStreamSafe(rawStream: Readable): Readable {
+	const passThrough = new PassThrough();
+	rawStream.on("data", (data) => {
+		if (passThrough.writable) passThrough.write(data);
+	});
+	rawStream.on("end", () => {
+		if (!passThrough.writableEnded) passThrough.end();
+	});
+	rawStream.on("error", (err) => {
+		globalApp.err(`Copied stream error: ${err.message}`);
+		passThrough.destroy(err);
+	});
+	return passThrough;
+}
+
+export function clipAudio(source: Readable, start: number, end?: number) {
+	if (start < 0) {
+		throw new Error("Period start must be non-negative.");
+	}
+	if (end !== undefined && end <= 0) {
+		throw new Error("Period end must be greater than zero.");
+	}
+
+	const args = [
+		"-i",
+		"pipe:0",
+		"-ss",
+		start.toString(),
+		...(end ? ["-to", end.toString()] : []),
+		"-c",
+		"copy",
+		"-f",
+		"webm",
+		"pipe:1",
+	];
+
+	const proc = spawn("ffmpeg", args, {
+		stdio: ["pipe", "pipe", "ignore"],
+	});
+
+	let buffer = Buffer.from([]);
+	proc.stdout.on("data", (buf) => {
+		buffer = Buffer.concat([buffer, buf]);
+	});
+
+	const promise = new Promise<Buffer>((resolve) =>
+		proc.stdout.on("close", () => {
+			resolve(buffer);
+		}),
+	);
+
+	pipeline(source, proc.stdin).catch((err) =>
+		globalApp.err(`Pipeline error: ${err.message}`),
+	);
+	return {
+		buffer: promise,
+		copied: copyStreamSafe(proc.stdout),
+		proc
+	};
 }
 
 export async function createYtDlpStream(
 	url: string,
-	seek?: number,
 	force = false,
 ): Promise<Readable> {
 	const id = extractID(url);
 	const fetchedStream = streams.get(id);
-	if (fetchedStream) {
+	if (fetchedStream && !fetchedStream.rawStream?.readable && !force) {
 		// it is still being fetched or already fetched in current process
-		dcb.log(`Stream hit: ${id}`);
+		dcb.log(`Stream hit memory: ${id}`);
 		const passThrough = new PassThrough();
 		for (const chunk of fetchedStream.data) {
 			passThrough.write(chunk);
-		}
-		if (fetchedStream.rawStream?.readable) {
-			// data is still being fetched, so we can pipe it
-			fetchedStream.rawStream.on("data", (chunk) => {
-				if (!passThrough.writable)
-					return globalApp.warn("Cannot write to PassThrough");
-				passThrough.write(chunk);
-			});
-			fetchedStream.rawStream.on("end", () => {
-				dcb.log(`Ending pass through: ${id}`);
-				passThrough.end();
-			});
-			return passThrough;
 		}
 		// all data is already in memory, so we can just end the stream
 		passThrough.end();
@@ -255,50 +304,19 @@ export async function createYtDlpStream(
 			data,
 		});
 		dcb.log(`Stream created: ${id}`);
-		if (seek) {
-			dcb.log(`Seek requested: ${id}`);
-			const ffmpegStream = spawn(
-				"ffmpeg",
-				[
-					"-i",
-					"pipe:0",
-					"-ss",
-					seek.toString(),
-					"-f",
-					"opus",
-					"pipe:1",
-				],
-				{
-					shell: true,
-					stdio: ["pipe", "pipe", "inherit"],
-				},
-			);
-			const resultStream = new PassThrough();
-			stream.pipe(ffmpegStream.stdin);
-			ffmpegStream.stdout.pipe(resultStream);
-			return resultStream;
-		}
 		return stream;
 	}
 	// Cache miss, we need to download the file
 	dcb.log(`Cache miss: ${id}, downloading...`);
-	const resultStream = await prefetch(url, seek, force);
-	if (!resultStream?.readable) {
+	const resultStream = await prefetch(url, force);
+	if (!resultStream) {
+		dcb.log(`Failed to create stream (cached already): ${id}`);
+		throw new Error(`Failed to create stream (cached already): ${id}`);
+	}
+	const { copiedStream } = resultStream;
+	if (!copiedStream?.readable) {
 		dcb.log(`Stream not found or not readable: ${id}`);
 		throw new Error(`Stream not found or not readable: ${id}`);
 	}
-	const passThrough = new PassThrough();
-	// We don't use .pipe to prevent destroying the download stream when the PassThrough is closed early
-	resultStream.on("data", (chunk) => {
-		if (!passThrough.writable) {
-			globalApp.warn(`PassThrough stream not writable: ${id}`);
-			return;
-		}
-		passThrough.write(chunk);
-	});
-	resultStream.on("end", () => {
-		dcb.log(`Stopping pass through: ${id}`);
-		passThrough.end();
-	});
-	return passThrough;
+	return copiedStream;
 }
