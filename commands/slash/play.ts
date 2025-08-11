@@ -28,6 +28,13 @@ export default {
 				.setDescription(
 					"Skip the cache and force to download, only use when the song is not playing correctly",
 				),
+		)
+		.addNumberOption((opt) =>
+			opt
+				.setName("volume")
+				.setDescription("Set volume")
+				.setMaxValue(500)
+				.setMinValue(0),
 		),
 	async execute(interaction, client) {
 		//prevent error caused by long response time

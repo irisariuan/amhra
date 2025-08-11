@@ -79,7 +79,7 @@ const SetVolumeSchema = z.object({
 	action: z.literal(SongEditType.SetVolume),
 	guildId: z.string(),
 	detail: z.object({
-		volume: z.number().nonnegative().max(2, "Volume must be <= 2"),
+		volume: z.number().nonnegative().max(5, "Volume must be <= 5"),
 	}),
 });
 

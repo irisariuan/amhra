@@ -181,7 +181,7 @@ event.on("songInterruption", async (guildId, action, detail) => {
 		}
 		case SongEditType.SetTime:
 			{
-				if (!player.nowPlaying || !player.isPlaying || !detail.sec) {
+				if (!player.nowPlaying || !player.isPlaying || detail.sec === undefined) {
 					return globalApp.err(
 						"Cannot interrupt the song since nothing is playing",
 					);
@@ -249,7 +249,7 @@ event.on("songInterruption", async (guildId, action, detail) => {
 		}
 		case SongEditType.SetVolume: {
 			if (!detail.volume) return globalApp.err("Volume is required");
-			dcb.log(`Setting volume to ${detail.volume}% from dashboard`);
+			dcb.log(`Setting volume to ${detail.volume * 100}% from dashboard`);
 			player.setVolume(detail.volume);
 			break;
 		}

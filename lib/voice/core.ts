@@ -183,7 +183,7 @@ export async function createStream(
 ): Promise<Stream> {
 	if (setting.USE_YOUTUBE_DL) {
 		const stream = await createYtDlpStream(url, skipCache);
-		if (seek) {
+		if (seek && seek > 0) {
 			const { copied, proc } = clipAudio(stream, seek);
 			copied.once("end", () => {
 				if (proc.exitCode === null) {
