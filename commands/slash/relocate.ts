@@ -1,6 +1,18 @@
-import { SlashCommandBuilder } from "discord.js";
-import { createResource, getAudioPlayer } from "../../lib/voice/core";
+import {
+	ActionRowBuilder,
+	ButtonBuilder,
+	ButtonStyle,
+	SlashCommandBuilder,
+} from "discord.js";
+import {
+	createResource,
+	getAudioPlayer,
+	timeFormat,
+} from "../../lib/voice/core";
 import type { Command } from "../../lib/interaction";
+import { extractID } from "play-dl";
+import { misc } from "../../lib/misc";
+import { getSegments, SegmentCategory } from "../../lib/voice/segment";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -58,7 +70,51 @@ export default {
 			});
 		player.playResource(resource, true);
 		await interaction.reply({
-			content: `Relocated the song to position ${position} seconds`,
+			content: `Relocated the song to ${timeFormat(position)}`,
 		});
+
+		const segments = await getSegments(extractID(player.nowPlaying.url), [
+			SegmentCategory.MusicOffTopic,
+		]);
+		if (!segments) return;
+		const firstEl = segments.at(0);
+		if (firstEl?.category === SegmentCategory.MusicOffTopic) {
+			const [start, newStart] = firstEl.segment;
+			const currentUrl = player.nowPlaying?.url;
+			if (start !== 0 || position >= newStart) return;
+			const response = await interaction.followUp({
+				content: `Found non-music content at start, want to skip to \`${timeFormat(newStart)}\`?`,
+				components: [
+					new ActionRowBuilder<ButtonBuilder>().addComponents(
+						new ButtonBuilder()
+							.setLabel("Skip")
+							.setStyle(ButtonStyle.Primary)
+							.setCustomId("skip"),
+					),
+				],
+			});
+			try {
+				const confirmation = await response.awaitMessageComponent({
+					time: 10 * 1000,
+				});
+				if (player.nowPlaying?.url !== currentUrl) {
+					return confirmation.update({
+						content: "The song has changed, skipping cancelled",
+						components: [],
+					});
+				}
+				if (confirmation.customId === "skip") {
+					const data = await createResource(currentUrl, newStart);
+					if (!data) {
+						return confirmation.update(misc.errorMessageObj);
+					}
+					player.playResource(data, true);
+					await confirmation.update({
+						content: `Skipped to ${timeFormat(newStart)}`,
+						components: [],
+					});
+				}
+			} catch {}
+		}
 	},
 } as Command<SlashCommandBuilder>;

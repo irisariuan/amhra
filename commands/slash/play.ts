@@ -1,16 +1,28 @@
 import type { Command } from "../../lib/interaction";
 
-import { SlashCommandBuilder } from "discord.js";
+import {
+	ActionRowBuilder,
+	ButtonBuilder,
+	ButtonStyle,
+	SlashCommandBuilder,
+} from "discord.js";
 import {
 	getAudioPlayer,
 	createResource,
 	isVideo,
 	isPlaylist,
 	ensureVoiceConnection,
+	timeFormat,
 } from "../../lib/voice/core";
-import { type YouTubePlayList, playlist_info, search } from "play-dl";
+import {
+	type YouTubePlayList,
+	extractID,
+	playlist_info,
+	search,
+} from "play-dl";
 import { dcb, globalApp } from "../../lib/misc";
 import { misc } from "../../lib/misc";
+import { getSegments, SegmentCategory } from "../../lib/voice/segment";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -128,9 +140,62 @@ export default {
 				audioPlayer.playResource(data);
 
 				dcb.log(`Playing Searched URL ${videoUrl}`);
-				return await interaction.editReply({
+				await interaction.editReply({
 					content: `Playing ${data.title} (${videoUrl})`,
 				});
+
+				const segments = await getSegments(extractID(videoUrl), [
+					SegmentCategory.MusicOffTopic,
+				]);
+				if (!segments) return;
+				const firstEl = segments.at(0);
+				if (firstEl?.category === SegmentCategory.MusicOffTopic) {
+					const [start, newStart] = firstEl.segment;
+					const currentUrl = audioPlayer.nowPlaying?.url;
+					if (start !== 0) return;
+					const response = await interaction.followUp({
+						content: `Found non-music content at start, want to skip to \`${timeFormat(newStart)}\`?`,
+						components: [
+							new ActionRowBuilder<ButtonBuilder>().addComponents(
+								new ButtonBuilder()
+									.setLabel("Skip")
+									.setStyle(ButtonStyle.Primary)
+									.setCustomId("skip"),
+							),
+						],
+					});
+					try {
+						const confirmation =
+							await response.awaitMessageComponent({
+								time: 10 * 1000,
+							});
+						if (audioPlayer.nowPlaying?.url !== currentUrl) {
+							return confirmation.update({
+								content:
+									"The song has changed, skipping cancelled",
+								components: [],
+							});
+						}
+						if (confirmation.customId === "skip") {
+							const data = await createResource(
+								videoUrl,
+								newStart,
+							);
+							if (!data) {
+								return confirmation.update(
+									misc.errorMessageObj,
+								);
+							}
+							audioPlayer.playResource(data, true);
+							await confirmation.update({
+								content: `Skipped to ${timeFormat(newStart)}`,
+								components: [],
+							});
+						}
+					} catch {}
+				}
+
+				return;
 			} catch (e) {
 				globalApp.err(
 					"An error occurred while trying to start playing music: ",

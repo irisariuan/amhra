@@ -17,22 +17,28 @@ import {
 } from "play-dl";
 import ytdl from "@distube/ytdl-core";
 import { CustomAudioPlayer, type Resource, type CustomClient } from "../custom";
-import { dcb, globalApp } from "../misc";
+import { dcb, globalApp, misc } from "../misc";
 import { event } from "../express/event";
 import NodeCache from "node-cache";
-import { readSetting } from "../read";
+import { readSetting } from "../setting";
 import dotenv from "dotenv";
 import fs from "node:fs";
-import type {
-	APIInteractionGuildMember,
-	CacheType,
-	CommandInteraction,
-	GuildMember,
-	VoiceBasedChannel,
-	VoiceChannel,
+import {
+	ActionRowBuilder,
+	ButtonBuilder,
+	ButtonStyle,
+	type APIInteractionGuildMember,
+	type CacheType,
+	type Channel,
+	type CommandInteraction,
+	type GuildMember,
+	type VoiceBasedChannel,
+	type VoiceChannel,
 } from "discord.js";
 import { clipAudio, createYtDlpStream } from "./stream";
 import type { Readable } from "node:stream";
+import { getSegments, SegmentCategory } from "./segment";
+import { ca } from "zod/v4/locales";
 dotenv.config();
 
 const videoInfoCache = new NodeCache();
@@ -58,6 +64,7 @@ export function disconnectConnection(
 
 export function createAudioPlayer(
 	guildId: string,
+	channel: Channel | null,
 	client: CustomClient,
 	createOpts?: CreateAudioPlayerOptions,
 ) {
@@ -112,6 +119,59 @@ export function createAudioPlayer(
 					event.emit("songInfo", nextUrl);
 					player.playResource(resource);
 					dcb.log("Playing next music");
+
+					if (
+						channel &&
+						channel.isTextBased() &&
+						channel.isSendable()
+					) {
+						const segments = await getSegments(extractID(nextUrl), [
+							SegmentCategory.MusicOffTopic,
+						]);
+						if (!segments) return;
+						const firstEl = segments.at(0);
+						if (
+							firstEl?.category === SegmentCategory.MusicOffTopic
+						) {
+							const [start, newStart] = firstEl.segment;
+
+							if (start !== 0) return;
+							const response = await channel.send({
+								content: `Found non-music content at start, want to skip to \`${timeFormat(newStart)}\`?\nType \`/relocate ${newStart}\` or \`YES\` to skip`,
+							});
+							try {
+								const collected = await channel.awaitMessages({
+									filter: (message) =>
+										message.content.trim() === "YES",
+									max: 1,
+									time: 30_000,
+								});
+								const message = collected.first();
+								if (message?.deletable)
+									message.delete().catch(() => {});
+
+								if (player.nowPlaying?.url !== nextUrl) {
+									return response.edit({
+										content:
+											"The song has changed, skipping cancelled",
+										components: [],
+									});
+								}
+								const data = await createResource(
+									nextUrl,
+									newStart,
+								);
+								if (!data) {
+									return response.edit(misc.errorMessageObj);
+								}
+								player.playResource(data, true);
+								await response.edit({
+									content: `Skipped to ${timeFormat(newStart)}`,
+									components: [],
+								});
+							} catch {}
+						}
+					}
 				} else {
 					globalApp.err("No next URL found");
 				}
@@ -144,7 +204,12 @@ export function getAudioPlayer(
 	const player = client.player.get(interaction.guild.id) ?? null;
 
 	if (!player && option.createPlayer) {
-		const player = createAudioPlayer(interaction.guild.id, client, {});
+		const player = createAudioPlayer(
+			interaction.guild.id,
+			interaction.channel,
+			client,
+			{},
+		);
 		client.player.set(interaction.guild.id, player);
 		return player;
 	}
@@ -185,7 +250,7 @@ export async function createStream(
 		const stream = await createYtDlpStream(url, skipCache);
 		if (seek && seek > 0) {
 			const { copied, proc } = clipAudio(stream, seek);
-			copied.once("end", () => {
+			copied.once("close", () => {
 				if (proc.exitCode === null) {
 					dcb.log(`Seek quitted early, killing process`);
 					proc.kill();
@@ -234,6 +299,7 @@ export async function createResource(
 	}
 	return {
 		resource: res,
+		stream: source,
 		channel: detail.channel,
 		title: detail.title,
 		details: detail,

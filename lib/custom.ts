@@ -6,6 +6,7 @@ import type { YouTubeChannel, YouTubeVideo } from "play-dl";
 import { misc } from "./misc";
 import { readSetting } from "./setting";
 import { prefetch } from "./voice/stream";
+import { Stream } from "./voice/core";
 
 const setting = readSetting();
 
@@ -15,6 +16,7 @@ export interface Resource {
 	title: string;
 	details: YouTubeVideo;
 	url: string;
+	stream: Stream;
 	startFrom?: number;
 }
 
@@ -284,6 +286,9 @@ export class CustomAudioPlayer extends AudioPlayer {
 	}
 
 	playResource(resource: Resource, replay = false) {
+		if (this.nowPlaying && !this.nowPlaying.stream.stream.destroyed) {
+			this.nowPlaying.stream.stream.destroy();
+		}
 		resource.resource.volume?.setVolume(
 			(this.isMuting ? 0 : this.volume) * (setting.VOLUME_MODIFIER ?? 1),
 		);
