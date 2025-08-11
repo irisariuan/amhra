@@ -10,7 +10,7 @@ import {
 	writeFileSync,
 } from "node:fs";
 import { readFile, writeFile, stat, unlink, rename } from "node:fs/promises";
-import { readSetting } from "../read";
+import { readSetting } from "../setting";
 import { dcb, globalApp } from "../misc";
 import { pipeline } from "node:stream/promises";
 

@@ -11,7 +11,7 @@ import { ActionType, event } from "./event";
 import youtubeSuggest from "youtube-suggest";
 import bodyParser from "body-parser";
 import { globalApp, misc, exp } from "../misc";
-import { readSetting, reloadSetting } from "../read";
+import { readSetting, reloadSetting } from "../setting";
 import chalk from "chalk";
 import type { CustomClient } from "../custom";
 import NodeCache from "node-cache";

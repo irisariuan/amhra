@@ -8,7 +8,7 @@ import { loadCommands } from "./core";
 import { CustomClient } from "./custom";
 import { event } from "./express/event";
 import { dcb, globalApp, misc } from "./misc";
-import { readSetting } from "./read";
+import { readSetting } from "./setting";
 import {
 	createResource,
 	destroyAudioPlayer,
@@ -181,7 +181,11 @@ event.on("songInterruption", async (guildId, action, detail) => {
 		}
 		case SongEditType.SetTime:
 			{
-				if (!player.nowPlaying || !player.isPlaying || detail.sec === undefined) {
+				if (
+					!player.nowPlaying ||
+					!player.isPlaying ||
+					detail.sec === undefined
+				) {
 					return globalApp.err(
 						"Cannot interrupt the song since nothing is playing",
 					);
@@ -200,7 +204,7 @@ event.on("songInterruption", async (guildId, action, detail) => {
 				if (!res) {
 					return globalApp.err("Failed to create resource");
 				}
-				player.playResource(res);
+				player.playResource(res, true);
 				dcb.log("Relocated the video");
 			}
 			break;

@@ -1,325 +1,338 @@
-import { Client, type ClientOptions } from "discord.js"
-import { AudioPlayer, type CreateAudioPlayerOptions } from "@discordjs/voice"
-import { SearchCache } from "./cache"
-import type { AudioResource } from "@discordjs/voice"
-import type { YouTubeChannel, YouTubeVideo } from "play-dl"
-import { misc } from './misc'
-import { readSetting } from './read'
-import { prefetch } from "./voice/stream"
+import { Client, type ClientOptions } from "discord.js";
+import { AudioPlayer, type CreateAudioPlayerOptions } from "@discordjs/voice";
+import { SearchCache } from "./cache";
+import type { AudioResource } from "@discordjs/voice";
+import type { YouTubeChannel, YouTubeVideo } from "play-dl";
+import { misc } from "./misc";
+import { readSetting } from "./setting";
+import { prefetch } from "./voice/stream";
 
-const setting = readSetting()
+const setting = readSetting();
 
 export interface Resource {
-	resource: AudioResource<unknown>,
-	channel: YouTubeChannel,
-	title: string,
-	details: YouTubeVideo,
-	url: string,
-	startFrom?: number
+	resource: AudioResource<unknown>;
+	channel: YouTubeChannel;
+	title: string;
+	details: YouTubeVideo;
+	url: string;
+	startFrom?: number;
 }
 
 export interface SongDataPacket {
 	song: {
-		link: string,
-		channel?: string,
-		duration: number,
-		title?: string,
-		thumbnails: string[],
-		startFrom: number,
-		startTime: number
-	} | null,
-	queue: QueueItem[],
-	volume: number,
-	isPlaying: boolean,
-	history: string[],
-	useYoutubeDl: boolean,
-	canSeek: boolean,
-	paused: boolean,
-	pausedInMs: number,
-	pausedTimestamp: number,
-	isMuting: boolean,
-	loop: boolean
+		link: string;
+		channel?: string;
+		duration: number;
+		title?: string;
+		thumbnails: string[];
+		startFrom: number;
+		startTime: number;
+	} | null;
+	queue: QueueItem[];
+	volume: number;
+	isPlaying: boolean;
+	history: string[];
+	useYoutubeDl: boolean;
+	canSeek: boolean;
+	paused: boolean;
+	pausedInMs: number;
+	pausedTimestamp: number;
+	isMuting: boolean;
+	loop: boolean;
 }
 
 export interface TokenReturn {
-	token: string,
-	guilds: string[]
+	token: string;
+	guilds: string[];
 }
 
 export class CustomClient extends Client {
 	/**
 	 * @description GuildID, AudioPlayer
-	*/
-	player: Map<string, CustomAudioPlayer>
-	cache: SearchCache
-	private tokenMap: Map<string, string[]>
-	record: Set<string>
+	 */
+	player: Map<string, CustomAudioPlayer>;
+	cache: SearchCache;
+	private tokenMap: Map<string, string[]>;
+	record: Set<string>;
 
 	constructor(clientOpt: ClientOptions) {
-		super(clientOpt)
-		this.player = new Map()
-		this.cache = new SearchCache()
-		this.tokenMap = new Map()
-		this.record = new Set()
+		super(clientOpt);
+		this.player = new Map();
+		this.cache = new SearchCache();
+		this.tokenMap = new Map();
+		this.record = new Set();
 	}
 	/**
 	 * @private Should not be called by users, use `CustomClient.createToken` instead
 	 */
 	newToken(guildIds: string[]) {
-		const token = misc.generateToken(36)
-		this.tokenMap.set(token, guildIds)
-		return { token, guildIds }
+		const token = misc.generateToken(36);
+		this.tokenMap.set(token, guildIds);
+		return { token, guildIds };
 	}
 	createToken(guildIds: string[]): string | null {
-		const existingToken = this.getToken(guildIds)
-		if (existingToken) return existingToken.token
-		const { token } = this.newToken(guildIds)
-		return token
+		const existingToken = this.getToken(guildIds);
+		if (existingToken) return existingToken.token;
+		const { token } = this.newToken(guildIds);
+		return token;
 	}
 	appendGuildsByToken(token: string, guildIds: string[]): void {
-		const existingToken = this.tokenMap.get(token)
+		const existingToken = this.tokenMap.get(token);
 		if (existingToken) {
-			this.tokenMap.set(token, Array.from(new Set([...existingToken, ...guildIds])))
+			this.tokenMap.set(
+				token,
+				Array.from(new Set([...existingToken, ...guildIds])),
+			);
 		}
 	}
 	appendGuilds(guildId: string, guilds: string[]): void {
-		const existingToken = this.getToken(guildId)
-		if (!existingToken) return
-		this.appendGuildsByToken(existingToken.token, guilds)
+		const existingToken = this.getToken(guildId);
+		if (!existingToken) return;
+		this.appendGuildsByToken(existingToken.token, guilds);
 	}
-	getToken(guildIds: string): TokenReturn | null
-	getToken(guildIds: string[]): TokenReturn | null
+	getToken(guildIds: string): TokenReturn | null;
+	getToken(guildIds: string[]): TokenReturn | null;
 	getToken(guildId: string | string[]): TokenReturn | null {
-		const entries = this.tokenMap.entries()
+		const entries = this.tokenMap.entries();
 		if (Array.isArray(guildId)) {
-			const entry = entries.find(([_, guildIds]) => guildIds.every(id => guildId.includes(id)))
-			if (entry) return { guilds: entry[1], token: entry[0] }
+			const entry = entries.find(([_, guildIds]) =>
+				guildIds.every((id) => guildId.includes(id)),
+			);
+			if (entry) return { guilds: entry[1], token: entry[0] };
 		} else {
-			const entry = entries.find(([_, guildIds]) => guildIds.includes(guildId))
-			if (entry) return { guilds: entry[1], token: entry[0] }
+			const entry = entries.find(([_, guildIds]) =>
+				guildIds.includes(guildId),
+			);
+			if (entry) return { guilds: entry[1], token: entry[0] };
 		}
-		return null
+		return null;
 	}
 	deleteTokenByGuilds(guilds: string[]) {
-		let token = this.getToken(guilds)
+		let token = this.getToken(guilds);
 		while (token) {
 			if (token) {
-				this.tokenMap.delete(token.token)
+				this.tokenMap.delete(token.token);
 			}
-			token = this.getToken(guilds)
+			token = this.getToken(guilds);
 		}
 	}
 	deleteToken(token: string): boolean {
 		if (this.tokenMap.has(token)) {
-			this.tokenMap.delete(token)
-			return true
+			this.tokenMap.delete(token);
+			return true;
 		}
-		return false
+		return false;
 	}
 }
 
 export interface QueueItem {
-	url: string,
-	repeating: boolean
+	url: string;
+	repeating: boolean;
 }
 
 export class CustomAudioPlayer extends AudioPlayer {
+	guildId: string;
 
-	guildId: string
+	volume: number;
+	isMuting: boolean;
 
-	volume: number
-	isMuting: boolean
-
-	isPlaying: boolean
+	isPlaying: boolean;
 	/**
 	 * @description Current playing resource or the last played resource
 	 */
-	nowPlaying: Resource | null
+	nowPlaying: Resource | null;
 
 	/**
 	 * @description URL of the music queued
 	 */
-	queue: QueueItem[]
+	queue: QueueItem[];
 	/**
 	 * @description Distinctive URL of the music played
 	 */
-	history: string[]
+	history: string[];
 
-	isPaused: boolean
+	isPaused: boolean;
 	/**
 	 * @description Timestamp when the music is paused
 	 */
-	pauseTimestamp: number
+	pauseTimestamp: number;
 	/**
 	 * @description Time in ms where the music is paused
 	 */
-	pauseCounter: number
+	pauseCounter: number;
 
 	/**
 	 * @description Time in ms where the music to be started to play
 	 */
-	startFrom: number
+	startFrom: number;
 	/**
 	 * @description Timestamp when the music is played
 	 */
-	startTime: number
+	startTime: number;
 
-	timeoutList: Timer[]
+	timeoutList: Timer[];
 
-	looping: boolean
+	looping: boolean;
 
 	constructor(guildId: string, options?: CreateAudioPlayerOptions) {
-		super(options)
-		this.guildId = guildId
+		super(options);
+		this.guildId = guildId;
 
-		this.volume = 1
-		this.isMuting = false
+		this.volume = 1;
+		this.isMuting = false;
 
+		this.isPlaying = false;
+		this.nowPlaying = null;
 
-		this.isPlaying = false
-		this.nowPlaying = null
+		this.queue = [];
+		this.history = [];
 
-		this.queue = []
-		this.history = []
+		this.startTime = 0;
 
+		this.startFrom = 0;
+		this.isPaused = false;
 
-		this.startTime = 0
+		this.pauseCounter = 0;
 
-		this.startFrom = 0
-		this.isPaused = false
+		this.pauseTimestamp = 0;
 
-		this.pauseCounter = 0
+		this.looping = false;
 
-		this.pauseTimestamp = 0
-
-		this.looping = false
-
-		this.timeoutList = []
+		this.timeoutList = [];
 	}
 
 	mute() {
-		this.isMuting = true
-		this.nowPlaying?.resource.volume?.setVolume(0)
+		this.isMuting = true;
+		this.nowPlaying?.resource.volume?.setVolume(0);
 	}
 
 	unmute() {
-		this.isMuting = false
-		this.setVolume(this.volume)
+		this.isMuting = false;
+		this.setVolume(this.volume);
 	}
 
 	resetAll() {
-		this.stop()
-		this.volume = 1
-		this.reset()
+		this.stop();
+		this.volume = 1;
+		this.reset();
 	}
 
 	reset() {
-		this.pauseCounter = 0
-		this.pauseTimestamp = 0
+		this.pauseCounter = 0;
+		this.pauseTimestamp = 0;
 
-		this.queue = []
-		this.history = []
+		this.queue = [];
+		this.history = [];
 
-		this.isPlaying = false
-		this.isPaused = false
-		this.nowPlaying = null
+		this.isPlaying = false;
+		this.isPaused = false;
+		this.nowPlaying = null;
 
-		this.looping = false
+		this.looping = false;
 
-		this.startTime = 0
-		this.startFrom = 0
+		this.startTime = 0;
+		this.startFrom = 0;
 	}
 
 	cleanStop() {
 		if (this.stop()) {
-			this.reset()
-			return true
+			this.reset();
+			return true;
 		}
-		return false
+		return false;
 	}
 
 	clearIntervals() {
 		for (const id of this.timeoutList) {
-			clearInterval(id)
+			clearInterval(id);
 		}
-		this.timeoutList = []
+		this.timeoutList = [];
 	}
 
 	enableLoop() {
-		this.looping = true
-		const lastItem = this.queue.at(-1)
-		if (this.nowPlaying && (!lastItem || (lastItem.url !== this.nowPlaying.url && !lastItem.repeating))) {
-			this.addToQueue(this.nowPlaying.url, true)
+		this.looping = true;
+		const lastItem = this.queue.at(-1);
+		if (
+			this.nowPlaying &&
+			(!lastItem ||
+				(lastItem.url !== this.nowPlaying.url && !lastItem.repeating))
+		) {
+			this.addToQueue(this.nowPlaying.url, true);
 		}
 	}
 	disableLoop() {
-		this.looping = false
+		this.looping = false;
 		for (let i = 0; i < this.queue.length; i++) {
 			if (this.queue[i].repeating) {
-				this.queue.splice(i, 1)
-				i--
+				this.queue.splice(i, 1);
+				i--;
 			}
 		}
 	}
 
 	getNextQueueItem() {
-		if (this.queue.length === 0) return null
-		const item = this.queue.shift()
-		if (!item) return null
+		if (this.queue.length === 0) return null;
+		const item = this.queue.shift();
+		if (!item) return null;
 		if (item.repeating) {
 			this.queue.push({
 				repeating: true,
-				url: item.url
-			})
+				url: item.url,
+			});
 		}
-		return item.url
+		return item.url;
 	}
 
+	playResource(resource: Resource, replay = false) {
+		resource.resource.volume?.setVolume(
+			(this.isMuting ? 0 : this.volume) * (setting.VOLUME_MODIFIER ?? 1),
+		);
+		this.nowPlaying = resource;
+		this.isPlaying = true;
+		this.isPaused = false;
 
-	playResource(resource: Resource) {
-		resource.resource.volume?.setVolume((this.isMuting ? 0 : this.volume) * (setting.VOLUME_MODIFIER ?? 1))
-		this.nowPlaying = resource
-		this.isPlaying = true
-		this.isPaused = false
-
-		this.pauseCounter = 0
-		this.startFrom = resource.startFrom ?? 0
-		this.updateStartTime()
-		this.history.push(resource.url)
-		this.clearIntervals()
-		this.play(resource.resource)
+		this.pauseCounter = 0;
+		this.startFrom = resource.startFrom ?? 0;
+		this.updateStartTime();
+		if (!replay) this.history.push(resource.url);
+		this.clearIntervals();
+		this.play(resource.resource);
 	}
 
 	setVolume(volume: number) {
-		this.volume = volume
+		this.volume = volume;
 		if (this.isPlaying && this.nowPlaying?.resource && !this.isMuting) {
-			this.nowPlaying.resource.volume?.setVolume(volume * (setting.VOLUME_MODIFIER ?? 1))
+			this.nowPlaying.resource.volume?.setVolume(
+				volume * (setting.VOLUME_MODIFIER ?? 1),
+			);
 		}
 	}
 
 	updateStartTime() {
-		this.startTime = Date.now()
+		this.startTime = Date.now();
 	}
 
 	resetPlaying() {
-		this.isPlaying = false
-		this.nowPlaying = null
+		this.isPlaying = false;
+		this.nowPlaying = null;
 	}
-
 
 	getData(): SongDataPacket {
 		return {
-			song: this.isPlaying && this.nowPlaying
-				? {
-					link: this.nowPlaying.url,
-					channel: this.nowPlaying.channel.url,
-					duration: this.nowPlaying.details.durationInSec,
-					title: this.nowPlaying.details.title,
-					thumbnails: this.nowPlaying.details.thumbnails.map((v) => v.url),
-					startTime: this.startTime,
-					startFrom: this.startFrom,
-				}
-				: null,
+			song:
+				this.isPlaying && this.nowPlaying
+					? {
+							link: this.nowPlaying.url,
+							channel: this.nowPlaying.channel.url,
+							duration: this.nowPlaying.details.durationInSec,
+							title: this.nowPlaying.details.title,
+							thumbnails: this.nowPlaying.details.thumbnails.map(
+								(v) => v.url,
+							),
+							startTime: this.startTime,
+							startFrom: this.startFrom,
+						}
+					: null,
 			queue: this.queue,
 			history: this.history,
 			volume: this.volume,
@@ -330,35 +343,38 @@ export class CustomAudioPlayer extends AudioPlayer {
 			pausedTimestamp: this.pauseTimestamp,
 			useYoutubeDl: setting.USE_YOUTUBE_DL,
 			canSeek: setting.SEEK,
-			loop: this.looping
-		}
+			loop: this.looping,
+		};
 	}
 	pause() {
-		this.isPaused = true
-		this.pauseTimestamp = Date.now()
-		super.pause()
-		return this.isPaused
+		this.isPaused = true;
+		this.pauseTimestamp = Date.now();
+		super.pause();
+		return this.isPaused;
 	}
 	unpause() {
 		if (this.isPaused) {
-			this.pauseCounter += Date.now() - this.pauseTimestamp
-			this.isPaused = false
+			this.pauseCounter += Date.now() - this.pauseTimestamp;
+			this.isPaused = false;
 		}
-		return super.unpause()
+		return super.unpause();
 	}
 	addToQueue(link: string, repeating = false) {
-		if (setting.USE_YOUTUBE_DL && (this.queue.length > 0 || this.isPlaying)) {
-			prefetch(link)
+		if (
+			setting.USE_YOUTUBE_DL &&
+			(this.queue.length > 0 || this.isPlaying)
+		) {
+			prefetch(link);
 		}
 		this.queue.push({
 			repeating,
-			url: link
-		})
+			url: link,
+		});
 	}
 	newTimeout(callback: () => void, ms: number) {
-		if (ms < 0) return
-		if (ms === 0) return callback()
-		const id = setTimeout(callback, ms)
-		this.timeoutList.push(id)
+		if (ms < 0) return;
+		if (ms === 0) return callback();
+		const id = setTimeout(callback, ms);
+		this.timeoutList.push(id);
 	}
 }

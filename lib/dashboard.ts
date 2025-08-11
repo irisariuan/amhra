@@ -1,5 +1,5 @@
 import NodeCache from "node-cache"
-import { readSetting } from './read'
+import { readSetting } from './setting'
 const ipCache = new NodeCache()
 
 const setting = readSetting()
