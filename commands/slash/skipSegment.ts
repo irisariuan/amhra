@@ -10,7 +10,7 @@ export default {
 		const player = getAudioPlayer(client, interaction, {
 			createPlayer: false,
 		});
-		if (!player) return await interaction.reply("I'm not playing anything");
+		if (!player || !player.isPlaying) return await interaction.reply("I'm not playing anything");
 		const currentSegment = player.currentSegment();
 		if (!currentSegment) {
 			return await interaction.reply({
