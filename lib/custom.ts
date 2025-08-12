@@ -1,6 +1,6 @@
 import type { AudioResource } from "@discordjs/voice";
 import { AudioPlayer, type CreateAudioPlayerOptions } from "@discordjs/voice";
-import { Channel, Client, type ClientOptions } from "discord.js";
+import { Channel, Client, Message, type ClientOptions } from "discord.js";
 import { type YouTubeChannel, type YouTubeVideo } from "play-dl";
 import { SearchCache } from "./cache";
 import { dcb, misc } from "./misc";
@@ -192,6 +192,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 * @description Accumulative counter for music played
 	 */
 	playCounter: number;
+	
+	activeSkipMessage: Message | null
 
 	constructor(
 		guildId: string,
@@ -225,6 +227,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.voiceStateTimeoutArray = [];
 		this.songSegmentsTimeoutArray = [];
 		this.channel = channel;
+		this.activeSkipMessage = null;
 	}
 
 	setChannel(channel?: Channel | null) {

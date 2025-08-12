@@ -82,18 +82,31 @@ export async function getSegments(
 	return segments;
 }
 
-export async function sendSkipMessage(player: CustomAudioPlayer) {
+/**
+ * @returns Whether the skip message was sent or not
+ */
+export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 	if (
 		!player.isPlaying ||
 		!player.nowPlaying?.segments ||
 		player.nowPlaying.segments.length <= 0 ||
 		!player.channel?.isSendable()
 	)
-		return;
+		return false;
+
+	if (player.activeSkipMessage) {
+		if (force) {
+			await player.activeSkipMessage.delete().catch();
+			player.activeSkipMessage = null;
+			dcb.log("Deleted previous skip message");
+		} else {
+			return false;
+		}
+	}
 
 	const count = player.playCounter;
 	const segment = player.currentSegment();
-	if (!segment) return;
+	if (!segment) return false;
 	const skipTo = segment.segment[1];
 	const isSkippingSong =
 		Math.abs(skipTo - player.nowPlaying.details.durationInSec) <= 1;
@@ -102,6 +115,7 @@ export async function sendSkipMessage(player: CustomAudioPlayer) {
 			? "Found non-music content, want to skip to next song?\nType \`/skip\` or react to skip"
 			: `Found non-music content, want to skip to \`${timeFormat(skipTo)}\`?\nType \`/relocate ${skipTo}\` or react to skip`,
 	});
+	player.activeSkipMessage = response;
 	await response.react("✅");
 	try {
 		await response.awaitReactions({
@@ -109,6 +123,8 @@ export async function sendSkipMessage(player: CustomAudioPlayer) {
 			time: Math.min(10 * 1000, skipTo * 1000),
 			errors: ["time"],
 		});
+		if (response.id !== player.activeSkipMessage?.id) return false;
+		player.activeSkipMessage = null;
 		dcb.log("Skipping non-music part");
 		await response.reactions.removeAll();
 		if (player.playCounter !== count) {
@@ -116,26 +132,29 @@ export async function sendSkipMessage(player: CustomAudioPlayer) {
 				content: "The song has changed, skipping cancelled",
 				components: [],
 			});
-			return;
+			return true;
 		}
 		if (isSkippingSong) {
 			player.stop();
 			await response.edit({ content: "Skipped!" });
-			return;
+			return true;
 		}
 		const result = await player.skipCurrentSegment();
 		if (!result.success) {
 			await response.edit(misc.errorMessageObj);
-			return;
+			return true;
 		}
 		await response.edit({
 			content: `Skipped to \`${result.skipped ? "next song" : timeFormat(skipTo)}\``,
 			components: [],
 		});
+		return true;
 	} catch {
+		if (response.id !== player.activeSkipMessage?.id) return false;
+		player.activeSkipMessage = null;
 		if (response.deletable) {
 			await response.delete().catch();
-			return;
+			return true;
 		}
 		if (response.editable) {
 			await response.reactions.removeAll().catch();
@@ -147,5 +166,6 @@ export async function sendSkipMessage(player: CustomAudioPlayer) {
 				.catch();
 		}
 		dcb.log("Skipping non-music part timed out");
+		return true;
 	}
 }
