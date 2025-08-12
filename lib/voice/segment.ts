@@ -1,7 +1,7 @@
 import z from "zod";
-import { dcb, globalApp, misc } from "../misc";
 import { CustomAudioPlayer } from "../custom";
-import { createResource, timeFormat } from "./core";
+import { dcb, globalApp, misc } from "../misc";
+import { timeFormat } from "./core";
 
 export enum SegmentCategory {
 	Sponsor = "sponsor",

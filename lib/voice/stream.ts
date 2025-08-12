@@ -1,18 +1,18 @@
 import moment from "moment";
 import { spawn } from "node:child_process";
-import { PassThrough, Readable, type Writable } from "node:stream";
-import { extractID } from "play-dl";
 import {
-	createWriteStream,
-	existsSync,
-	createReadStream,
-	readdirSync,
-	writeFileSync,
+    createReadStream,
+    createWriteStream,
+    existsSync,
+    readdirSync,
+    writeFileSync,
 } from "node:fs";
-import { readFile, writeFile, stat, unlink, rename } from "node:fs/promises";
-import { readSetting } from "../setting";
-import { dcb, globalApp } from "../misc";
+import { readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import { PassThrough, Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { extractID } from "play-dl";
+import { dcb, globalApp } from "../misc";
+import { readSetting } from "../setting";
 
 if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
 	writeFileSync(`${process.cwd()}/data/lastUsed.record`, "");
@@ -224,7 +224,7 @@ function copyStreamSafe(
 	}
 	const dataHandler = (data: any) => {
 		if (!passThrough.writable) {
-			globalApp.warn(`Copied stream not writable: ${data}`);
+			globalApp.warn(`Copied stream not writable`);
 			return rawStream.removeListener("data", dataHandler);
 		}
 		passThrough.write(data);
