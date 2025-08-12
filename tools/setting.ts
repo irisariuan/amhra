@@ -16,7 +16,7 @@ import { writeJsonSync } from "../lib/setting";
 		PORT: 3000,
 		RATE_LIMIT: 0,
 		DETAIL_LOGGING: false,
-		QUEUE_SIZE: 4000,
+		QUEUE_SIZE: 0,
 		WEBSITE: null,
 		HTTPS: false,
 		OAUTH_TOKEN: "",
@@ -117,12 +117,18 @@ import { writeJsonSync } from "../lib/setting";
 		default: "1",
 	});
 	setting.MAX_CACHE_IN_GB = Number(maxCacheSize);
-	const queueSize = await input({
-		message: "Set up your cache size for logs",
-		validate: (v) => Number.parseInt(v) > 0,
-		default: "4000",
-	});
-	setting.QUEUE_SIZE = Number.parseInt(queueSize);
+	if (
+		await confirm({
+			message: "Would you like to limit logs cache size?",
+			default: false,
+		})
+	) {
+		setting.QUEUE_SIZE = Number(await input({
+			message: "Set up your cache size for logs",
+			validate: (v) => !isNaN(Number(v)) && Number(v) > 0,
+			default: "4000",
+		}));
+	}
 	setting.USE_YOUTUBE_DL = await confirm({
 		message: "Would you like to use youtube-dl?",
 		default: true,

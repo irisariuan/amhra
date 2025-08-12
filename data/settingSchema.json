@@ -31,7 +31,14 @@
 			"type": "array",
 			"items": {
 				"type": "string",
-				"enum": ["errim", "error", "errwn", "express", "main", "message"]
+				"enum": [
+					"errim",
+					"error",
+					"errwn",
+					"express",
+					"main",
+					"message"
+				]
 			},
 			"uniqueItems": true,
 			"description": "The preload logs"
@@ -46,7 +53,7 @@
 		},
 		"QUEUE_SIZE": {
 			"type": "integer",
-			"description": "The maximum log size sent to client"
+			"description": "The maximum log size sent to client, <=0 means no limit"
 		},
 		"AUTH_TOKEN": {
 			"type": "string",
@@ -98,7 +105,7 @@
 			"type": "number",
 			"description": "Maximum video cache in GB, only be used when USE_YOUTUBE_DL is set to TRUE"
 		},
-		"MESSAGE_LOGGING":{
+		"MESSAGE_LOGGING": {
 			"type": "boolean",
 			"description": "Enable message logging"
 		},

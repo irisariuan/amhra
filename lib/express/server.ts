@@ -173,7 +173,7 @@ export async function initServer(client: CustomClient) {
 		if (type.startsWith("exp") && !setting.DETAIL_LOGGING) {
 			return;
 		}
-		if (logQueue.length >= setting.QUEUE_SIZE) {
+		if (setting.QUEUE_SIZE > 0 && logQueue.length >= setting.QUEUE_SIZE) {
 			logQueue.splice(0, logQueue.length - setting.QUEUE_SIZE);
 		}
 		logQueue.push({ message: msg, type, time: Date.now() });
