@@ -464,9 +464,17 @@ export class CustomAudioPlayer extends AudioPlayer {
 		return null;
 	}
 
-	async skipCurrentSegment() {
+	async skipCurrentSegment(skipThreshold = 1) {
 		const skipTo = this.currentSegment();
 		if (!skipTo || !this.nowPlaying) return false;
+		if (
+			Math.abs(
+				this.nowPlaying.details.durationInSec - skipTo.segment[1],
+			) <= skipThreshold
+		) {
+			this.stop();
+			return true;
+		}
 		const resource = await createResource(
 			this.nowPlaying.url,
 			skipTo.segment[1],

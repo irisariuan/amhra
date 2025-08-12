@@ -95,9 +95,7 @@ export async function sendSkipMessage(player: CustomAudioPlayer) {
 	if (!segment) return;
 	const newStart = segment.segment[1];
 	const skippingSong =
-		Math.abs(
-			Math.floor(newStart) - player.nowPlaying.details.durationInSec,
-		) <= 1;
+		Math.abs(newStart - player.nowPlaying.details.durationInSec) <= 1;
 	const response = await player.channel.send({
 		content: skippingSong
 			? "Found non-music content, want to skip to next song?\nType \`/skip\` or react to skip"
@@ -106,12 +104,11 @@ export async function sendSkipMessage(player: CustomAudioPlayer) {
 	await response.react("✅");
 	try {
 		await response.awaitReactions({
-			filter: (reaction) =>
-				reaction.emoji.name === "✅" && !reaction.me,
+			filter: (reaction) => reaction.emoji.name === "✅" && !reaction.me,
 			time: 10 * 1000,
 			max: 1,
 		});
-		dcb.log('Skipping non-music part')
+		dcb.log("Skipping non-music part");
 		await response.reactions.removeAll();
 		if (player.playCounter !== count) {
 			response.edit({
