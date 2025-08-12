@@ -269,6 +269,7 @@ export class CustomClient extends Client {
 					globalApp.err("Failed to skip segment");
 					return 500;
 				}
+				break;
 			}
 			default:
 				return 400;
