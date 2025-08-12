@@ -23,7 +23,7 @@ import { SongEditRequestSchema } from "./schema";
 import { handleSongInterruption } from "./songEdit";
 
 export const YoutubeVideoRegex =
-	/http(?:s?):\/\/(?:www\.)?youtu(?:be\.com\/watch\?v=|\.be\/)([\w\-_]*)(&(amp;)?[\w?=]*)?/;
+	/^http(?:s?):\/\/(?:www\.)?youtu(?:be\.com\/watch\?v=|\.be\/)([\w\-_]*)(&(amp;)?[\w?=]*)?$/;
 const setting = readSetting(`${process.cwd()}/data/setting.json`);
 
 interface AuthOptions {
@@ -304,7 +304,14 @@ export async function initServer(client: CustomClient) {
 				return res.sendStatus(400);
 			}
 			exp.log(`Queried ${req.body.query}`);
-			const searched = (await search(req.body.query, { limit: 1 }))[0];
+			const fetched = await search(req.body.query, { limit: 1 }).catch(
+				() => null,
+			);
+			if (!fetched) {
+				exp.error(`Search failed for query: ${req.body.query}`);
+				return res.sendStatus(500);
+			}
+			const searched = fetched[0];
 			exp.log(
 				`Returned searched URL: ${searched.url}, title: ${searched.title} and durationInSec: ${searched.durationInSec}`,
 			);

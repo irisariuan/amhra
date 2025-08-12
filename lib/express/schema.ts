@@ -45,8 +45,8 @@ const UnmuteSchema = z.object({
 
 const SkipSegmentSchema = z.object({
 	action: z.literal(SongEditType.SkipSegment),
-	...Base
-})
+	...Base,
+});
 
 // SetTime: needs detail.sec >= 0
 const SetTimeSchema = z.object({
@@ -65,9 +65,11 @@ const AddSongSchema = z.object({
 		url: z
 			.string()
 			.refine(
-				(u) => yt_validate(u) === "video",
+				(u) => YoutubeVideoRegex.test(u) && yt_validate(u) === "video",
 				"Must be a valid YouTube video URL",
 			),
+		force: z.boolean().default(false),
+		seek: z.number().nonnegative().optional()
 	}),
 });
 

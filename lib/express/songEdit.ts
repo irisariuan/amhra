@@ -61,7 +61,11 @@ export async function handleSongInterruption(
 			if (!player.isPlaying) {
 				const nextUrl = player.getNextQueueItem();
 				if (!nextUrl) return 400;
-				const res = await createResource(nextUrl);
+				const res = await createResource(
+					nextUrl,
+					data.detail.seek,
+					data.detail.force,
+				);
 				if (!res) {
 					globalApp.err("Failed to create resource");
 					return 500;
