@@ -24,9 +24,6 @@ import { readSetting } from "../setting";
 import dotenv from "dotenv";
 import fs from "node:fs";
 import {
-	ActionRowBuilder,
-	ButtonBuilder,
-	ButtonStyle,
 	type APIInteractionGuildMember,
 	type CacheType,
 	type Channel,
@@ -38,7 +35,6 @@ import {
 import { clipAudio, createYtDlpStream } from "./stream";
 import type { Readable } from "node:stream";
 import { getSegments, SegmentCategory } from "./segment";
-import { ca } from "zod/v4/locales";
 dotenv.config();
 
 const videoInfoCache = new NodeCache();
@@ -62,14 +58,14 @@ export function disconnectConnection(
 	connection.destroy();
 }
 
-export function createAudioPlayer(
+function createAudioPlayer(
 	guildId: string,
 	channel: Channel | null,
 	client: CustomClient,
 	createOpts?: CreateAudioPlayerOptions,
 ) {
 	//create a player and initialize it if there isn't one
-	const player = new CustomAudioPlayer(guildId, createOpts);
+	const player = new CustomAudioPlayer(guildId, channel, createOpts);
 
 	const timeoutDetection = () => {
 		if (player.isPlaying || player.queue.length > 0) {
@@ -87,7 +83,10 @@ export function createAudioPlayer(
 		client.player.delete(guildId);
 	};
 
-	player.newTimeout(timeoutDetection, setting.AUTO_LEAVE ?? 15 * 60 * 1000);
+	player.newVoiceStateTimeout(
+		timeoutDetection,
+		setting.AUTO_LEAVE ?? 15 * 60 * 1000,
+	);
 
 	// will be triggered when player unpaused
 	player.on(AudioPlayerStatus.Playing, () => {
@@ -100,7 +99,7 @@ export function createAudioPlayer(
 			return;
 		}
 		if (player.queue.length === 0) {
-			player.newTimeout(
+			player.newVoiceStateTimeout(
 				timeoutDetection,
 				setting.AUTO_LEAVE ?? 15 * 60 * 1000,
 			);
@@ -119,56 +118,9 @@ export function createAudioPlayer(
 					event.emit("songInfo", nextUrl);
 					player.playResource(resource);
 					dcb.log("Playing next music");
-
-					if (
-						channel &&
-						channel.isTextBased() &&
-						channel.isSendable()
-					) {
-						const segments = await getSegments(extractID(nextUrl), [
-							SegmentCategory.MusicOffTopic,
-						]);
-						if (!segments) return;
-						const firstEl = segments.at(0);
-						if (
-							firstEl?.category === SegmentCategory.MusicOffTopic
-						) {
-							const [start, newStart] = firstEl.segment;
-
-							if (start !== 0) return;
-							const response = await channel.send({
-								content: `Found non-music content at start, want to skip to \`${timeFormat(newStart)}\`?\nType \`/relocate ${newStart}\` or react to skip`,
-							});
-							await response.react("✅");
-							try {
-								await response.awaitReactions({
-									filter: (reaction) =>
-										reaction.emoji.name === "✅",
-									time: 10 * 1000,
-									max: 1,
-								});
-								if (player.nowPlaying?.url !== nextUrl) {
-									return response.edit({
-										content:
-											"The song has changed, skipping cancelled",
-										components: [],
-									});
-								}
-								const data = await createResource(
-									nextUrl,
-									newStart,
-								);
-								if (!data) {
-									return response.edit(misc.errorMessageObj);
-								}
-								player.playResource(data, true);
-								await response.edit({
-									content: `Skipped to ${timeFormat(newStart)}`,
-									components: [],
-								});
-								await response.reactions.removeAll();
-							} catch {}
-						}
+					const segment = resource.segments?.at(0);
+					if (segment) {
+						player.sendSkipMessage(segment);
 					}
 				} else {
 					globalApp.err("No next URL found");
@@ -212,6 +164,7 @@ export function getAudioPlayer(
 		return player;
 	}
 
+	player?.setChannel(interaction.channel);
 	return player;
 }
 
@@ -290,6 +243,9 @@ export async function createResource(
 		inputType: source.type as StreamType,
 		inlineVolume: true,
 	});
+	const segments = await getSegments(extractID(url), [
+		SegmentCategory.MusicOffTopic,
+	]);
 	if (!detail.channel || !detail.title) {
 		throw new Error(
 			"Resource could not be created due to channel and title missing",
@@ -301,6 +257,7 @@ export async function createResource(
 		channel: detail.channel,
 		title: detail.title,
 		details: detail,
+		segments,
 		url,
 		startFrom: (seek ?? 0) * 1000,
 	};
@@ -394,8 +351,12 @@ export interface TransformableResource {
 	url: string;
 }
 
-export function songToString(d: TransformableResource, i?: number) {
-	return `${i ? `\`${i}.\` ` : ""}${d.title}(${d.url}) \`${timeFormat(
-		d.details.durationInSec,
-	)}\``;
+export function songToString(
+	d: TransformableResource,
+	i?: number,
+	currentPos?: number,
+) {
+	return `${i ? `\`${i}.\` ` : ""}${d.title}(${d.url})${
+		currentPos === undefined ? " " : `\n\`${timeFormat(currentPos)}\`/`
+	}\`${timeFormat(d.details.durationInSec)}\``;
 }

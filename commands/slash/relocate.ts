@@ -73,14 +73,11 @@ export default {
 			content: `Relocated the song to ${timeFormat(position)}`,
 		});
 
-		const segments = await getSegments(extractID(player.nowPlaying.url), [
-			SegmentCategory.MusicOffTopic,
-		]);
-		if (!segments) return;
-		const firstEl = segments.at(0);
+		if (!resource.segments) return;
+		const firstEl = resource.segments.at(0);
 		if (firstEl?.category === SegmentCategory.MusicOffTopic) {
 			const [start, newStart] = firstEl.segment;
-			const currentUrl = player.nowPlaying.url;
+			const count = player.playCounter;
 			if (start !== 0 || position >= newStart) return;
 			const response = await interaction.followUp({
 				content: `Found non-music content at start, want to skip to \`${timeFormat(newStart)}\`?`,
@@ -97,14 +94,14 @@ export default {
 				const confirmation = await response.awaitMessageComponent({
 					time: 10 * 1000,
 				});
-				if (player.nowPlaying?.url !== currentUrl) {
+				if (player.playCounter !== count) {
 					return confirmation.update({
 						content: "The song has changed, skipping cancelled",
 						components: [],
 					});
 				}
 				if (confirmation.customId === "skip") {
-					const data = await createResource(currentUrl, newStart);
+					const data = await createResource(player.nowPlaying.url, newStart);
 					if (!data) {
 						return confirmation.update(misc.errorMessageObj);
 					}

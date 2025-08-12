@@ -1,12 +1,13 @@
-import { Client, type ClientOptions } from "discord.js";
+import { Channel, Client, type ClientOptions } from "discord.js";
 import { AudioPlayer, type CreateAudioPlayerOptions } from "@discordjs/voice";
 import { SearchCache } from "./cache";
 import type { AudioResource } from "@discordjs/voice";
 import type { YouTubeChannel, YouTubeVideo } from "play-dl";
-import { misc } from "./misc";
+import { dcb, misc } from "./misc";
 import { readSetting } from "./setting";
 import { prefetch } from "./voice/stream";
-import { Stream } from "./voice/core";
+import { createResource, Stream, timeFormat } from "./voice/core";
+import { Segment, SegmentCategory } from "./voice/segment";
 
 const setting = readSetting();
 
@@ -18,6 +19,7 @@ export interface Resource {
 	url: string;
 	stream: Stream;
 	startFrom?: number;
+	segments: Segment[] | null;
 }
 
 export interface SongDataPacket {
@@ -138,6 +140,9 @@ export class CustomAudioPlayer extends AudioPlayer {
 	volume: number;
 	isMuting: boolean;
 
+	/**
+	 * @description If the player is playing song (true even when paused)
+	 */
 	isPlaying: boolean;
 	/**
 	 * @description Current playing resource or the last played resource
@@ -155,11 +160,11 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	isPaused: boolean;
 	/**
-	 * @description Timestamp when the music is paused
+	 * @description Timestamp when the music is paused (or last paused)
 	 */
 	pauseTimestamp: number;
 	/**
-	 * @description Time in ms where the music is paused
+	 * @description Sum of time in ms for paused duration (only is accurate when playing, update at unpause)
 	 */
 	pauseCounter: number;
 
@@ -172,11 +177,23 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 */
 	startTime: number;
 
-	timeoutList: Timer[];
+	voiceStateTimeoutArray: NodeJS.Timeout[];
+	songSegmentsTimeoutArray: NodeJS.Timeout[];
+
+	channel: Channel | null;
 
 	looping: boolean;
 
-	constructor(guildId: string, options?: CreateAudioPlayerOptions) {
+	/**
+	 * @description Accumulative counter for music played
+	 */
+	playCounter: number;
+
+	constructor(
+		guildId: string,
+		channel: Channel | null = null,
+		options?: CreateAudioPlayerOptions,
+	) {
 		super(options);
 		this.guildId = guildId;
 
@@ -199,8 +216,15 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.pauseTimestamp = 0;
 
 		this.looping = false;
+		this.playCounter = 0;
 
-		this.timeoutList = [];
+		this.voiceStateTimeoutArray = [];
+		this.songSegmentsTimeoutArray = [];
+		this.channel = channel;
+	}
+
+	setChannel(channel?: Channel | null) {
+		this.channel = channel ?? null;
 	}
 
 	mute() {
@@ -245,10 +269,10 @@ export class CustomAudioPlayer extends AudioPlayer {
 	}
 
 	clearIntervals() {
-		for (const id of this.timeoutList) {
+		for (const id of this.voiceStateTimeoutArray) {
 			clearInterval(id);
 		}
-		this.timeoutList = [];
+		this.voiceStateTimeoutArray = [];
 	}
 
 	enableLoop() {
@@ -286,9 +310,6 @@ export class CustomAudioPlayer extends AudioPlayer {
 	}
 
 	playResource(resource: Resource, replay = false) {
-		if (this.nowPlaying && !this.nowPlaying.stream.stream.destroyed) {
-			this.nowPlaying.stream.stream.destroy();
-		}
 		resource.resource.volume?.setVolume(
 			(this.isMuting ? 0 : this.volume) * (setting.VOLUME_MODIFIER ?? 1),
 		);
@@ -296,12 +317,16 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.isPlaying = true;
 		this.isPaused = false;
 
+		this.playCounter++;
 		this.pauseCounter = 0;
 		this.startFrom = resource.startFrom ?? 0;
 		this.updateStartTime();
 		if (!replay) this.history.push(resource.url);
 		this.clearIntervals();
 		this.play(resource.resource);
+
+		this.clearSongTimeouts();
+		this.updateSongTimeouts();
 	}
 
 	setVolume(volume: number) {
@@ -352,15 +377,18 @@ export class CustomAudioPlayer extends AudioPlayer {
 		};
 	}
 	pause() {
+		if (this.isPaused) return false;
 		this.isPaused = true;
 		this.pauseTimestamp = Date.now();
 		super.pause();
+		this.updateSongTimeouts();
 		return this.isPaused;
 	}
 	unpause() {
 		if (this.isPaused) {
 			this.pauseCounter += Date.now() - this.pauseTimestamp;
 			this.isPaused = false;
+			this.updateSongTimeouts();
 		}
 		return super.unpause();
 	}
@@ -376,10 +404,105 @@ export class CustomAudioPlayer extends AudioPlayer {
 			url: link,
 		});
 	}
-	newTimeout(callback: () => void, ms: number) {
+	newVoiceStateTimeout(callback: () => void, ms: number) {
 		if (ms < 0) return;
 		if (ms === 0) return callback();
 		const id = setTimeout(callback, ms);
-		this.timeoutList.push(id);
+		this.voiceStateTimeoutArray.push(id);
+	}
+	updateSongTimeouts() {
+		const currentPos = this.getCurrentSongPosition();
+		if (
+			!this.nowPlaying ||
+			!this.isPlaying ||
+			!this.nowPlaying.segments ||
+			!currentPos
+		)
+			return;
+		if (this.isPaused) {
+			return this.clearSongTimeouts();
+		}
+		dcb.log(`Updating song timeouts at ${currentPos}`);
+		for (const segment of this.nowPlaying.segments) {
+			const [startInSec] = segment.segment;
+			const start = startInSec * 1000;
+			if (start < currentPos) continue;
+			const id = setTimeout(() => {
+				dcb.log("Sending skip message");
+				this.sendSkipMessage(segment);
+			}, start - currentPos);
+			this.songSegmentsTimeoutArray.push(id);
+		}
+	}
+
+	clearSongTimeouts() {
+		for (const id of this.songSegmentsTimeoutArray) {
+			clearTimeout(id);
+		}
+		this.songSegmentsTimeoutArray = [];
+	}
+
+	async sendSkipMessage(segment: Segment) {
+		if (
+			!this.isPlaying ||
+			!this.nowPlaying?.segments ||
+			!this.channel?.isSendable()
+		)
+			return;
+
+		const count = this.playCounter;
+		const newStart = segment.segment[1];
+		const skippingSong =
+			Math.abs(
+				Math.floor(newStart) - this.nowPlaying.details.durationInSec,
+			) <= 1;
+		const response = await this.channel.send({
+			content: skippingSong
+				? "Found non-music content, want to skip to next song?\nType \`/skip\` or react to skip"
+				: `Found non-music content, want to skip to \`${timeFormat(newStart)}\`?\nType \`/relocate ${newStart}\` or react to skip`,
+		});
+		await response.react("✅");
+		try {
+			await response.awaitReactions({
+				filter: (reaction) => reaction.emoji.name === "✅",
+				time: 10 * 1000,
+				max: 1,
+			});
+			await response.reactions.removeAll();
+			if (this.playCounter !== count) {
+				response.edit({
+					content: "The song has changed, skipping cancelled",
+					components: [],
+				});
+				return;
+			}
+			if (skippingSong) {
+				this.stop();
+				await response.edit({ content: "Skipped!" });
+				return;
+			}
+			const data = await createResource(this.nowPlaying.url, newStart);
+			if (!data) {
+				response.edit(misc.errorMessageObj);
+				return;
+			}
+			this.playResource(data, true);
+			await response.edit({
+				content: `Skipped to ${timeFormat(newStart)}`,
+				components: [],
+			});
+		} catch {}
+	}
+
+	getCurrentSongPosition() {
+		if (!this.isPlaying) return null;
+		if (this.isPaused)
+			return (
+				this.pauseTimestamp -
+				this.startTime -
+				this.pauseCounter +
+				this.startFrom
+			);
+		return Date.now() - this.startTime - this.pauseCounter + this.startFrom;
 	}
 }

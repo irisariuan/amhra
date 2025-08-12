@@ -19,7 +19,6 @@ import { getUser, hasUser } from "../db/core";
 import { type Guild, getUserGuilds, register } from "../auth/core";
 import type { TextChannel } from "discord.js";
 import { SongEditType } from "../express/event";
-import z from "zod";
 import { SongEditRequestSchema } from "./schema";
 
 export const YoutubeVideoRegex =
@@ -298,7 +297,11 @@ export async function initServer(client: CustomClient) {
 				}
 				case SongEditType.SetVolume: {
 					cLog("Setting volume from dashboard");
-					event.emitSong(parsed.data.guildId, action, parsed.data.detail);
+					event.emitSong(
+						parsed.data.guildId,
+						action,
+						parsed.data.detail,
+					);
 					break;
 				}
 				case SongEditType.SetQueue: {
@@ -438,9 +441,7 @@ export async function initServer(client: CustomClient) {
 						JSON.stringify(videoCache.get(req.body.url)),
 					);
 				}
-				const video = await (
-					await video_info(req.body.url)
-				).video_details;
+				const video = (await video_info(req.body.url)).video_details;
 				videoCache.set(req.body.url, video);
 				if (!video) {
 					return res.sendStatus(404);

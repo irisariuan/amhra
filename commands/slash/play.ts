@@ -22,7 +22,7 @@ import {
 } from "play-dl";
 import { dcb, globalApp } from "../../lib/misc";
 import { misc } from "../../lib/misc";
-import { getSegments, SegmentCategory } from "../../lib/voice/segment";
+import { SegmentCategory } from "../../lib/voice/segment";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -144,14 +144,11 @@ export default {
 					content: `Playing ${data.title} (${videoUrl})`,
 				});
 
-				const segments = await getSegments(extractID(videoUrl), [
-					SegmentCategory.MusicOffTopic,
-				]);
-				if (!segments) return;
-				const firstEl = segments.at(0);
+				if (!data.segments) return;
+				const firstEl = data.segments.at(0);
 				if (firstEl?.category === SegmentCategory.MusicOffTopic) {
 					const [start, newStart] = firstEl.segment;
-					const currentUrl = audioPlayer.nowPlaying?.url;
+					const count = audioPlayer.playCounter;
 					if (start !== 0) return;
 					const response = await interaction.followUp({
 						content: `Found non-music content at start, want to skip to \`${timeFormat(newStart)}\`?`,
@@ -169,7 +166,7 @@ export default {
 							await response.awaitMessageComponent({
 								time: 10 * 1000,
 							});
-						if (audioPlayer.nowPlaying?.url !== currentUrl) {
+						if (audioPlayer.playCounter !== count) {
 							return confirmation.update({
 								content:
 									"The song has changed, skipping cancelled",
