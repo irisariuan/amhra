@@ -96,7 +96,7 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 
 	if (player.activeSkipMessage) {
 		if (force) {
-			await player.activeSkipMessage.delete().catch();
+			await player.activeSkipMessage.delete().catch(() => {});
 			player.activeSkipMessage = null;
 			dcb.log("Deleted previous skip message");
 		} else {
@@ -153,17 +153,17 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 		if (response.id !== player.activeSkipMessage?.id) return false;
 		player.activeSkipMessage = null;
 		if (response.deletable) {
-			await response.delete().catch();
+			await response.delete().catch(() => {});
 			return true;
 		}
 		if (response.editable) {
-			await response.reactions.removeAll().catch();
+			await response.reactions.removeAll().catch(() => {});
 			await response
 				.edit({
 					content: "Timed out, skipping cancelled",
 					components: [],
 				})
-				.catch();
+				.catch(() => {});
 		}
 		dcb.log("Skipping non-music part timed out");
 		return true;

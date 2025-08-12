@@ -182,17 +182,17 @@ export default {
 					}
 				} catch {
 					if (response.deletable) {
-						await response.delete().catch();
+						await response.delete().catch(() => {});
 						return;
 					}
 					if (response.editable) {
-						await response.reactions.removeAll().catch();
+						await response.reactions.removeAll().catch(() => {});
 						await response
 							.edit({
 								content: "Timed out, skipping cancelled",
 								components: [],
 							})
-							.catch();
+							.catch(() => {});
 					}
 				}
 

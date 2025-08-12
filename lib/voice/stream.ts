@@ -1,11 +1,11 @@
 import moment from "moment";
 import { spawn } from "node:child_process";
 import {
-    createReadStream,
-    createWriteStream,
-    existsSync,
-    readdirSync,
-    writeFileSync,
+	createReadStream,
+	createWriteStream,
+	existsSync,
+	readdirSync,
+	writeFileSync,
 } from "node:fs";
 import { readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { PassThrough, Readable } from "node:stream";
@@ -34,7 +34,9 @@ async function closeAllStreams() {
 		stream.rawStream?.destroy(new Error("Force stream closed"));
 		if (existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
 			dcb.log(`Deleting temp file: ${id}`);
-			await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch();
+			await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch(
+				() => {},
+			);
 		}
 		dcb.log(`Stream finished: ${id}`);
 	}
@@ -74,7 +76,7 @@ async function reviewCaches(forceReview = false) {
 					lastUsed < Date.now() - 1000 * 60 * 60 * 24)
 			) {
 				dcb.log(`Deleting cache: ${id}`);
-				unlink(`${process.cwd()}/cache/${id}.music`).catch();
+				unlink(`${process.cwd()}/cache/${id}.music`).catch(() => {});
 				size -= metadata.size;
 				deletedFiles.push(id);
 			}
@@ -187,12 +189,16 @@ export async function prefetch(url: string, force = false) {
 				globalApp.err(
 					`Deleting ${id}.temp.music due to ${error.message}`,
 				);
-				await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch();
+				await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch(
+					() => {},
+				);
 			}
 
 			if (existsSync(`${process.cwd()}/cache/${id}.music`)) {
 				globalApp.err(`Deleting ${id}.music due to ${error.message}`);
-				await unlink(`${process.cwd()}/cache/${id}.music`).catch();
+				await unlink(`${process.cwd()}/cache/${id}.music`).catch(
+					() => {},
+				);
 			}
 			await updateLastUsed([], [id]);
 			await reviewCaches();
