@@ -1,24 +1,23 @@
+import bodyParser from "body-parser";
+import chalk from "chalk";
+import type { TextChannel } from "discord.js";
 import express, {
-	type Request,
-	type NextFunction,
-	type Response,
+    type NextFunction,
+    type Request,
+    type Response,
 } from "express";
 import { rateLimit } from "express-rate-limit";
-import crypto from "node:crypto";
-import { load } from "../log/load";
-import { search, video_info } from "play-dl";
-import { ActionType, event } from "./event";
-import youtubeSuggest from "youtube-suggest";
-import bodyParser from "body-parser";
-import { globalApp, misc, exp } from "../misc";
-import { readSetting, reloadSetting } from "../setting";
-import chalk from "chalk";
-import type { CustomClient } from "../custom";
 import NodeCache from "node-cache";
-import { getUser, hasUser } from "../db/core";
+import crypto from "node:crypto";
+import { search, video_info } from "play-dl";
+import youtubeSuggest from "youtube-suggest";
 import { type Guild, getUserGuilds, register } from "../auth/core";
-import type { TextChannel } from "discord.js";
-import { SongEditType } from "../express/event";
+import type { CustomClient } from "../custom";
+import { getUser, hasUser } from "../db/core";
+import { load } from "../log/load";
+import { exp, globalApp, misc } from "../misc";
+import { readSetting, reloadSetting } from "../setting";
+import { ActionType, event } from "./event";
 import { SongEditRequestSchema } from "./schema";
 import { handleSongInterruption } from "./songEdit";
 
