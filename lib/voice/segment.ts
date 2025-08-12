@@ -1,5 +1,5 @@
 import z from "zod";
-import { globalApp, misc } from "../misc";
+import { dcb, globalApp, misc } from "../misc";
 import { CustomAudioPlayer } from "../custom";
 import { createResource, timeFormat } from "./core";
 
@@ -107,10 +107,11 @@ export async function sendSkipMessage(player: CustomAudioPlayer) {
 	try {
 		await response.awaitReactions({
 			filter: (reaction) =>
-				reaction.emoji.name === "✅" && reaction.count > 1,
+				reaction.emoji.name === "✅" && !reaction.me,
 			time: 10 * 1000,
 			max: 1,
 		});
+		dcb.log('Skipping non-music part')
 		await response.reactions.removeAll();
 		if (player.playCounter !== count) {
 			response.edit({
