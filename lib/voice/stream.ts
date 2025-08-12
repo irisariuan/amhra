@@ -1,6 +1,6 @@
 import moment from "moment";
 import { spawn } from "node:child_process";
-import { PassThrough, type Readable, type Writable } from "node:stream";
+import { PassThrough, Readable, type Writable } from "node:stream";
 import { extractID } from "play-dl";
 import {
 	createWriteStream,
@@ -243,18 +243,29 @@ export function clipAudio(source: Readable, start: number, end?: number) {
 		...(end ? ["-to", end.toString()] : []),
 		"-c",
 		"copy",
+		"-c:a",
+		"libopus",
 		"-f",
 		"webm",
 		"pipe:1",
 	];
 
 	const proc = spawn("ffmpeg", args, {
-		stdio: ["pipe", "pipe", "ignore"],
+		stdio: ["pipe", "pipe", "pipe"],
 	});
 
 	let buffer = Buffer.from([]);
 	proc.stdout.on("data", (buf) => {
 		buffer = Buffer.concat([buffer, buf]);
+	});
+	const decoder = new TextDecoder();
+	let logMessage = "";
+	proc.stderr.on("data", (buf) => {
+		logMessage += decoder.decode(buf);
+	});
+	proc.on("error", (err) => {
+		globalApp.err(`FFmpeg process error: ${err.message}`);
+		globalApp.err(`Runtime message following:\n${logMessage}`);
 	});
 
 	const promise = new Promise<Buffer>((resolve) =>
@@ -263,13 +274,13 @@ export function clipAudio(source: Readable, start: number, end?: number) {
 		}),
 	);
 
-	pipeline(source, proc.stdin).catch((err) =>
+	pipeline(source, proc.stdin).catch((err: NodeJS.ErrnoException) =>
 		globalApp.err(`Pipeline error: ${err.message}`),
 	);
 	return {
 		buffer: promise,
 		copied: copyStreamSafe(proc.stdout),
-		proc
+		proc,
 	};
 }
 
@@ -282,13 +293,13 @@ export async function createYtDlpStream(
 	if (fetchedStream && !fetchedStream.rawStream?.readable && !force) {
 		// it is still being fetched or already fetched in current process
 		dcb.log(`Stream hit memory: ${id}`);
-		const passThrough = new PassThrough();
+		const readable = new Readable();
 		for (const chunk of fetchedStream.data) {
-			passThrough.write(chunk);
+			readable.push(chunk);
 		}
-		// all data is already in memory, so we can just end the stream
-		passThrough.end();
-		return passThrough;
+		// all data is already in memory, so we can just end the stream by pushing null
+		readable.push(null);
+		return readable;
 	}
 	// Check if the file is already cached (fetched in previous process)
 	if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {

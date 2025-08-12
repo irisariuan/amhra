@@ -13,5 +13,5 @@
 		"strict": true,
 		"skipLibCheck": true
 	},
-	"exclude": ["**/*.spec.ts", "**/node_modules/*", "**/dist/*", "**/test/*"]
+	"exclude": ["**/*.spec.ts", "**/node_modules/*", "**/dist/*"]
 }

@@ -80,7 +80,7 @@ export default {
 		const firstEl = segments.at(0);
 		if (firstEl?.category === SegmentCategory.MusicOffTopic) {
 			const [start, newStart] = firstEl.segment;
-			const currentUrl = player.nowPlaying?.url;
+			const currentUrl = player.nowPlaying.url;
 			if (start !== 0 || position >= newStart) return;
 			const response = await interaction.followUp({
 				content: `Found non-music content at start, want to skip to \`${timeFormat(newStart)}\`?`,

@@ -137,19 +137,16 @@ export function createAudioPlayer(
 
 							if (start !== 0) return;
 							const response = await channel.send({
-								content: `Found non-music content at start, want to skip to \`${timeFormat(newStart)}\`?\nType \`/relocate ${newStart}\` or \`YES\` to skip`,
+								content: `Found non-music content at start, want to skip to \`${timeFormat(newStart)}\`?\nType \`/relocate ${newStart}\` or react to skip`,
 							});
+							await response.react("✅");
 							try {
-								const collected = await channel.awaitMessages({
-									filter: (message) =>
-										message.content.trim() === "YES",
+								await response.awaitReactions({
+									filter: (reaction) =>
+										reaction.emoji.name === "✅",
+									time: 10 * 1000,
 									max: 1,
-									time: 30_000,
 								});
-								const message = collected.first();
-								if (message?.deletable)
-									message.delete().catch(() => {});
-
 								if (player.nowPlaying?.url !== nextUrl) {
 									return response.edit({
 										content:
@@ -169,6 +166,7 @@ export function createAudioPlayer(
 									content: `Skipped to ${timeFormat(newStart)}`,
 									components: [],
 								});
+								await response.reactions.removeAll();
 							} catch {}
 						}
 					}
@@ -250,10 +248,10 @@ export async function createStream(
 		const stream = await createYtDlpStream(url, skipCache);
 		if (seek && seek > 0) {
 			const { copied, proc } = clipAudio(stream, seek);
-			copied.once("close", () => {
+			copied.once("end", () => {
 				if (proc.exitCode === null) {
 					dcb.log(`Seek quitted early, killing process`);
-					proc.kill();
+					// proc.kill();
 				}
 			});
 			return {
