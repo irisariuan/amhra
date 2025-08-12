@@ -106,7 +106,7 @@ export async function sendSkipMessage(player: CustomAudioPlayer) {
 		await response.awaitReactions({
 			filter: (reaction) => reaction.emoji.name === "✅" && !reaction.me,
 			time: Math.min(10 * 1000, skipTo * 1000),
-			max: 1,
+			errors: ['time']
 		});
 		dcb.log("Skipping non-music part");
 		await response.reactions.removeAll();
@@ -130,5 +130,19 @@ export async function sendSkipMessage(player: CustomAudioPlayer) {
 			content: `Skipped to \`${timeFormat(skipTo)}\``,
 			components: [],
 		});
-	} catch {}
+	} catch {
+		if (response.deletable) {
+			await response.delete().catch();
+			return;
+		}
+		if (response.editable) {
+			await response
+				.edit({
+					content: "Timed out, skipping cancelled",
+					components: [],
+				})
+				.catch();
+		}
+		dcb.log("Skipping non-music part timed out");
+	}
 }
