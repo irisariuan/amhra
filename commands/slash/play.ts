@@ -192,7 +192,9 @@ export default {
 								components: [],
 							});
 						}
-					} catch {}
+					} catch (err) {
+						globalApp.err("Error running confirmation:", err);
+					}
 				}
 
 				return;

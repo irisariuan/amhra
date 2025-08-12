@@ -212,11 +212,24 @@ export async function prefetch(url: string, force = false) {
 	return { rawOutputStream, copiedStream: copyStreamSafe(rawOutputStream) };
 }
 
-function copyStreamSafe(rawStream: Readable): Readable {
+function copyStreamSafe(
+	rawStream: Readable,
+	preData?: (string | Buffer<ArrayBufferLike>)[],
+): Readable {
 	const passThrough = new PassThrough();
-	rawStream.on("data", (data) => {
-		if (passThrough.writable) passThrough.write(data);
-	});
+	if (preData) {
+		for (const data of preData) {
+			passThrough.write(data);
+		}
+	}
+	const dataHandler = (data: any) => {
+		if (!passThrough.writable) {
+			globalApp.warn(`Copied stream not writable: ${data}`);
+			return rawStream.removeListener("data", dataHandler);
+		}
+		passThrough.write(data);
+	};
+	rawStream.on("data", dataHandler);
 	rawStream.on("end", () => {
 		if (!passThrough.writableEnded) passThrough.end();
 	});
@@ -303,26 +316,25 @@ export async function createYtDlpStream(
 	}
 	// Check if the file is already cached (fetched in previous process)
 	if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
-		dcb.log(`Cache hit: ${id}`);
-		await updateLastUsed([id]);
-		const stream = createReadStream(`${process.cwd()}/cache/${id}.music`);
-		const data: (string | Buffer)[] = [];
-		stream.on("data", (chunk) => data.push(chunk));
-		const promise = new Promise<void>((r) => stream.on("end", r));
-		streams.set(id, {
-			promise,
-			rawStream: stream,
-			data,
-		});
-		dcb.log(`Stream created: ${id}`);
-		return stream;
+		return await getCachedStream(id);
 	}
 	// Cache miss, we need to download the file
 	dcb.log(`Cache miss: ${id}, downloading...`);
 	const resultStream = await prefetch(url, force);
 	if (!resultStream) {
-		dcb.log(`Failed to create stream (cached already): ${id}`);
-		throw new Error(`Failed to create stream (cached already): ${id}`);
+		dcb.log(
+			`Failed to create stream (cached already or downloading): ${id}`,
+		);
+		const resultStream = streams.get(id);
+		if (resultStream?.rawStream) {
+			return copyStreamSafe(resultStream.rawStream, resultStream.data);
+		}
+		if (existsSync(`${process.cwd()}/cache/${id}.music`)) {
+			return await getCachedStream(id);
+		}
+		throw new Error(
+			`Failed to create stream (cached already or downloading): ${id}`,
+		);
 	}
 	const { copiedStream } = resultStream;
 	if (!copiedStream?.readable) {
@@ -330,4 +342,20 @@ export async function createYtDlpStream(
 		throw new Error(`Stream not found or not readable: ${id}`);
 	}
 	return copiedStream;
+}
+
+async function getCachedStream(id: string) {
+	dcb.log(`Cache hit: ${id}`);
+	await updateLastUsed([id]);
+	const stream = createReadStream(`${process.cwd()}/cache/${id}.music`);
+	const data: (string | Buffer)[] = [];
+	stream.on("data", (chunk) => data.push(chunk));
+	const promise = new Promise<void>((r) => stream.on("end", r));
+	streams.set(id, {
+		promise,
+		rawStream: stream,
+		data,
+	});
+	dcb.log(`Stream created: ${id}`);
+	return stream;
 }
