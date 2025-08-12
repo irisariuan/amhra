@@ -1,6 +1,7 @@
 import z from "zod";
 import { SongEditType } from "../express/event";
 import { YoutubeVideoRegex } from "./server";
+import { yt_validate } from "play-dl";
 
 // Queue item (from custom.ts)
 export const QueueItemSchema = z.object({
@@ -64,7 +65,7 @@ const AddSongSchema = z.object({
 		url: z
 			.string()
 			.refine(
-				(u) => YoutubeVideoRegex.test(u),
+				(u) => yt_validate(u) === "video",
 				"Must be a valid YouTube video URL",
 			),
 	}),
@@ -121,6 +122,7 @@ export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	SetVolumeSchema,
 	SetQueueSchema,
 	LoopSchema,
+	SkipSegmentSchema,
 ]);
 
 // Inferred Type

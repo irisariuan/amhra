@@ -181,8 +181,6 @@ export async function initServer(client: CustomClient) {
 
 	event.on("page", (pageName) => exp.log(`Fetched page ${pageName}`));
 
-	event.on("action", (action) => exp.log(`Received action: ${action}`));
-
 	app.post(
 		"/api/register",
 		jsonParser,
@@ -218,7 +216,7 @@ export async function initServer(client: CustomClient) {
 		auth({ requirePassword: false, allowBearer: true }),
 		basicCheckBuilder(["action", "guildId"]),
 		checkGuildMiddleware(client),
-		(req: Request, res: Response) => {
+		async (req: Request, res: Response) => {
 			const formatter = misc.prefixFormatter(
 				chalk.bgGrey(`(Guild ID: ${req.body.guildId}, IP: ${req.ip})`),
 			);
@@ -233,115 +231,9 @@ export async function initServer(client: CustomClient) {
 				cError("Request body error", parsed.error.message);
 				return res.sendStatus(400);
 			}
-			const action = parsed.data.action;
-			switch (action) {
-				case SongEditType.Pause:
-					cLog("Pausing song from dashboard");
-					event.emitSong(parsed.data.guildId, action, {});
-					break;
-				case SongEditType.Resume:
-					cLog("Resuming song from dashboard");
-					event.emitSong(parsed.data.guildId, action, {});
-					break;
-				case SongEditType.SetTime:
-					if (!setting.SEEK) {
-						cError("Seeking is disabled");
-						return res.sendStatus(500);
-					}
-					if (
-						parsed.data.detail?.sec !== undefined &&
-						parsed.data.detail?.sec >= 0
-					) {
-						cLog("Setting time");
-						event.emitSong(
-							parsed.data.guildId,
-							action,
-							parsed.data.detail,
-						);
-					} else {
-						cError("Request body error");
-						return res.sendStatus(400);
-					}
-					break;
-				case SongEditType.AddSong:
-					if (parsed.data?.detail?.url) {
-						cLog("Received song from dashboard");
-						event.emitSong(
-							parsed.data.guildId,
-							action,
-							parsed.data.detail,
-						);
-					} else {
-						cError("URL not found");
-						return res.sendStatus(400);
-					}
-					break;
-				case SongEditType.Stop:
-					cLog(
-						`(Guild ID: ${parsed.data.guildId}) Stopping song from dashboard`,
-					);
-					event.emitSong(parsed.data.guildId, action, {});
-					break;
-				case SongEditType.Skip:
-					cLog("Skipping song from dashboard");
-					event.emitSong(parsed.data.guildId, action, {});
-					break;
-				case SongEditType.RemoveSong: {
-					cLog("Removing song from dashboard");
-					event.emitSong(
-						parsed.data.guildId,
-						action,
-						parsed.data.detail,
-					);
-					break;
-				}
-				case SongEditType.SetVolume: {
-					cLog("Setting volume from dashboard");
-					event.emitSong(
-						parsed.data.guildId,
-						action,
-						parsed.data.detail,
-					);
-					break;
-				}
-				case SongEditType.SetQueue: {
-					cLog("Setting queue from dashboard");
-					event.emitSong(
-						parsed.data.guildId,
-						action,
-						parsed.data.detail,
-					);
-					break;
-				}
-				case SongEditType.Quit: {
-					cLog("Quitting from dashboard");
-					event.emitSong(parsed.data.guildId, action, {});
-					break;
-				}
-				case SongEditType.Mute: {
-					cLog("Muting from dashboard");
-					event.emitSong(parsed.data.guildId, action, {});
-					break;
-				}
-				case SongEditType.Unmute: {
-					cLog("Unmuting from dashboard");
-					event.emitSong(parsed.data.guildId, action, {});
-					break;
-				}
-				case SongEditType.Loop: {
-					cLog("Setting loop from dashboard");
-					event.emitSong(
-						parsed.data.guildId,
-						action,
-						parsed.data.detail,
-					);
-					break;
-				}
-				default:
-					cError(`Invalid action: ${action}`);
-					return res.sendStatus(400);
-			}
-			return res.sendStatus(200);
+			return res.sendStatus(
+				await client.handleSongInterruption(parsed.data),
+			);
 		},
 	);
 
@@ -359,7 +251,6 @@ export async function initServer(client: CustomClient) {
 			if (!req.body.action) {
 				return res.sendStatus(400);
 			}
-			event.emitAction(req.body.action);
 			switch (req.body.action as ActionType) {
 				case ActionType.Exit: {
 					globalApp.important(
