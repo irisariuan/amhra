@@ -1,5 +1,7 @@
 import z from "zod";
-import { globalApp } from "../misc";
+import { globalApp, misc } from "../misc";
+import { CustomAudioPlayer } from "../custom";
+import { createResource, timeFormat } from "./core";
 
 export enum SegmentCategory {
 	Sponsor = "sponsor",
@@ -78,4 +80,57 @@ export async function getSegments(
 		});
 	}
 	return segments;
+}
+
+export async function sendSkipMessage(player: CustomAudioPlayer) {
+	if (
+		!player.isPlaying ||
+		!player.nowPlaying?.segments ||
+		!player.channel?.isSendable()
+	)
+		return;
+
+	const count = player.playCounter;
+	const segment = player.currentSegment();
+	if (!segment) return;
+	const newStart = segment.segment[1];
+	const skippingSong =
+		Math.abs(
+			Math.floor(newStart) - player.nowPlaying.details.durationInSec,
+		) <= 1;
+	const response = await player.channel.send({
+		content: skippingSong
+			? "Found non-music content, want to skip to next song?\nType \`/skip\` or react to skip"
+			: `Found non-music content, want to skip to \`${timeFormat(newStart)}\`?\nType \`/relocate ${newStart}\` or react to skip`,
+	});
+	await response.react("✅");
+	try {
+		await response.awaitReactions({
+			filter: (reaction) =>
+				reaction.emoji.name === "✅" && reaction.count > 1,
+			time: 10 * 1000,
+			max: 1,
+		});
+		await response.reactions.removeAll();
+		if (player.playCounter !== count) {
+			response.edit({
+				content: "The song has changed, skipping cancelled",
+				components: [],
+			});
+			return;
+		}
+		if (skippingSong) {
+			player.stop();
+			await response.edit({ content: "Skipped!" });
+			return;
+		}
+		if (!(await player.skipCurrentSegment())) {
+			await response.edit(misc.errorMessageObj);
+			return;
+		}
+		await response.edit({
+			content: `Skipped to \`${timeFormat(newStart)}\``,
+			components: [],
+		});
+	} catch {}
 }

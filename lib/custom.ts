@@ -1,13 +1,13 @@
-import { Channel, Client, type ClientOptions } from "discord.js";
-import { AudioPlayer, type CreateAudioPlayerOptions } from "@discordjs/voice";
-import { SearchCache } from "./cache";
 import type { AudioResource } from "@discordjs/voice";
+import { AudioPlayer, type CreateAudioPlayerOptions } from "@discordjs/voice";
+import { Channel, Client, type ClientOptions } from "discord.js";
 import type { YouTubeChannel, YouTubeVideo } from "play-dl";
+import { SearchCache } from "./cache";
 import { dcb, misc } from "./misc";
 import { readSetting } from "./setting";
+import { createResource, Stream } from "./voice/core";
+import { Segment, sendSkipMessage } from "./voice/segment";
 import { prefetch } from "./voice/stream";
-import { createResource, Stream, timeFormat } from "./voice/core";
-import { Segment, SegmentCategory } from "./voice/segment";
 
 const setting = readSetting();
 
@@ -43,6 +43,7 @@ export interface SongDataPacket {
 	pausedTimestamp: number;
 	isMuting: boolean;
 	loop: boolean;
+	skipToTimestamp: number | null;
 }
 
 export interface TokenReturn {
@@ -374,6 +375,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 			useYoutubeDl: setting.USE_YOUTUBE_DL,
 			canSeek: setting.SEEK,
 			loop: this.looping,
+			skipToTimestamp: this.currentSegment()?.segment[1] ?? null,
 		};
 	}
 	pause() {
@@ -429,10 +431,39 @@ export class CustomAudioPlayer extends AudioPlayer {
 			if (start < currentPos) continue;
 			const id = setTimeout(() => {
 				dcb.log("Sending skip message");
-				this.sendSkipMessage(segment);
+				sendSkipMessage(this);
 			}, start - currentPos);
 			this.songSegmentsTimeoutArray.push(id);
 		}
+	}
+
+	currentSegment() {
+		const currentPos = this.getCurrentSongPosition();
+		if (
+			!this.nowPlaying ||
+			!this.isPlaying ||
+			!this.nowPlaying.segments ||
+			!currentPos
+		)
+			return null;
+		for (const segment of this.nowPlaying.segments) {
+			const [startInSec, endInSec] = segment.segment;
+			const start = startInSec * 1000;
+			const end = endInSec * 1000;
+			if (currentPos >= start && currentPos <= end) {
+				return segment;
+			}
+		}
+		return null;
+	}
+
+	async skipCurrentSegment() {
+		const skipTo = this.currentSegment();
+		if (!skipTo || !this.nowPlaying) return false;
+		const resource = await createResource(this.nowPlaying.url, skipTo.segment[1]);
+		if (!resource) return false;
+		this.playResource(resource);
+		return true;
 	}
 
 	clearSongTimeouts() {
@@ -440,58 +471,6 @@ export class CustomAudioPlayer extends AudioPlayer {
 			clearTimeout(id);
 		}
 		this.songSegmentsTimeoutArray = [];
-	}
-
-	async sendSkipMessage(segment: Segment) {
-		if (
-			!this.isPlaying ||
-			!this.nowPlaying?.segments ||
-			!this.channel?.isSendable()
-		)
-			return;
-
-		const count = this.playCounter;
-		const newStart = segment.segment[1];
-		const skippingSong =
-			Math.abs(
-				Math.floor(newStart) - this.nowPlaying.details.durationInSec,
-			) <= 1;
-		const response = await this.channel.send({
-			content: skippingSong
-				? "Found non-music content, want to skip to next song?\nType \`/skip\` or react to skip"
-				: `Found non-music content, want to skip to \`${timeFormat(newStart)}\`?\nType \`/relocate ${newStart}\` or react to skip`,
-		});
-		await response.react("✅");
-		try {
-			await response.awaitReactions({
-				filter: (reaction) => reaction.emoji.name === "✅",
-				time: 10 * 1000,
-				max: 1,
-			});
-			await response.reactions.removeAll();
-			if (this.playCounter !== count) {
-				response.edit({
-					content: "The song has changed, skipping cancelled",
-					components: [],
-				});
-				return;
-			}
-			if (skippingSong) {
-				this.stop();
-				await response.edit({ content: "Skipped!" });
-				return;
-			}
-			const data = await createResource(this.nowPlaying.url, newStart);
-			if (!data) {
-				response.edit(misc.errorMessageObj);
-				return;
-			}
-			this.playResource(data, true);
-			await response.edit({
-				content: `Skipped to ${timeFormat(newStart)}`,
-				components: [],
-			});
-		} catch {}
 	}
 
 	getCurrentSongPosition() {

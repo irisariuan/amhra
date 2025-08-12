@@ -143,55 +143,41 @@ export default {
 				await interaction.editReply({
 					content: `Playing ${data.title} (${videoUrl})`,
 				});
-
-				if (!data.segments) return;
-				const firstEl = data.segments.at(0);
-				if (firstEl?.category === SegmentCategory.MusicOffTopic) {
-					const [start, newStart] = firstEl.segment;
-					const count = audioPlayer.playCounter;
-					if (start !== 0) return;
-					const response = await interaction.followUp({
-						content: `Found non-music content at start, want to skip to \`${timeFormat(newStart)}\`?`,
-						components: [
-							new ActionRowBuilder<ButtonBuilder>().addComponents(
-								new ButtonBuilder()
-									.setLabel("Skip")
-									.setStyle(ButtonStyle.Primary)
-									.setCustomId("skip"),
-							),
-						],
+				const skipTo = audioPlayer.currentSegment();
+				if (!data.segments || !skipTo) return;
+				const count = audioPlayer.playCounter;
+				const response = await interaction.followUp({
+					content: `Found non-music content at start, want to skip to \`${timeFormat(skipTo.segment[1])}\`?`,
+					components: [
+						new ActionRowBuilder<ButtonBuilder>().addComponents(
+							new ButtonBuilder()
+								.setLabel("Skip")
+								.setStyle(ButtonStyle.Primary)
+								.setCustomId("skip"),
+						),
+					],
+				});
+				try {
+					const confirmation = await response.awaitMessageComponent({
+						time: 10 * 1000,
 					});
-					try {
-						const confirmation =
-							await response.awaitMessageComponent({
-								time: 10 * 1000,
-							});
-						if (audioPlayer.playCounter !== count) {
-							return confirmation.update({
-								content:
-									"The song has changed, skipping cancelled",
-								components: [],
-							});
-						}
-						if (confirmation.customId === "skip") {
-							const data = await createResource(
-								videoUrl,
-								newStart,
-							);
-							if (!data) {
-								return confirmation.update(
-									misc.errorMessageObj,
-								);
-							}
-							audioPlayer.playResource(data, true);
-							await confirmation.update({
-								content: `Skipped to ${timeFormat(newStart)}`,
-								components: [],
-							});
-						}
-					} catch (err) {
-						globalApp.err("Error running confirmation:", err);
+					if (audioPlayer.playCounter !== count) {
+						return confirmation.update({
+							content: "The song has changed, skipping cancelled",
+							components: [],
+						});
 					}
+					if (confirmation.customId === "skip") {
+						if (!(await audioPlayer.skipCurrentSegment())) {
+							return confirmation.update(misc.errorMessageObj);
+						}
+						await confirmation.update({
+							content: `Skipped to ${timeFormat(skipTo.segment[1])}`,
+							components: [],
+						});
+					}
+				} catch (err) {
+					globalApp.err("Error running confirmation:", err);
 				}
 
 				return;

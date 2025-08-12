@@ -34,7 +34,7 @@ import {
 } from "discord.js";
 import { clipAudio, createYtDlpStream } from "./stream";
 import type { Readable } from "node:stream";
-import { getSegments, SegmentCategory } from "./segment";
+import { getSegments, SegmentCategory, sendSkipMessage } from "./segment";
 dotenv.config();
 
 const videoInfoCache = new NodeCache();
@@ -118,10 +118,7 @@ function createAudioPlayer(
 					event.emit("songInfo", nextUrl);
 					player.playResource(resource);
 					dcb.log("Playing next music");
-					const segment = resource.segments?.at(0);
-					if (segment) {
-						player.sendSkipMessage(segment);
-					}
+					await sendSkipMessage(player);
 				} else {
 					globalApp.err("No next URL found");
 				}

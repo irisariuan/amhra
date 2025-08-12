@@ -215,14 +215,14 @@ event.on("songInterruption", async (guildId, action, detail) => {
 			}
 			player.addToQueue(detail.url);
 			if (!player.isPlaying) {
-				const p = player.getNextQueueItem();
-				if (!p) return;
-				const res = await createResource(p);
+				const nextUrl = player.getNextQueueItem();
+				if (!nextUrl) return;
+				const res = await createResource(nextUrl);
 				if (!res) {
 					return globalApp.err("Failed to create resource");
 				}
 
-				event.emitSongInfo(p);
+				event.emitSongInfo(nextUrl);
 				player.playResource(res);
 				dcb.log("Started playing song from queue");
 			}

@@ -1,18 +1,17 @@
 import {
-	ActionRowBuilder,
-	ButtonBuilder,
-	ButtonStyle,
-	SlashCommandBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    SlashCommandBuilder,
 } from "discord.js";
-import {
-	createResource,
-	getAudioPlayer,
-	timeFormat,
-} from "../../lib/voice/core";
 import type { Command } from "../../lib/interaction";
-import { extractID } from "play-dl";
 import { misc } from "../../lib/misc";
-import { getSegments, SegmentCategory } from "../../lib/voice/segment";
+import {
+    createResource,
+    getAudioPlayer,
+    timeFormat,
+} from "../../lib/voice/core";
+import { SegmentCategory } from "../../lib/voice/segment";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -101,11 +100,9 @@ export default {
 					});
 				}
 				if (confirmation.customId === "skip") {
-					const data = await createResource(player.nowPlaying.url, newStart);
-					if (!data) {
+					if (!(await player.skipCurrentSegment())) {
 						return confirmation.update(misc.errorMessageObj);
 					}
-					player.playResource(data, true);
 					await confirmation.update({
 						content: `Skipped to ${timeFormat(newStart)}`,
 						components: [],
