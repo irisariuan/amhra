@@ -15,13 +15,6 @@ const setting = readSetting();
 	} else {
 		const choices: { name: string; value: "prod" | "dev" }[] = [];
 		if (setting.TOKEN) {
-			process.on("uncaughtException", (e) => {
-				globalApp.err(`Uncaught Error: ${e}`);
-			});
-
-			process.on("unhandledRejection", (error) => {
-				globalApp.err("Unhandled promise rejection:", error);
-			});
 			choices.push({ name: "Production", value: "prod" });
 		}
 		if (setting.TESTING_TOKEN) {
@@ -31,6 +24,15 @@ const setting = readSetting();
 			return console.log(chalk.bgRed.whiteBright("No token is provided"));
 		}
 		result = await select({ choices: choices, message: "Mode" });
+	}
+	if (result === "prod") {
+		process.on("uncaughtException", (e) => {
+			globalApp.err(`Uncaught Error: ${e}`);
+		});
+
+		process.on("unhandledRejection", (error) => {
+			globalApp.err("Unhandled promise rejection:", error);
+		});
 	}
 
 	const token = { prod: setting.TOKEN, dev: setting.TESTING_TOKEN }[result];
