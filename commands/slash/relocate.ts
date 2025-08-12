@@ -75,11 +75,11 @@ export default {
 		if (!resource.segments) return;
 		const firstEl = resource.segments.at(0);
 		if (firstEl?.category === SegmentCategory.MusicOffTopic) {
-			const [start, newStart] = firstEl.segment;
+			const [start, skipTo] = firstEl.segment;
 			const count = player.playCounter;
-			if (start !== 0 || position >= newStart) return;
+			if (start !== 0 || position >= skipTo) return;
 			const response = await interaction.followUp({
-				content: `Found non-music content at start, want to skip to \`${timeFormat(newStart)}\`?`,
+				content: `Found non-music content at start, want to skip to \`${timeFormat(skipTo)}\`?`,
 				components: [
 					new ActionRowBuilder<ButtonBuilder>().addComponents(
 						new ButtonBuilder()
@@ -91,7 +91,7 @@ export default {
 			});
 			try {
 				const confirmation = await response.awaitMessageComponent({
-					time: 10 * 1000,
+					time: Math.min(10 * 1000, skipTo * 1000),
 				});
 				if (player.playCounter !== count) {
 					return confirmation.update({
@@ -101,10 +101,13 @@ export default {
 				}
 				if (confirmation.customId === "skip") {
 					if (!(await player.skipCurrentSegment())) {
-						return confirmation.update(misc.errorMessageObj);
+						return confirmation.update({
+							...misc.errorMessageObj,
+							components: [],
+						});
 					}
 					await confirmation.update({
-						content: `Skipped to ${timeFormat(newStart)}`,
+						content: `Skipped to ${timeFormat(skipTo)}`,
 						components: [],
 					});
 				}

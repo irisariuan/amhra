@@ -159,7 +159,7 @@ export default {
 				});
 				try {
 					const confirmation = await response.awaitMessageComponent({
-						time: 10 * 1000,
+						time: Math.min(10 * 1000, skipTo.segment[1] * 1000),
 					});
 					if (audioPlayer.playCounter !== count) {
 						return confirmation.update({
@@ -169,7 +169,10 @@ export default {
 					}
 					if (confirmation.customId === "skip") {
 						if (!(await audioPlayer.skipCurrentSegment())) {
-							return confirmation.update(misc.errorMessageObj);
+							return confirmation.update({
+								...misc.errorMessageObj,
+								components: [],
+							});
 						}
 						await confirmation.update({
 							content: `Skipped to ${timeFormat(skipTo.segment[1])}`,
