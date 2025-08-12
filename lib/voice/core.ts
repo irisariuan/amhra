@@ -90,14 +90,11 @@ function createAudioPlayer(
 
 	// will be triggered when player unpaused
 	player.on(AudioPlayerStatus.Playing, () => {
-		if (!player.nowPlaying?.url) return;
+		if (!player.nowPlaying) return;
 		player.isPlaying = true;
 	});
 	//continue to play song after ending one
 	player.on(AudioPlayerStatus.Idle, async () => {
-		if (!player) {
-			return;
-		}
 		if (player.queue.length === 0) {
 			player.newVoiceStateTimeout(
 				timeoutDetection,
@@ -118,7 +115,7 @@ function createAudioPlayer(
 					event.emit("songInfo", nextUrl);
 					player.playResource(resource);
 					dcb.log("Playing next music");
-					await sendSkipMessage(player);
+					if (resource.segments) await sendSkipMessage(player);
 				} else {
 					globalApp.err("No next URL found");
 				}

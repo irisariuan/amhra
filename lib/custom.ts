@@ -1,20 +1,16 @@
 import type { AudioResource } from "@discordjs/voice";
 import { AudioPlayer, type CreateAudioPlayerOptions } from "@discordjs/voice";
 import { Channel, Client, type ClientOptions } from "discord.js";
-import { yt_validate, type YouTubeChannel, type YouTubeVideo } from "play-dl";
+import { type YouTubeChannel, type YouTubeVideo } from "play-dl";
 import { SearchCache } from "./cache";
-import { dcb, globalApp, misc } from "./misc";
+import { dcb, misc } from "./misc";
 import { readSetting } from "./setting";
 import {
 	createResource,
-	destroyAudioPlayer,
-	getConnection,
-	Stream,
+	Stream
 } from "./voice/core";
 import { Segment, sendSkipMessage } from "./voice/segment";
 import { prefetch } from "./voice/stream";
-import { event, SongEditType } from "./express/event";
-import { SongEditRequest } from "./express/schema";
 
 const setting = readSetting();
 

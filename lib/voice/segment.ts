@@ -86,6 +86,7 @@ export async function sendSkipMessage(player: CustomAudioPlayer) {
 	if (
 		!player.isPlaying ||
 		!player.nowPlaying?.segments ||
+		player.nowPlaying.segments.length <= 0 ||
 		!player.channel?.isSendable()
 	)
 		return;
@@ -137,6 +138,7 @@ export async function sendSkipMessage(player: CustomAudioPlayer) {
 			return;
 		}
 		if (response.editable) {
+			await response.reactions.removeAll().catch();
 			await response
 				.edit({
 					content: "Timed out, skipping cancelled",

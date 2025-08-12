@@ -118,6 +118,7 @@ export default {
 					return;
 				}
 				if (response.editable) {
+					await response.reactions.removeAll().catch();
 					await response
 						.edit({
 							content: "Timed out, skipping cancelled",
