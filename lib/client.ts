@@ -294,6 +294,13 @@ event.on("songInterruption", async (guildId, action, detail) => {
 			}
 			break;
 		}
+		case SongEditType.SkipSegment: {
+			if (await player.skipCurrentSegment()) {
+				dcb.log("Skipped segment from dashboard");
+			} else {
+				globalApp.err("Failed to skip segment");
+			}
+		}
 		default:
 			break;
 	}

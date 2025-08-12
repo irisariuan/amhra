@@ -1,15 +1,15 @@
 import {
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    SlashCommandBuilder,
+	ActionRowBuilder,
+	ButtonBuilder,
+	ButtonStyle,
+	SlashCommandBuilder,
 } from "discord.js";
 import type { Command } from "../../lib/interaction";
 import { misc } from "../../lib/misc";
 import {
-    createResource,
-    getAudioPlayer,
-    timeFormat,
+	createResource,
+	getAudioPlayer,
+	timeFormat,
 } from "../../lib/voice/core";
 import { SegmentCategory } from "../../lib/voice/segment";
 
@@ -108,7 +108,20 @@ export default {
 						components: [],
 					});
 				}
-			} catch {}
+			} catch {
+				if (response.deletable) {
+					await response.delete().catch();
+					return;
+				}
+				if (response.editable) {
+					await response
+						.edit({
+							content: "Timed out, skipping cancelled",
+							components: [],
+						})
+						.catch();
+				}
+			}
 		}
 	},
 } as Command<SlashCommandBuilder>;

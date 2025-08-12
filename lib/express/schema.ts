@@ -42,6 +42,11 @@ const UnmuteSchema = z.object({
 	...Base,
 });
 
+const SkipSegmentSchema = z.object({
+	action: z.literal(SongEditType.SkipSegment),
+	...Base
+})
+
 // SetTime: needs detail.sec >= 0
 const SetTimeSchema = z.object({
 	action: z.literal(SongEditType.SetTime),

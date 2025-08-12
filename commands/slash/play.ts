@@ -176,8 +176,19 @@ export default {
 							components: [],
 						});
 					}
-				} catch (err) {
-					globalApp.err("Error running confirmation:", err);
+				} catch {
+					if (response.deletable) {
+						await response.delete().catch();
+						return;
+					}
+					if (response.editable) {
+						await response
+							.edit({
+								content: "Timed out, skipping cancelled",
+								components: [],
+							})
+							.catch();
+					}
 				}
 
 				return;
