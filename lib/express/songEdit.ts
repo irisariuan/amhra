@@ -5,6 +5,7 @@ import {
 	getConnection,
 	destroyAudioPlayer,
 } from "../voice/core";
+import { sendSkipMessage } from "../voice/segment";
 import { SongEditType } from "./event";
 import { SongEditRequest } from "./schema";
 
@@ -52,6 +53,7 @@ export async function handleSongInterruption(
 				return 500;
 			}
 			player.playResource(res, true);
+			sendSkipMessage(player)
 			dcb.log("Relocated the video");
 			break;
 		}
