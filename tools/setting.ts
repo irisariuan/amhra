@@ -2,7 +2,7 @@ import { confirm, input } from "@inquirer/prompts";
 import chalk from "chalk";
 import crypto from "node:crypto";
 import { existsSync, writeFileSync } from "node:fs";
-import type { Setting } from "../lib/setting";
+import type { LogFile, Setting } from "../lib/setting";
 import { writeJsonSync } from "../lib/setting";
 
 (async () => {
@@ -29,7 +29,9 @@ import { writeJsonSync } from "../lib/setting";
 		AUTO_LEAVE: 15 * 60 * 1000,
 		USE_COOKIES: false,
 		BANNED_IDS: [],
-		MAX_CACHE_IN_GB: 10,
+		MAX_CACHE_IN_GB: 1,
+		MESSAGE_LOGGING: false,
+		VOICE_LOGGING: false,
 	};
 
 	const token = await input({ message: "Bot Token" });
@@ -53,7 +55,7 @@ import { writeJsonSync } from "../lib/setting";
 	if (
 		await confirm({
 			message: "Set up custom dashboard authentication password?",
-			default: false,
+			default: true,
 		})
 	) {
 		const pw = await input({ message: "Password" });
@@ -103,7 +105,7 @@ import { writeJsonSync } from "../lib/setting";
 		if (
 			await confirm({
 				message: "Would you use HTTPS over HTTP?",
-				default: false,
+				default: true,
 			})
 		) {
 			setting.HTTPS = true;
@@ -112,7 +114,7 @@ import { writeJsonSync } from "../lib/setting";
 	const maxCacheSize = await input({
 		message: "Set up your maximum cache size in GB",
 		validate: (v) => !Number.isNaN(Number(v)) && Number(v) > 0,
-		default: "10",
+		default: "1",
 	});
 	setting.MAX_CACHE_IN_GB = Number(maxCacheSize);
 	const queueSize = await input({
@@ -121,6 +123,71 @@ import { writeJsonSync } from "../lib/setting";
 		default: "4000",
 	});
 	setting.QUEUE_SIZE = Number.parseInt(queueSize);
+	setting.USE_YOUTUBE_DL = await confirm({
+		message: "Would you like to use youtube-dl?",
+		default: true,
+	});
+	setting.MESSAGE_LOGGING = await confirm({
+		message: "Would you like to log messages?",
+		default: false,
+	});
+	setting.VOICE_LOGGING = await confirm({
+		message: "Would you like to log voice states?",
+		default: false,
+	});
+	setting.SEEK = await confirm({
+		message: "Would you like to enable audio seeking?",
+		default: true,
+	});
+	setting.VOLUME_MODIFIER = Number(
+		await input({
+			message: "Set up your volume modifier",
+			validate: (v) => !Number.isNaN(Number(v)) && Number(v) > 0,
+			default: "1",
+		}),
+	);
+	setting.AUTO_LEAVE =
+		Number(
+			await input({
+				message: "Set up your auto leave time in minutes",
+				validate: (v) => !Number.isNaN(Number(v)) && Number(v) > 0,
+				default: "15",
+			}),
+		) *
+		60 *
+		1000;
+	setting.PREFIX = await input({
+		message: "Set up your command prefix",
+		default: "!",
+		validate: (v) => v.length > 0,
+	});
+	setting.REDIRECT_URI = await input({
+		message: "Set up your redirect URI",
+		default: "http://localhost:3000/callback",
+		validate: (v) =>
+			/^https?:\/\/[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*(:\d+)?(\/.*)?$/.test(
+				v,
+			),
+	});
+	setting.PRELOAD = (
+		await input({
+			message: "Set up your preload log files (comma separated)",
+			default: "errim,error,errwn,express,main,message",
+			validate: (value) =>
+				[
+					"errim",
+					"error",
+					"errwn",
+					"express",
+					"main",
+					"message",
+				].includes(value),
+		})
+	)
+		.split(",")
+		.map((v) => v.trim())
+		.filter((v) => v.length > 0) as LogFile[];
+
 	if (await confirm({ message: "Write to setting.json?", default: true })) {
 		writeJsonSync(`${process.cwd()}/data/setting.json`, setting);
 		console.log("Done!");
