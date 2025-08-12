@@ -97,6 +97,14 @@
 		"MAX_CACHE_IN_GB": {
 			"type": "number",
 			"description": "Maximum video cache in GB, only be used when USE_YOUTUBE_DL is set to TRUE"
+		},
+		"MESSAGE_LOGGING":{
+			"type": "boolean",
+			"description": "Enable message logging"
+		},
+		"VOICE_LOGGING": {
+			"type": "boolean",
+			"description": "Enable voice state logging"
 		}
 	},
 	"required": [

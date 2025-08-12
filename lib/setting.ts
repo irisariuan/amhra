@@ -48,4 +48,6 @@ export interface Setting {
 
     VOLUME_MODIFIER: number,
     BANNED_IDS: string[],
+    MESSAGE_LOGGING: boolean,
+    VOICE_LOGGING: boolean,
 }

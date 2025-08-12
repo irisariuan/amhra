@@ -307,7 +307,7 @@ export async function initServer(client: CustomClient) {
 			const fetched = await search(req.body.query, { limit: 1 }).catch(
 				() => null,
 			);
-			if (!fetched) {
+			if (!fetched || !fetched[0]) {
 				exp.error(`Search failed for query: ${req.body.query}`);
 				return res.sendStatus(500);
 			}
