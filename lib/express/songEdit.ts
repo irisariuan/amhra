@@ -143,7 +143,7 @@ export async function handleSongInterruption(
 			break;
 		}
 		case SongEditType.SkipSegment: {
-			if (await player.skipCurrentSegment()) {
+			if ((await player.skipCurrentSegment()).success) {
 				dcb.log("Skipped segment from dashboard");
 			} else {
 				globalApp.err("Failed to skip segment");

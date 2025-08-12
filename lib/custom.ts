@@ -466,22 +466,22 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	async skipCurrentSegment(skipThreshold = 1) {
 		const skipTo = this.currentSegment();
-		if (!skipTo || !this.nowPlaying) return false;
+		if (!skipTo || !this.nowPlaying) return { success: false };
 		if (
 			Math.abs(
 				this.nowPlaying.details.durationInSec - skipTo.segment[1],
 			) <= skipThreshold
 		) {
 			this.stop();
-			return true;
+			return { success: true, skipped: true };
 		}
 		const resource = await createResource(
 			this.nowPlaying.url,
 			skipTo.segment[1],
 		);
-		if (!resource) return false;
+		if (!resource) return { success: false };
 		this.playResource(resource);
-		return true;
+		return { success: true, skipped: false };
 	}
 
 	clearSongTimeouts() {

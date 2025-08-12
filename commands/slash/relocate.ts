@@ -100,14 +100,15 @@ export default {
 					});
 				}
 				if (confirmation.customId === "skip") {
-					if (!(await player.skipCurrentSegment())) {
+					const result = await player.skipCurrentSegment();
+					if (!result.success) {
 						return confirmation.update({
 							...misc.errorMessageObj,
 							components: [],
 						});
 					}
 					await confirmation.update({
-						content: `Skipped to ${timeFormat(skipTo)}`,
+						content: `Skipped to ${result.skipped ? "next song" : timeFormat(skipTo)}`,
 						components: [],
 					});
 				}

@@ -106,7 +106,7 @@ export async function sendSkipMessage(player: CustomAudioPlayer) {
 		await response.awaitReactions({
 			filter: (reaction) => reaction.emoji.name === "✅" && !reaction.me,
 			time: Math.min(10 * 1000, skipTo * 1000),
-			errors: ['time']
+			errors: ["time"],
 		});
 		dcb.log("Skipping non-music part");
 		await response.reactions.removeAll();
@@ -122,12 +122,13 @@ export async function sendSkipMessage(player: CustomAudioPlayer) {
 			await response.edit({ content: "Skipped!" });
 			return;
 		}
-		if (!(await player.skipCurrentSegment())) {
+		const result = await player.skipCurrentSegment();
+		if (!result.success) {
 			await response.edit(misc.errorMessageObj);
 			return;
 		}
 		await response.edit({
-			content: `Skipped to \`${timeFormat(skipTo)}\``,
+			content: `Skipped to \`${result.skipped ? "next song" : timeFormat(skipTo)}\``,
 			components: [],
 		});
 	} catch {

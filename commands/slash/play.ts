@@ -168,14 +168,15 @@ export default {
 						});
 					}
 					if (confirmation.customId === "skip") {
-						if (!(await audioPlayer.skipCurrentSegment())) {
+						const result = await audioPlayer.skipCurrentSegment();
+						if (!result.success) {
 							return confirmation.update({
 								...misc.errorMessageObj,
 								components: [],
 							});
 						}
 						await confirmation.update({
-							content: `Skipped to ${timeFormat(skipTo.segment[1])}`,
+							content: `Skipped to ${result.skipped ? "next song" : timeFormat(skipTo.segment[1])}`,
 							components: [],
 						});
 					}

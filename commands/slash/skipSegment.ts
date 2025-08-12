@@ -17,9 +17,10 @@ export default {
 				content: "I'm not playing any non-music part",
 			});
 		}
-		if (await player.skipCurrentSegment()) {
+		const result = await player.skipCurrentSegment()
+		if (result.success) {
 			await interaction.reply({
-				content: `Skipped to \`${timeFormat(currentSegment.segment[1])}\``,
+				content: `Skipped to \`${result.skipped ? "next song" : timeFormat(currentSegment.segment[1])}\``,
 			});
 		} else {
 			await interaction.reply({
