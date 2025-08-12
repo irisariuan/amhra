@@ -20,6 +20,7 @@ import { type Guild, getUserGuilds, register } from "../auth/core";
 import type { TextChannel } from "discord.js";
 import { SongEditType } from "../express/event";
 import { SongEditRequestSchema } from "./schema";
+import { handleSongInterruption } from "./songEdit";
 
 export const YoutubeVideoRegex =
 	/http(?:s?):\/\/(?:www\.)?youtu(?:be\.com\/watch\?v=|\.be\/)([\w\-_]*)(&(amp;)?[\w?=]*)?/;
@@ -232,7 +233,7 @@ export async function initServer(client: CustomClient) {
 				return res.sendStatus(400);
 			}
 			return res.sendStatus(
-				await client.handleSongInterruption(parsed.data),
+				await handleSongInterruption(client, parsed.data),
 			);
 		},
 	);
