@@ -19,15 +19,38 @@ export default {
 			return interaction.reply(misc.errorMessageObj);
 		}
 
-		if (getVoiceConnection(interaction.guild.id)) {
-			return interaction.reply({
-				content: "I am already in a voice channel",
-			});
-		}
-
 		if (!interaction.member.voice.channel) {
 			return interaction.reply({
 				content: "You are not in a voice channel",
+			});
+		}
+
+		const existingPlayer = getAudioPlayer(
+			client,
+			interaction.guildId,
+			null,
+			{ createPlayer: false },
+		);
+		const existingConnection = getVoiceConnection(interaction.guild.id);
+		if (
+			existingConnection &&
+			existingPlayer &&
+			(existingPlayer.isPlaying || existingPlayer.queue.length > 0)
+		) {
+			return interaction.reply({
+				content: "I am already in a voice channel",
+			});
+		} else if (existingPlayer) {
+			existingConnection?.destroy();
+			dcb.log("Destroyed existing connection");
+			const newConnection = joinVoice(
+				interaction.member.voice.channel,
+				interaction.guild,
+			);
+			newConnection.subscribe(existingPlayer);
+			dcb.log("Joined voice channel");
+			return interaction.reply({
+				content: "Joined voice channel",
 			});
 		}
 		dcb.log("Joined voice");
