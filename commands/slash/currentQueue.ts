@@ -1,61 +1,90 @@
-import type { Command } from "../../lib/interaction"
+import type { Command } from "../../lib/interaction";
 
-import { SlashCommandBuilder } from 'discord.js'
+import { SlashCommandBuilder } from "discord.js";
 import {
 	getAudioPlayer,
 	getConnection,
-	type TransformableResource
-} from '../../lib/voice/core'
-import { video_info } from 'play-dl'
-import { dcb } from '../../lib/misc'
-import { pageSize, sendPaginationMessage } from "../../lib/page"
+	type TransformableResource,
+} from "../../lib/voice/core";
+import { video_info } from "play-dl";
+import { dcb } from "../../lib/misc";
+import { pageSize, sendPaginationMessage } from "../../lib/page";
 
 export default {
 	data: new SlashCommandBuilder()
-		.setName('queue')
-		.setDescription('Show the songs going to be played')
-		.addIntegerOption(opt =>
-			opt.setMinValue(1).setName('page').setDescription('Page number of queue')
+		.setName("queue")
+		.setDescription("Show the songs going to be played")
+		.addIntegerOption((opt) =>
+			opt
+				.setMinValue(1)
+				.setName("page")
+				.setDescription("Page number of queue"),
 		),
 	async execute(interaction, client) {
-		await interaction.deferReply()
-		const player = getAudioPlayer(client, interaction)
+		if (!interaction.guildId)
+			return await interaction.reply({
+				content: "This command can only be used in a server.",
+			});
+
+		await interaction.deferReply();
+		const player = getAudioPlayer(
+			client,
+			interaction.guildId,
+			interaction.channel,
+		);
 		if (!getConnection(interaction.guildId)) {
-			dcb.log('Bot not in voice channel')
-			return interaction.editReply({ content: "I'm not in a voice channel!" })
+			dcb.log("Bot not in voice channel");
+			return interaction.editReply({
+				content: "I'm not in a voice channel!",
+			});
 		}
 		if (!player) {
-			dcb.log('Bot not playing song')
-			return interaction.editReply({ content: "I'm not playing anything!" })
+			dcb.log("Bot not playing song");
+			return interaction.editReply({
+				content: "I'm not playing anything!",
+			});
 		}
 		if (player.queue.length <= 0) {
-			dcb.log('Queue clear')
+			dcb.log("Queue clear");
 			return interaction.editReply({
-				content: 'There is no more things to be played!',
-			})
+				content: "There is no more things to be played!",
+			});
 		}
 
-		const page = Math.min((interaction.options.getInteger('page') ?? 1) - 1, Math.ceil(player.queue.length / pageSize))
+		const page = Math.min(
+			(interaction.options.getInteger("page") ?? 1) - 1,
+			Math.ceil(player.queue.length / pageSize),
+		);
 
-		sendPaginationMessage(async () => {
-			const songs = player.queue || []
-			const transformedSongs: TransformableResource[] = []
-			for (let i = 0; i < songs.length; i++) {
-				if (!songs[i]) {
-					continue
-				}
-				const cachedUrl = client.cache.getUrl(songs[i].url)
-				if (cachedUrl) {
-					dcb.log('Founded cache, using cached URL')
-				}
-				const data = cachedUrl?.isVideo() ? cachedUrl?.value : (await video_info(songs[i].url)).video_details
-				if (!cachedUrl) {
-					client.cache.set(songs[i].url, data, "video")
-				}
+		sendPaginationMessage(
+			async () => {
+				const songs = player.queue || [];
+				const transformedSongs: TransformableResource[] = [];
+				for (let i = 0; i < songs.length; i++) {
+					if (!songs[i]) {
+						continue;
+					}
+					const cachedUrl = client.cache.getUrl(songs[i].url);
+					if (cachedUrl) {
+						dcb.log("Founded cache, using cached URL");
+					}
+					const data = cachedUrl?.isVideo()
+						? cachedUrl?.value
+						: (await video_info(songs[i].url)).video_details;
+					if (!cachedUrl) {
+						client.cache.set(songs[i].url, data, "video");
+					}
 
-				transformedSongs.push({ details: { durationInSec: data.durationInSec }, title: data.title ?? '', url: songs[i].url })
-			}
-			return transformedSongs
-		}, interaction, page)
+					transformedSongs.push({
+						details: { durationInSec: data.durationInSec },
+						title: data.title ?? "",
+						url: songs[i].url,
+					});
+				}
+				return transformedSongs;
+			},
+			interaction,
+			page,
+		);
 	},
-} as Command<SlashCommandBuilder>
+} as Command<SlashCommandBuilder>;

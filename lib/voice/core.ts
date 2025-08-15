@@ -24,6 +24,8 @@ import { readSetting } from "../setting";
 import dotenv from "dotenv";
 import fs from "node:fs";
 import {
+	ChannelType,
+	Guild,
 	type APIInteractionGuildMember,
 	type CacheType,
 	type Channel,
@@ -138,27 +140,18 @@ interface GetAudioPlayerOption {
 
 export function getAudioPlayer(
 	client: CustomClient,
-	interaction: CommandInteraction,
+	guildId: string,
+	channel: Channel | null,
 	option: GetAudioPlayerOption = { createPlayer: true },
 ) {
-	if (!interaction.guild) {
-		return null;
-	}
-
-	const player = client.player.get(interaction.guild.id) ?? null;
+	const player = client.player.get(guildId) ?? null;
 
 	if (!player && option.createPlayer) {
-		const player = createAudioPlayer(
-			interaction.guild.id,
-			interaction.channel,
-			client,
-			{},
-		);
-		client.player.set(interaction.guild.id, player);
+		const player = createAudioPlayer(guildId, channel, client, {});
+		client.player.set(guildId, player);
 		return player;
 	}
-
-	player?.setChannel(interaction.channel);
+	if (channel) player?.setChannel(channel);
 	return player;
 }
 
@@ -265,10 +258,11 @@ export function ensureVoiceConnection(
 		if (
 			!interaction.member ||
 			!isGuildMember(interaction.member) ||
-			!interaction.member.voice.channel
+			!interaction.member.voice.channel ||
+			!interaction.guild
 		)
 			return null;
-		return joinVoice(interaction.member.voice.channel, interaction);
+		return joinVoice(interaction.member.voice.channel, interaction.guild);
 	}
 	return connection;
 }
@@ -281,17 +275,14 @@ export function isGuildMember(
 
 export function joinVoice(
 	voiceChannel: VoiceChannel | VoiceBasedChannel,
-	interaction: CommandInteraction,
+	guild: Guild,
 	record = true,
 ) {
-	if (!interaction.guild) {
-		return null;
-	}
 	const connection = joinVoiceChannel({
 		channelId: voiceChannel.id,
 		guildId: voiceChannel.guildId,
-		adapterCreator: interaction.guild
-			.voiceAdapterCreator as DiscordGatewayAdapterCreator,
+		adapterCreator:
+			guild.voiceAdapterCreator as DiscordGatewayAdapterCreator,
 		selfDeaf: false,
 		selfMute: false,
 	});
@@ -300,6 +291,15 @@ export function joinVoice(
 		// startRecord(interaction)
 	}
 	return connection;
+}
+
+export function getBotVoiceChannel(guild: Guild, client: CustomClient) {
+	return guild.channels.cache.find(
+		(channel) =>
+			channel.type === ChannelType.GuildVoice &&
+			client.user &&
+			channel.members.has(client.user.id),
+	);
 }
 
 export function isYoutube(query: string) {

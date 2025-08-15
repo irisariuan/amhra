@@ -5,10 +5,7 @@ import { type YouTubeChannel, type YouTubeVideo } from "play-dl";
 import { SearchCache } from "./cache";
 import { dcb, misc } from "./misc";
 import { readSetting } from "./setting";
-import {
-	createResource,
-	Stream
-} from "./voice/core";
+import { createResource, Stream } from "./voice/core";
 import { Segment, sendSkipMessage } from "./voice/segment";
 import { prefetch } from "./voice/stream";
 
@@ -61,15 +58,23 @@ export class CustomClient extends Client {
 	player: Map<string, CustomAudioPlayer>;
 	cache: SearchCache;
 	private tokenMap: Map<string, string[]>;
-	record: Set<string>;
 
 	constructor(clientOpt: ClientOptions) {
 		super(clientOpt);
 		this.player = new Map();
 		this.cache = new SearchCache();
 		this.tokenMap = new Map();
-		this.record = new Set();
 	}
+	clearPlayers() {
+		for (const player of this.player.values()) {
+			player.clearIntervals();
+			player.cleanStop();
+		}
+		this.player.clear();
+		this.tokenMap.clear();
+		dcb.log("Cleared all players, cache and tokens");
+	}
+
 	/**
 	 * @private Should not be called by users, use `CustomClient.createToken` instead
 	 */
@@ -192,8 +197,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 * @description Accumulative counter for music played
 	 */
 	playCounter: number;
-	
-	activeSkipMessage: Message | null
+
+	activeSkipMessage: Message | null;
 
 	constructor(
 		guildId: string,

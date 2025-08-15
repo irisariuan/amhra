@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from "discord.js";
-import { getAudioPlayer, timeFormat } from "../../lib/voice/core";
+import { getAudioPlayer, getBotVoiceChannel, timeFormat } from "../../lib/voice/core";
 import type { Command } from "../../lib/interaction";
 
 export default {
@@ -7,17 +7,36 @@ export default {
 		.setName("skipnonmusic")
 		.setDescription("Skip current non-music part"),
 	async execute(interaction, client) {
-		const player = getAudioPlayer(client, interaction, {
-			createPlayer: false,
+		if (!interaction.guild)
+			return await interaction.reply({
+				content: "This command can only be used in a server.",
+			});
+		if (!interaction.member || !('voice' in interaction.member) || !interaction.member.voice.channel) return await interaction.reply({
+			content: "You are not in a voice channel",
 		});
-		if (!player || !player.isPlaying) return await interaction.reply("I'm not playing anything");
+		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client)
+		if (botVoiceChannel && interaction.member.voice.channel.id !== botVoiceChannel.id) {
+			return await interaction.reply({
+				content: "You are not in the same voice channel as me",
+			});
+		}
+		const player = getAudioPlayer(
+			client,
+			interaction.guild.id,
+			interaction.channel,
+			{
+				createPlayer: false,
+			},
+		);
+		if (!player || !player.isPlaying)
+			return await interaction.reply("I'm not playing anything");
 		const currentSegment = player.currentSegment();
 		if (!currentSegment) {
 			return await interaction.reply({
 				content: "I'm not playing any non-music part",
 			});
 		}
-		const result = await player.skipCurrentSegment()
+		const result = await player.skipCurrentSegment();
 		if (result.success) {
 			await interaction.reply({
 				content: `Skipped to \`${result.skipped ? "next song" : timeFormat(currentSegment.segment[1])}\``,

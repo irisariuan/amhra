@@ -7,10 +7,20 @@ export default {
 	data: new SlashCommandBuilder()
 		.setName("nowplaying")
 		.setDescription("Show the song playing"),
-	execute(interaction, client) {
-		const player = getAudioPlayer(client, interaction, {
-			createPlayer: false,
-		});
+	async execute(interaction, client) {
+		if (!interaction.guildId)
+			return await interaction.reply({
+				content: "This command can only be used in a server.",
+			});
+
+		const player = getAudioPlayer(
+			client,
+			interaction.guildId,
+			interaction.channel,
+			{
+				createPlayer: false,
+			},
+		);
 		if (!player)
 			return interaction.reply({ content: "Not playing any song" });
 		if (!player.nowPlaying)

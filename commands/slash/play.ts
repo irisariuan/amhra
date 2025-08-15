@@ -4,25 +4,20 @@ import {
 	ActionRowBuilder,
 	ButtonBuilder,
 	ButtonStyle,
+	ChannelType,
 	SlashCommandBuilder,
 } from "discord.js";
+import { type YouTubePlayList, playlist_info, search } from "play-dl";
+import { dcb, globalApp, misc } from "../../lib/misc";
 import {
-	getAudioPlayer,
 	createResource,
-	isVideo,
-	isPlaylist,
 	ensureVoiceConnection,
+	getAudioPlayer,
+	getBotVoiceChannel,
+	isPlaylist,
+	isVideo,
 	timeFormat,
 } from "../../lib/voice/core";
-import {
-	type YouTubePlayList,
-	extractID,
-	playlist_info,
-	search,
-} from "play-dl";
-import { dcb, globalApp } from "../../lib/misc";
-import { misc } from "../../lib/misc";
-import { SegmentCategory } from "../../lib/voice/segment";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -49,7 +44,29 @@ export default {
 				.setMinValue(0),
 		),
 	async execute(interaction, client) {
+		if (!interaction.guild)
+			return await interaction.reply({
+				content: "This command can only be used in a server.",
+			});
+		if (
+			!interaction.member ||
+			!("voice" in interaction.member) ||
+			!interaction.member.voice.channel
+		)
+			return await interaction.reply({
+				content: "You are not in a voice channel",
+			});
+		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client);
+		if (
+			botVoiceChannel &&
+			interaction.member.voice.channel.id !== botVoiceChannel.id
+		) {
+			return await interaction.reply({
+				content: "You are not in the same voice channel as me",
+			});
+		}
 		//prevent error caused by long response time
+
 		await interaction.deferReply();
 
 		if (!interaction.member || !("voice" in interaction.member)) {
@@ -58,25 +75,21 @@ export default {
 
 		const input = interaction.options.getString("search", true);
 		const force = interaction.options.getBoolean("force") ?? false;
-
-		const voiceChannel = interaction.member?.voice?.channel;
-
+		const voiceChannel = interaction.member.voice.channel;
 		const connection = ensureVoiceConnection(interaction);
-
-		if (!voiceChannel || !connection) {
-			interaction.editReply(
-				"You need to be in a voice channel to play music",
-			);
-			return;
-		}
 
 		dcb.log(
 			`Connected to voice channel (ID: ${voiceChannel.id}, Guild ID: ${interaction.guildId})`,
 		);
 
-		const audioPlayer = getAudioPlayer(client, interaction, {
-			createPlayer: true,
-		});
+		const audioPlayer = getAudioPlayer(
+			client,
+			interaction.guild.id,
+			interaction.channel,
+			{
+				createPlayer: true,
+			},
+		);
 
 		if (!audioPlayer || !connection) {
 			throw new Error("Execution Error");
