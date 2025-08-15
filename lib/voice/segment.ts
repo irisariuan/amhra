@@ -126,10 +126,22 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 			max: 1,
 			errors: ["time"],
 		});
-		if (response.id !== player.activeSkipMessage?.id) return false;
+		if (response.id !== player.activeSkipMessage?.id) {
+			if (response.deletable) {
+				await response.delete().catch(() => {});
+			}
+			return false;
+		}
 		player.activeSkipMessage = null;
 		dcb.log("Skipping non-music part");
 		await response.reactions.removeAll();
+		if (!player.currentSegment()) {
+			await response.edit({
+				content: "Not playing any non-music part now, skipping cancelled",
+				components: [],
+			});
+			return true;
+		}
 		if (player.playCounter !== count) {
 			response.edit({
 				content: "The song has changed, skipping cancelled",
