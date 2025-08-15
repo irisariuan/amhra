@@ -14,7 +14,7 @@ export default {
 	execute(interaction, client) {
 		const connection = getConnection(interaction.guildId);
 		if (connection) {
-			disconnectConnection(connection, interaction.guildId || "");
+			disconnectConnection(connection);
 			dcb.log("Disconnected");
 			interaction.reply({
 				content: "Disconnected",

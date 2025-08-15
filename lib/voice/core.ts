@@ -7,6 +7,8 @@ import {
 	type CreateAudioPlayerOptions,
 	type VoiceConnection,
 	type DiscordGatewayAdapterCreator,
+	VoiceConnectionStatus,
+	entersState,
 } from "@discordjs/voice";
 import {
 	extractID,
@@ -52,10 +54,7 @@ try {
 	globalApp.warn("No cookies found");
 }
 
-export function disconnectConnection(
-	connection: VoiceConnection,
-	guildId: string,
-) {
+export function disconnectConnection(connection: VoiceConnection) {
 	connection.disconnect();
 	connection.destroy();
 }
@@ -80,7 +79,7 @@ function createAudioPlayer(
 		const connection = getVoiceConnection(guildId);
 		destroyAudioPlayer(client, guildId);
 		if (connection) {
-			disconnectConnection(connection, guildId);
+			disconnectConnection(connection);
 		}
 		client.player.delete(guildId);
 	};
@@ -286,6 +285,29 @@ export function joinVoice(
 		selfDeaf: false,
 		selfMute: false,
 	});
+	connection.on(
+		VoiceConnectionStatus.Disconnected,
+		async () => {
+			try {
+				await Promise.race([
+					entersState(
+						connection,
+						VoiceConnectionStatus.Signalling,
+						5_000,
+					),
+					entersState(
+						connection,
+						VoiceConnectionStatus.Connecting,
+						5_000,
+					),
+				]);
+				// Seems to be reconnecting to a new channel - ignore disconnect
+			} catch {
+				// Seems to be a real disconnect which SHOULDN'T be recovered from
+				connection.destroy();
+			}
+		},
+	);
 	if (record) {
 		dcb.log("Recording started");
 		// startRecord(interaction)
