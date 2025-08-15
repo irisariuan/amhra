@@ -4,10 +4,14 @@ import { select } from "@inquirer/prompts";
 import chalk from "chalk";
 import { readSetting } from "./lib/setting";
 import { exp, globalApp } from "./lib/misc";
+import { calculateHash } from "./lib/core";
+import { watch } from "node:fs";
+import { join } from "node:path";
 
 const setting = readSetting();
 
 (async () => {
+	console.log(`Running on version ${chalk.bold(await calculateHash())}`);
 	let result: "prod" | "dev";
 	if (process.argv.includes("--prod") && setting.TOKEN) {
 		console.log(chalk.bgGreen.whiteBright("Flagged Production Mode"));
@@ -33,6 +37,11 @@ const setting = readSetting();
 		process.on("unhandledRejection", (error) => {
 			globalApp.err("Unhandled promise rejection:", error);
 		});
+		
+		watch(join(process.cwd(), 'dist'), () => {
+			globalApp.warn("Detected file change, exiting...");
+			process.exit(0);
+		})
 	}
 
 	const token = { prod: setting.TOKEN, dev: setting.TESTING_TOKEN }[result];
