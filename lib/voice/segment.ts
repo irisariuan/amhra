@@ -83,9 +83,22 @@ export async function getSegments(
 }
 
 /**
+ * @param [cancelThreshold=2] - The threshold in seconds to cancel the skip message if the segment is too short
+ * 
+ * Set to <=0 to disable this feature
+ * @param [force=true] - Whether to force send the skip message even if there is already one
+ * 
+ * Default is true, which means it will delete the previous skip message if it exists
+ * 
+ * @description Sends a skip message to the channel if the current segment is not music
+ * and waits for a reaction to skip to the next segment or to the end of the song
  * @returns Whether the skip message was sent or not
  */
-export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
+export async function sendSkipMessage(
+	player: CustomAudioPlayer,
+	force = true,
+	cancelThreshold = 2,
+) {
 	if (
 		!player.isPlaying ||
 		!player.nowPlaying?.segments ||
@@ -107,6 +120,10 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 	const count = player.playCounter;
 	const segment = player.currentSegment();
 	if (!segment) return false;
+	if (cancelThreshold > 0 && Math.abs(segment.segment[1] - segment.segment[0]) <= cancelThreshold) {
+		dcb.log("Skipping message cancelled due to short segment");
+		return false;
+	}
 	const skipTo = segment.segment[1];
 	const isSkippingSong =
 		Math.abs(skipTo - player.nowPlaying.details.durationInSec) <= 1;
@@ -137,7 +154,8 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 		await response.reactions.removeAll();
 		if (!player.currentSegment()) {
 			await response.edit({
-				content: "Not playing any non-music part now, skipping cancelled",
+				content:
+					"Not playing any non-music part now, skipping cancelled",
 				components: [],
 			});
 			return true;
