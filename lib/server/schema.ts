@@ -1,6 +1,6 @@
 import z from "zod";
-import { SongEditType } from "../express/event";
-import { YoutubeVideoRegex } from "./server";
+import { SongEditType } from "./event";
+import { YoutubeVideoRegex } from "./core";
 import { yt_validate } from "play-dl";
 
 // Queue item (from custom.ts)
@@ -82,7 +82,7 @@ const RemoveSongSchema = z.object({
 	}),
 });
 
-// SetVolume: detail is a number (0..2) directly in body per server.ts logic
+// SetVolume: detail is a number (0..2) directly in body per core.ts logic
 const SetVolumeSchema = z.object({
 	action: z.literal(SongEditType.SetVolume),
 	guildId: z.string(),

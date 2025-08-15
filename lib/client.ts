@@ -7,7 +7,7 @@ import {
 } from "discord.js";
 import { loadCommands } from "./core";
 import { CustomClient } from "./custom";
-import { event } from "./express/event";
+import { event } from "./server/event";
 import { dcb, globalApp, misc } from "./misc";
 import { readSetting } from "./setting";
 

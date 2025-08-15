@@ -1,4 +1,4 @@
-import { initServer } from "./lib/express/server";
+import { initServer } from "./lib/server/core";
 import { client } from "./lib/client";
 import { select } from "@inquirer/prompts";
 import chalk from "chalk";

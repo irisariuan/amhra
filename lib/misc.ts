@@ -1,6 +1,6 @@
 import type { GuildMember } from "discord.js"
 import chalk from "chalk"
-import { event } from "./express/event"
+import { event } from "./server/event"
 import { appendFile, writeFile } from 'node:fs/promises'
 import removeAnsi from 'strip-ansi'
 import { existsSync } from "node:fs"

@@ -18,7 +18,7 @@ import {
 import ytdl from "@distube/ytdl-core";
 import { CustomAudioPlayer, type Resource, type CustomClient } from "../custom";
 import { dcb, globalApp, misc } from "../misc";
-import { event } from "../express/event";
+import { event } from "../server/event";
 import NodeCache from "node-cache";
 import { readSetting } from "../setting";
 import dotenv from "dotenv";
