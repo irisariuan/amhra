@@ -119,7 +119,7 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 	await response.react("✅");
 	try {
 		await response.awaitReactions({
-			filter: (reaction) => reaction.emoji.name === "✅" && !reaction.me,
+			filter: (reaction) => reaction.emoji.name === "✅",
 			time: Math.min(10 * 1000, skipTo * 1000),
 			max: 1,
 			errors: ["time"],

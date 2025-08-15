@@ -309,7 +309,7 @@ export async function createYtDlpStream(
 ): Promise<Readable> {
 	const id = extractID(url);
 	const fetchedStream = streams.get(id);
-	if (fetchedStream && !fetchedStream.rawStream?.readable && !force) {
+	if (fetchedStream && !fetchedStream.rawStream?.closed && !force) {
 		// it is still being fetched or already fetched in current process
 		dcb.log(`Stream hit memory: ${id}`);
 		const readable = new Readable();

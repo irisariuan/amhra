@@ -1,138 +1,44 @@
 import bodyParser from "body-parser";
 import chalk from "chalk";
 import type { TextChannel } from "discord.js";
-import express, {
-    type NextFunction,
-    type Request,
-    type Response,
-} from "express";
+import express, { type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import NodeCache from "node-cache";
-import crypto from "node:crypto";
 import { search, video_info } from "play-dl";
 import youtubeSuggest from "youtube-suggest";
 import { type Guild, getUserGuilds, register } from "../auth/core";
 import type { CustomClient } from "../custom";
-import { getUser, hasUser } from "../db/core";
+import { getUser } from "../db/core";
 import { load } from "../log/load";
 import { exp, globalApp, misc } from "../misc";
 import { readSetting, reloadSetting } from "../setting";
+import {
+	auth,
+	basicCheckBuilder,
+	checkBearerWithGuild,
+	checkGuildMiddleware,
+} from "./auth";
 import { ActionType, event } from "./event";
 import { SongEditRequestSchema } from "./schema";
 import { handleSongInterruption } from "./songEdit";
 
 export const YoutubeVideoRegex =
 	/^http(?:s?):\/\/(?:www\.)?youtu(?:be\.com\/watch\?v=|\.be\/)([\w\-_]*)(&(amp;)?[\w?=]*)?$/;
+export interface Message {
+	message: {
+		content: string;
+		id: string;
+	};
+	author: {
+		id: string;
+		tag: string;
+	};
+	timestamp: {
+		createdAt: number;
+		editedAt?: number;
+	};
+}
 const setting = readSetting(`${process.cwd()}/data/setting.json`);
-
-interface AuthOptions {
-	requirePassword: boolean;
-	allowBearer: boolean;
-}
-
-function auth(
-	authOptions: AuthOptions = { requirePassword: true, allowBearer: false },
-) {
-	return async (req: Request, res: Response, next: NextFunction) => {
-		const formatter = misc.prefixFormatter(
-			`${chalk.bgGrey(`(IP: ${req.ip})`)}`,
-		);
-		if (!req.headers.authorization) {
-			exp.error(formatter("Auth failed (NOT_FOUND)"));
-			return res.sendStatus(401);
-		}
-		if (
-			authOptions.allowBearer &&
-			req.headers.authorization.startsWith("Bearer")
-		) {
-			if (await hasUser(misc.removeBearer(req.headers.authorization))) {
-				return next();
-			}
-			exp.error(formatter("Auth failed (NOT_MATCHING_DB)"));
-		}
-		if (
-			authOptions.requirePassword ||
-			req.headers.authorization.startsWith("Basic")
-		) {
-			if (!req.headers.authorization.startsWith("Basic")) {
-				return res.sendStatus(401);
-			}
-			const auth = Buffer.from(req.headers.authorization, "utf8");
-			const hashed = crypto
-				.createHash("sha256")
-				.update(auth)
-				.digest("hex");
-			if (
-				crypto.timingSafeEqual(
-					Buffer.from(hashed, "hex"),
-					Buffer.from(setting.AUTH_TOKEN, "hex"),
-				)
-			) {
-				return next();
-			}
-			exp.error(formatter("Auth failed (NOT_MATCHING)"));
-		}
-		if (
-			!authOptions.requirePassword &&
-			!req.headers.authorization.startsWith("Basic") &&
-			!req.headers.authorization.startsWith("Bearer")
-		) {
-			return next();
-		}
-		return res.sendStatus(401);
-	};
-}
-function basicCheckBuilder(checklist: string[]) {
-	return (req: Request, res: Response, next: NextFunction) => {
-		for (const i of checklist) {
-			if (!(i in (req.body ?? []))) {
-				exp.error(
-					`Missing '${i}' from requesting ${req.path} (Body: ${JSON.stringify(
-						req.body,
-					)})`,
-				);
-				return res.sendStatus(400);
-			}
-		}
-		next();
-	};
-}
-
-function checkGuildMiddleware(client: CustomClient) {
-	return (req: Request, res: Response, next: NextFunction) => {
-		if (!req.headers.authorization) return res.sendStatus(401);
-		if (
-			checkBearerWithGuild(
-				client,
-				req.headers.authorization,
-				req.body?.guildId,
-			)
-		) {
-			return next();
-		}
-		exp.error("Guild not found");
-		res.sendStatus(401);
-	};
-}
-
-function checkBearerWithGuild(
-	client: CustomClient,
-	auth: string,
-	guildId: string | null = null,
-) {
-	const token = guildId && client.getToken(guildId)?.token;
-	if (
-		auth.startsWith("Basic") ||
-		(token &&
-			crypto.timingSafeEqual(
-				Buffer.from(token),
-				Buffer.from(misc.removeBearer(auth)),
-			))
-	) {
-		return true;
-	}
-	return false;
-}
 
 export async function initServer(client: CustomClient) {
 	const app = express();
@@ -201,7 +107,13 @@ export async function initServer(client: CustomClient) {
 		"/api/new",
 		auth({ allowBearer: true, requirePassword: true }),
 		(req, res) => {
-			exp.log(`New IP fetched: ${req.ip}`);
+			if (req.headers["origin-ip"]) {
+				exp.log(
+					`New IP fetched: ${req.headers["origin-ip"]} (${req.ip})`,
+				);
+			} else {
+				exp.log(`New IP fetched: ${req.ip}`);
+			}
 			res.sendStatus(200);
 		},
 	);
@@ -503,19 +415,4 @@ export async function initServer(client: CustomClient) {
 	);
 
 	return app;
-}
-
-export interface Message {
-	message: {
-		content: string;
-		id: string;
-	};
-	author: {
-		id: string;
-		tag: string;
-	};
-	timestamp: {
-		createdAt: number;
-		editedAt?: number;
-	};
 }

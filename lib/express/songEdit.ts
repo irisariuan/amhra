@@ -53,7 +53,7 @@ export async function handleSongInterruption(
 				return 500;
 			}
 			player.playResource(res, true);
-			sendSkipMessage(player)
+			await sendSkipMessage(player)
 			dcb.log("Relocated the video");
 			break;
 		}
