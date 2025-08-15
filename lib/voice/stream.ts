@@ -122,13 +122,6 @@ async function updateLastUsed(updateIds: string[], deleteIds?: string[]) {
 	);
 }
 
-function parseTime(seek: number) {
-	const time = moment(seek);
-	const str =
-		seek >= 60 * 60 * 60 ? time.format("HH:mm:ss") : time.format("mm:ss");
-	return `*${str}-inf`;
-}
-
 /**
  * Return the streams from yt-dlp, pre-streamed to file
  */
@@ -363,5 +356,5 @@ async function getCachedStream(id: string) {
 		data,
 	});
 	dcb.log(`Stream created: ${id}`);
-	return stream;
+	return copyStreamSafe(stream, data);
 }
