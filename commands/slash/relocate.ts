@@ -10,6 +10,7 @@ import {
 	createResource,
 	getAudioPlayer,
 	getBotVoiceChannel,
+	getConnection,
 	timeFormat,
 } from "../../lib/voice/core";
 import { SegmentCategory } from "../../lib/voice/segment";
@@ -31,11 +32,21 @@ export default {
 			return await interaction.reply({
 				content: "This command can only be used in a server.",
 			});
-		if (!interaction.member || !('voice' in interaction.member) || !interaction.member.voice.channel) return await interaction.reply({
-			content: "You are not in a voice channel",
-		});
-		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client)
-		if (botVoiceChannel && interaction.member.voice.channel.id !== botVoiceChannel.id) {
+		if (
+			!interaction.member ||
+			!("voice" in interaction.member) ||
+			!interaction.member.voice.channel
+		)
+			return await interaction.reply({
+				content: "You are not in a voice channel",
+			});
+		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client);
+		const connection = getConnection(interaction.guild.id)
+		if (
+			botVoiceChannel &&
+			connection &&
+			interaction.member.voice.channel.id !== botVoiceChannel.id
+		) {
 			return await interaction.reply({
 				content: "You are not in the same voice channel as me",
 			});

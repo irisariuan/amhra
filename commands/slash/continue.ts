@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from "discord.js";
-import { getAudioPlayer, getBotVoiceChannel } from "../../lib/voice/core";
+import { getAudioPlayer, getBotVoiceChannel, getConnection } from "../../lib/voice/core";
 import type { Command } from "../../lib/interaction";
 
 export default {
@@ -20,8 +20,10 @@ export default {
 				content: "You are not in a voice channel",
 			});
 		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client);
+		const connection = getConnection(interaction.guild.id)
 		if (
 			botVoiceChannel &&
+			connection &&
 			interaction.member.voice.channel.id !== botVoiceChannel.id
 		) {
 			return await interaction.reply({

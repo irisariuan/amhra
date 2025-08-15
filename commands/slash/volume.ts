@@ -32,8 +32,10 @@ export default {
 				content: "You are not in a voice channel",
 			});
 		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client);
+		const connection = getConnection(interaction.guild.id)
 		if (
 			botVoiceChannel &&
+			connection &&
 			interaction.member.voice.channel.id !== botVoiceChannel.id
 		) {
 			return await interaction.reply({

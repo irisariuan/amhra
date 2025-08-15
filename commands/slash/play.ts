@@ -1,22 +1,22 @@
 import type { Command } from "../../lib/interaction";
 
 import {
-	ActionRowBuilder,
-	ButtonBuilder,
-	ButtonStyle,
-	ChannelType,
-	SlashCommandBuilder,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle,
+    SlashCommandBuilder
 } from "discord.js";
 import { type YouTubePlayList, playlist_info, search } from "play-dl";
 import { dcb, globalApp, misc } from "../../lib/misc";
 import {
-	createResource,
-	ensureVoiceConnection,
-	getAudioPlayer,
-	getBotVoiceChannel,
-	isPlaylist,
-	isVideo,
-	timeFormat,
+    createResource,
+    ensureVoiceConnection,
+    getAudioPlayer,
+    getBotVoiceChannel,
+    getConnection,
+    isPlaylist,
+    isVideo,
+    timeFormat,
 } from "../../lib/voice/core";
 
 export default {
@@ -59,6 +59,8 @@ export default {
 		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client);
 		if (
 			botVoiceChannel &&
+			// existing connection
+			getConnection(interaction.guild.id) &&
 			interaction.member.voice.channel.id !== botVoiceChannel.id
 		) {
 			return await interaction.reply({
