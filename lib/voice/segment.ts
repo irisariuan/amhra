@@ -113,7 +113,7 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 	const response = await player.channel.send({
 		content: isSkippingSong
 			? "Found non-music content, want to skip to next song?\nType \`/skip\` or react to skip"
-			: `Found non-music content, want to skip to \`${timeFormat(skipTo)}\`?\nType \`/relocate ${skipTo}\` or react to skip`,
+			: `Found non-music content, want to skip to \`${timeFormat(skipTo)}\`?\nType \`/relocate ${Math.round(skipTo)}\` or react to skip`,
 	});
 	player.activeSkipMessage = response;
 	await response.react("✅");
