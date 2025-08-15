@@ -61,10 +61,12 @@ export async function loadCommandsJson<
 		: RESTPostAPIContextMenuApplicationCommandsJSONBody)[];
 }
 
-export async function calculateHash() {
+export async function calculateHash(
+	include = "{{lib,commands}/**/*.*,index.ts}",
+): Promise<string> {
 	const hash = createHash("sha1", {});
 	hash.setEncoding("hex");
-	const files = (await glob("dist/**/*.*")).sort();
+	const files = (await glob(include)).sort();
 	for (const file of files) {
 		await new Promise(async (resolve) =>
 			hash.write(await readFile(join(process.cwd(), file)), resolve),

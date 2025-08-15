@@ -1,17 +1,17 @@
-import { initServer } from "./lib/server/core";
-import { client } from "./lib/client";
 import { select } from "@inquirer/prompts";
 import chalk from "chalk";
-import { readSetting } from "./lib/setting";
-import { exp, globalApp } from "./lib/misc";
+import { client } from "./lib/client";
 import { calculateHash } from "./lib/core";
+import { exp, globalApp } from "./lib/misc";
+import { initServer } from "./lib/server/core";
+import { readSetting } from "./lib/setting";
 import { watch } from "node:fs";
-import { join } from "node:path";
 
 const setting = readSetting();
 
 (async () => {
-	console.log(`Running on version ${chalk.bold(await calculateHash())}`);
+	const hash = await calculateHash();
+	console.log(`Running on version ${chalk.bold(hash)}`);
 	let result: "prod" | "dev";
 	if (process.argv.includes("--prod") && setting.TOKEN) {
 		console.log(chalk.bgGreen.whiteBright("Flagged Production Mode"));
@@ -37,11 +37,19 @@ const setting = readSetting();
 		process.on("unhandledRejection", (error) => {
 			globalApp.err("Unhandled promise rejection:", error);
 		});
-		
-		watch(join(process.cwd(), 'dist'), () => {
-			globalApp.warn("Detected file change, exiting...");
-			process.exit(0);
-		})
+		const watchHandler = async () => {
+			const newHash = await calculateHash();
+			if (newHash !== hash) {
+				console.log(
+					chalk.yellow(
+						`You are on version ${chalk.bold(hash)}, while the newest version is ${chalk.bold(newHash)}`,
+					),
+				);
+			}
+		};
+		watch("index.ts", { recursive: true }, watchHandler);
+		watch("lib", { recursive: true }, watchHandler);
+		watch("commands", { recursive: true }, watchHandler);
 	}
 
 	const token = { prod: setting.TOKEN, dev: setting.TESTING_TOKEN }[result];
