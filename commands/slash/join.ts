@@ -11,22 +11,46 @@ export default {
 		.setName("join")
 		.setDescription("Join the voice channel"),
 	async execute(interaction, client) {
-		if (!interaction.guild)
-			return await interaction.reply({
-				content: "This command can only be used in a server.",
-			});
 		if (
-			!interaction.member ||
-			!("voice" in interaction.member) ||
-			!interaction.member.voice.channel
-		)
-			return await interaction.reply({
+			!interaction.guild ||
+			!interaction.inGuild() ||
+			!("voice" in interaction.member)
+		) {
+			return interaction.reply(misc.errorMessageObj);
+		}
+
+		if (!interaction.member.voice.channel) {
+			return interaction.reply({
 				content: "You are not in a voice channel",
 			});
+		}
 
-		if (getVoiceConnection(interaction.guild.id)) {
+		const existingPlayer = getAudioPlayer(
+			client,
+			interaction.guildId,
+			null,
+			{ createPlayer: false },
+		);
+		const existingConnection = getVoiceConnection(interaction.guild.id);
+		if (
+			existingConnection &&
+			existingPlayer &&
+			(existingPlayer.isPlaying || existingPlayer.queue.length > 0)
+		) {
 			return interaction.reply({
 				content: "I am already in a voice channel",
+			});
+		} else if (existingPlayer) {
+			existingConnection?.destroy();
+			dcb.log("Destroyed existing connection");
+			const newConnection = joinVoice(
+				interaction.member.voice.channel,
+				interaction.guild,
+			);
+			newConnection.subscribe(existingPlayer);
+			dcb.log("Joined voice channel");
+			return interaction.reply({
+				content: "Joined voice channel",
 			});
 		}
 		dcb.log("Joined voice");
@@ -39,7 +63,7 @@ export default {
 		dcb.log("Created Player");
 		const player = getAudioPlayer(
 			client,
-			interaction.guild.id,
+			interaction.guildId,
 			interaction.channel,
 			{ createPlayer: true },
 		);
