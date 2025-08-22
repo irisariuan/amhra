@@ -47,9 +47,11 @@ const setting = readSetting();
 				);
 			}
 		};
-		watch("index.ts", { recursive: true }, watchHandler);
-		watch("lib", { recursive: true }, watchHandler);
-		watch("commands", { recursive: true }, watchHandler);
+		if (!process.argv.includes("--no-version-warning")) {
+			watch("index.ts", { recursive: true }, watchHandler);
+			watch("lib", { recursive: true }, watchHandler);
+			watch("commands", { recursive: true }, watchHandler);
+		}
 	}
 
 	const token = { prod: setting.TOKEN, dev: setting.TESTING_TOKEN }[result];

@@ -116,7 +116,11 @@ function createAudioPlayer(
 					event.emit("songInfo", nextUrl);
 					player.playResource(resource);
 					dcb.log("Playing next music");
-					if (resource.segments) await sendSkipMessage(player);
+					if (resource.segments) {
+						if (!(await sendSkipMessage(player))) {
+							globalApp.warn('Failed to send skip message')
+						}
+					}
 				} else {
 					globalApp.err("No next URL found");
 				}
@@ -285,29 +289,26 @@ export function joinVoice(
 		selfDeaf: false,
 		selfMute: false,
 	});
-	connection.on(
-		VoiceConnectionStatus.Disconnected,
-		async () => {
-			try {
-				await Promise.race([
-					entersState(
-						connection,
-						VoiceConnectionStatus.Signalling,
-						5_000,
-					),
-					entersState(
-						connection,
-						VoiceConnectionStatus.Connecting,
-						5_000,
-					),
-				]);
-				// Seems to be reconnecting to a new channel - ignore disconnect
-			} catch {
-				// Seems to be a real disconnect which SHOULDN'T be recovered from
-				connection.destroy();
-			}
-		},
-	);
+	connection.on(VoiceConnectionStatus.Disconnected, async () => {
+		try {
+			await Promise.race([
+				entersState(
+					connection,
+					VoiceConnectionStatus.Signalling,
+					5_000,
+				),
+				entersState(
+					connection,
+					VoiceConnectionStatus.Connecting,
+					5_000,
+				),
+			]);
+			// Seems to be reconnecting to a new channel - ignore disconnect
+		} catch {
+			// Seems to be a real disconnect which SHOULDN'T be recovered from
+			connection.destroy();
+		}
+	});
 	if (record) {
 		dcb.log("Recording started");
 		// startRecord(interaction)

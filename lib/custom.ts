@@ -287,6 +287,16 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.voiceStateTimeoutArray = [];
 	}
 
+	toggleLoop(): boolean {
+		if (this.looping) {
+			this.disableLoop();
+			return false;
+		} else {
+			this.enableLoop();
+			return true;
+		}
+	}
+
 	enableLoop() {
 		this.looping = true;
 		const lastItem = this.queue.at(-1);
