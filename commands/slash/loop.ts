@@ -54,10 +54,9 @@ export default {
 				content: "I am not playing anything",
 			});
 		}
-		if (setLoop === undefined) {
-			const newLoop = player.toggleLoop();
+		if (setLoop === null) {
 			return await interaction.reply({
-				content: `Loop mode is now ${newLoop ? "enabled" : "disabled"}.`,
+				content: `Loop mode is now ${player.toggleLoop() ? "enabled" : "disabled"}.`,
 			});
 		}
 		if (setLoop === player.looping) {

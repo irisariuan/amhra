@@ -1,10 +1,10 @@
 import { spawn } from "node:child_process";
 import {
-    createReadStream,
-    createWriteStream,
-    existsSync,
-    readdirSync,
-    writeFileSync,
+	createReadStream,
+	createWriteStream,
+	existsSync,
+	readdirSync,
+	writeFileSync,
 } from "node:fs";
 import { readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { PassThrough, Readable } from "node:stream";
@@ -213,6 +213,7 @@ export async function prefetch(url: string, force = false) {
 function copyStreamSafe(
 	rawStream: Readable,
 	preData?: (string | Buffer<ArrayBufferLike>)[],
+	safeRun = false,
 ): Readable {
 	const passThrough = new PassThrough();
 	if (preData) {
@@ -223,7 +224,8 @@ function copyStreamSafe(
 	const dataHandler = (data: any) => {
 		if (!passThrough.writable) {
 			globalApp.warn(`Copied stream not writable`);
-			return rawStream.removeListener("data", dataHandler);
+			if (safeRun) rawStream.removeListener("data", dataHandler);
+			return;
 		}
 		passThrough.write(data);
 	};

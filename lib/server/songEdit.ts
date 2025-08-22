@@ -4,8 +4,9 @@ import {
 	createResource,
 	getConnection,
 	destroyAudioPlayer,
+	timeFormat,
 } from "../voice/core";
-import { sendSkipMessage } from "../voice/segment";
+import { deleteSkipMessage, sendSkipMessage } from "../voice/segment";
 import { SongEditType } from "./event";
 import { SongEditRequest } from "./schema";
 
@@ -53,7 +54,7 @@ export async function handleSongInterruption(
 				return 500;
 			}
 			player.playResource(res, true);
-			await sendSkipMessage(player)
+			await sendSkipMessage(player);
 			dcb.log("Relocated the video");
 			break;
 		}
@@ -145,7 +146,14 @@ export async function handleSongInterruption(
 			break;
 		}
 		case SongEditType.SkipSegment: {
-			if ((await player.skipCurrentSegment()).success) {
+			const result = await player.skipCurrentSegment();
+			if (result.success) {
+				if (player.activeSkipMessage && result.skipTo) {
+					await player.activeSkipMessage.edit({
+						content: `Skipped to ${result.skipped ? "next song" : timeFormat(result.skipTo.segment[1])}`,
+						components: [],
+					});
+				}
 				dcb.log("Skipped segment from dashboard");
 			} else {
 				globalApp.err("Failed to skip segment");

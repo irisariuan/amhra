@@ -487,7 +487,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 			) <= skipThreshold
 		) {
 			this.stop();
-			return { success: true, skipped: true };
+			return { success: true, skipped: true, skipTo };
 		}
 		const resource = await createResource(
 			this.nowPlaying.url,
@@ -495,7 +495,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		);
 		if (!resource) return { success: false };
 		this.playResource(resource);
-		return { success: true, skipped: false };
+		return { success: true, skipped: false, skipTo };
 	}
 
 	clearSongTimeouts() {

@@ -82,14 +82,23 @@ export async function getSegments(
 	return segments;
 }
 
+export async function deleteSkipMessage(player: CustomAudioPlayer) {
+	if (!player.activeSkipMessage) return false;
+	if (await player.activeSkipMessage.delete().catch(() => null)) {
+		player.activeSkipMessage = null;
+		return true;
+	}
+	return false;
+}
+
 /**
  * @param [cancelThreshold=2] - The threshold in seconds to cancel the skip message if the segment is too short
- * 
+ *
  * Set to <=0 to disable this feature
  * @param [force=true] - Whether to force send the skip message even if there is already one
- * 
+ *
  * Default is true, which means it will delete the previous skip message if it exists
- * 
+ *
  * @description Sends a skip message to the channel if the current segment is not music
  * and waits for a reaction to skip to the next segment or to the end of the song
  * @returns Whether the skip message was sent or not
@@ -109,9 +118,11 @@ export async function sendSkipMessage(
 
 	if (player.activeSkipMessage) {
 		if (force) {
-			await player.activeSkipMessage.delete().catch(() => {});
-			player.activeSkipMessage = null;
-			dcb.log("Deleted previous skip message");
+			if (await deleteSkipMessage(player)) {
+				dcb.log("Deleted previous skip message");
+			} else {
+				globalApp.err("Failed to delete previous skip message");
+			}
 		} else {
 			return false;
 		}
@@ -120,7 +131,10 @@ export async function sendSkipMessage(
 	const count = player.playCounter;
 	const segment = player.currentSegment();
 	if (!segment) return false;
-	if (cancelThreshold > 0 && Math.abs(segment.segment[1] - segment.segment[0]) <= cancelThreshold) {
+	if (
+		cancelThreshold > 0 &&
+		Math.abs(segment.segment[1] - segment.segment[0]) <= cancelThreshold
+	) {
 		dcb.log("Skipping message cancelled due to short segment");
 		return false;
 	}
