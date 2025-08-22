@@ -113,8 +113,12 @@ export async function sendSkipMessage(
 		!player.nowPlaying?.segments ||
 		player.nowPlaying.segments.length <= 0 ||
 		!player.channel?.isSendable()
-	)
+	) {
+		globalApp.warn(
+			`isPlaying: ${player.isPlaying}, segments: ${player.nowPlaying?.segments?.length ?? "UNDEFINED"}, channel: ${player.channel?.isSendable()}`,
+		);
 		return false;
+	}
 
 	if (player.activeSkipMessage) {
 		if (force) {
@@ -146,6 +150,7 @@ export async function sendSkipMessage(
 			? "Found non-music content, want to skip to next song?\nType \`/skip\` or react to skip"
 			: `Found non-music content, want to skip to \`${timeFormat(skipTo)}\`?\nType \`/relocate ${Math.round(skipTo)}\` or react to skip`,
 	});
+	dcb.log("Sent skip message, waiting for reaction");
 	player.activeSkipMessage = response;
 	await response.react("✅");
 	try {
@@ -165,7 +170,12 @@ export async function sendSkipMessage(
 		}
 		player.activeSkipMessage = null;
 		dcb.log("Skipping non-music part");
-		await response.reactions.removeAll();
+		for (const reaction of response.reactions.cache.values()) {
+			if (reaction.emoji.name === "✅") {
+				// no await to speed up
+				reaction.remove();
+			}
+		}
 		if (!player.currentSegment()) {
 			await response.edit({
 				content:

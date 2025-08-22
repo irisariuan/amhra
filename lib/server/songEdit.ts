@@ -153,6 +153,11 @@ export async function handleSongInterruption(
 						content: `Skipped to ${result.skipped ? "next song" : timeFormat(result.skipTo.segment[1])}`,
 						components: [],
 					});
+					for (const reaction of player.activeSkipMessage.reactions.cache.values()) {
+						if (reaction.emoji.name === "✅") {
+							await reaction.remove();
+						}
+					}
 				}
 				dcb.log("Skipped segment from dashboard");
 			} else {
