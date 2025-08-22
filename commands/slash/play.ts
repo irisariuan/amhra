@@ -1,22 +1,22 @@
-import type { Command } from "../../lib/interaction";
+import { type Command } from "../../lib/interaction";
 
 import {
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    SlashCommandBuilder
+	ActionRowBuilder,
+	ButtonBuilder,
+	ButtonStyle,
+	SlashCommandBuilder,
 } from "discord.js";
 import { type YouTubePlayList, playlist_info, search } from "play-dl";
 import { dcb, globalApp, misc } from "../../lib/misc";
 import {
-    createResource,
-    ensureVoiceConnection,
-    getAudioPlayer,
-    getBotVoiceChannel,
-    getConnection,
-    isPlaylist,
-    isVideo,
-    timeFormat,
+	createResource,
+	ensureVoiceConnection,
+	getAudioPlayer,
+	getBotVoiceChannel,
+	getConnection,
+	isPlaylist,
+	isVideo,
+	timeFormat,
 } from "../../lib/voice/core";
 
 export default {
@@ -43,7 +43,7 @@ export default {
 				.setMaxValue(500)
 				.setMinValue(0),
 		),
-	async execute(interaction, client) {
+	async execute({ interaction, client }) {
 		if (!interaction.guild)
 			return await interaction.reply({
 				content: "This command can only be used in a server.",

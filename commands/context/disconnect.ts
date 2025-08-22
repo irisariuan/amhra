@@ -11,7 +11,7 @@ export default {
 	data: new ContextMenuCommandBuilder()
 		.setName("disconnect")
 		.setType(ApplicationCommandType.User),
-	execute(interaction, client) {
+	execute({ interaction, client }) {
 		const connection = getConnection(interaction.guildId);
 		if (connection) {
 			disconnectConnection(connection);

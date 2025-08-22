@@ -5,13 +5,13 @@ import {
 	getConnection,
 	timeFormat,
 } from "../../lib/voice/core";
-import type { Command } from "../../lib/interaction";
+import { type Command } from "../../lib/interaction";
 
 export default {
 	data: new SlashCommandBuilder()
 		.setName("skipnonmusic")
 		.setDescription("Skip current non-music part"),
-	async execute(interaction, client) {
+	async execute({ interaction, client }) {
 		if (!interaction.guild)
 			return await interaction.reply({
 				content: "This command can only be used in a server.",
@@ -25,7 +25,7 @@ export default {
 				content: "You are not in a voice channel",
 			});
 		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client);
-		const connection = getConnection(interaction.guild.id)
+		const connection = getConnection(interaction.guild.id);
 		if (
 			botVoiceChannel &&
 			connection &&

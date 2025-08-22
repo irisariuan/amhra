@@ -1,13 +1,17 @@
-import type { Command } from "../../lib/interaction";
+import { type Command } from "../../lib/interaction";
 import { SlashCommandBuilder } from "discord.js";
-import { getAudioPlayer, getBotVoiceChannel, getConnection } from "../../lib/voice/core";
+import {
+	getAudioPlayer,
+	getBotVoiceChannel,
+	getConnection,
+} from "../../lib/voice/core";
 import { dcb } from "../../lib/misc";
 
 export default {
 	data: new SlashCommandBuilder()
 		.setName("pause")
 		.setDescription("Pause the music playing"),
-	async execute(interaction, client) {
+	async execute({ interaction, client }) {
 		if (!interaction.guild)
 			return await interaction.reply({
 				content: "This command can only be used in a server.",
@@ -21,7 +25,7 @@ export default {
 				content: "You are not in a voice channel",
 			});
 		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client);
-		const connection = getConnection(interaction.guild.id)
+		const connection = getConnection(interaction.guild.id);
 		if (
 			botVoiceChannel &&
 			connection &&

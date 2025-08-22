@@ -11,7 +11,7 @@ export default {
 	data: new SlashCommandBuilder()
 		.setName("disconnect")
 		.setDescription("Disconnect the bot"),
-	execute(interaction, client) {
+	execute({ interaction, client }) {
 		const connection = getConnection(interaction.guildId);
 		if (connection) {
 			disconnectConnection(connection);

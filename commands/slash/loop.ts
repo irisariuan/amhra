@@ -1,4 +1,4 @@
-import type { Command } from "../../lib/interaction";
+import { type Command } from "../../lib/interaction";
 import { SlashCommandBuilder } from "discord.js";
 import {
 	getBotVoiceChannel,
@@ -18,7 +18,7 @@ export default {
 				.setDescription("Enable or disable the loop mode")
 				.setRequired(false),
 		),
-	async execute(interaction, client) {
+	async execute({ interaction, client }) {
 		const setLoop = interaction.options.getBoolean("enabled");
 		if (!interaction.guild)
 			return await interaction.reply({

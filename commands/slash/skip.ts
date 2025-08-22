@@ -4,7 +4,7 @@ import {
 	getBotVoiceChannel,
 	getConnection,
 } from "../../lib/voice/core";
-import type { Command } from "../../lib/interaction";
+import { type Command } from "../../lib/interaction";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -17,7 +17,7 @@ export default {
 				.setRequired(false)
 				.setMinValue(1),
 		),
-	async execute(interaction, client) {
+	async execute({ interaction, client }) {
 		if (!interaction.guild)
 			return await interaction.reply({
 				content: "This command can only be used in a server.",

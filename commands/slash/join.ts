@@ -10,7 +10,7 @@ export default {
 	data: new SlashCommandBuilder()
 		.setName("join")
 		.setDescription("Join the voice channel"),
-	async execute(interaction, client) {
+	async execute({ interaction, client }) {
 		if (
 			!interaction.guild ||
 			!interaction.inGuild() ||

@@ -1,9 +1,9 @@
 import chalk from "chalk";
 import {
-    type ContextMenuCommandBuilder,
-    GatewayIntentBits,
-    type GuildMember,
-    type SlashCommandBuilder,
+	type ContextMenuCommandBuilder,
+	GatewayIntentBits,
+	type GuildMember,
+	type SlashCommandBuilder,
 } from "discord.js";
 import { loadCommands } from "./core";
 import { CustomClient } from "./custom";
@@ -49,7 +49,7 @@ client.on("interactionCreate", async (interaction) => {
 			dcb.log(
 				`${misc.createFormattedName((interaction.targetMember || interaction.targetUser || interaction.member) as GuildMember)} called context command ${chalk.bgGray.whiteBright(interaction.commandName)}`,
 			);
-			await command.execute(interaction, client);
+			await command.execute({ interaction, client });
 		} catch (e) {
 			globalApp.err(e);
 			try {
@@ -72,7 +72,7 @@ client.on("interactionCreate", async (interaction) => {
 			dcb.log(
 				`${misc.createFormattedName(interaction.member as GuildMember)} called command ${chalk.bgGray.whiteBright(interaction.commandName)}`,
 			);
-			await command.execute(interaction, client);
+			await command.execute({ interaction, client });
 		} catch (e) {
 			globalApp.err(e);
 			try {

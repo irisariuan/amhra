@@ -10,7 +10,7 @@ export default {
 	data: new ContextMenuCommandBuilder()
 		.setName("join")
 		.setType(ApplicationCommandType.User),
-	async execute(interaction, client) {
+	async execute({ interaction, client }) {
 		if (
 			!interaction.guild ||
 			!interaction.inGuild() ||

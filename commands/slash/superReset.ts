@@ -6,7 +6,7 @@ export default {
 	data: new SlashCommandBuilder()
 		.setName("superreset")
 		.setDescription("Reset all the players"),
-	execute(interaction, client) {
+	execute({ interaction, client }) {
 		client.clearPlayers();
 		interaction.reply({ content: "Super reset!" });
 	},
