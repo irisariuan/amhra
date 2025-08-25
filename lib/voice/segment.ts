@@ -118,7 +118,7 @@ export async function deleteSkipMessage(player: CustomAudioPlayer) {
 export async function sendSkipMessage(
 	player: CustomAudioPlayer,
 	force = true,
-	cancelThreshold = 2,
+	cancelThreshold = 5,
 ) {
 	if (
 		!player.isPlaying ||
