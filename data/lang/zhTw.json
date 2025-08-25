@@ -71,5 +71,129 @@
 	"FIRST_PAGE_LABEL": "第一頁",
 	"LAST_PAGE_LABEL": "最後一頁",
 	"QUEUE_LABEL": "佇列",
-	"QUEUE_FOOTER": "顯示歌曲 {minShowingSong}-{maxShowingSong}，共 {totalSong} 首"
+	"QUEUE_FOOTER": "顯示歌曲 {minShowingSong}-{maxShowingSong}，共 {totalSong} 首",
+	"commands": {
+		"play": {
+			"name": "播放",
+			"description": "播放來自 YouTube 的歌曲或播放清單",
+			"options": {
+				"search": {
+					"name": "搜尋",
+					"description": "播放連結或在 YouTube 上搜尋"
+				},
+				"force": {
+					"name": "強制",
+					"description": "跳過快取並強制下載，僅在歌曲無法正確播放時使用"
+				},
+				"volume": {
+					"name": "音量",
+					"description": "設定音量"
+				}
+			}
+		},
+		"skip": {
+			"name": "跳過",
+			"description": "跳過目前的歌曲",
+			"options": {
+				"amount": {
+					"name": "數量",
+					"description": "要跳過的歌曲數量"
+				}
+			}
+		},
+		"relocate": {
+			"name": "重新定位",
+			"description": "將目前的歌曲重新定位到特定的時間戳記",
+			"options": {
+				"position": {
+					"name": "位置",
+					"description": "要重新定位到的位置（以秒為單位或 (HH:)MM:SS 格式）"
+				}
+			}
+		},
+		"remove": {
+			"name": "移除",
+			"description": "從佇列中移除歌曲",
+			"options": {
+				"index": {
+					"name": "索引",
+					"description": "佇列中歌曲的索引（從 1 開始）"
+				}
+			}
+		},
+		"queue": {
+			"name": "佇列",
+			"description": "顯示目前的佇列",
+			"options": {
+				"page": {
+					"name": "頁碼",
+					"description": "頁碼"
+				}
+			}
+		},
+		"pause": {
+			"name": "暫停",
+			"description": "暫停目前的歌曲"
+		},
+		"resume": {
+			"name": "恢復",
+			"description": "恢復已暫停的歌曲"
+		},
+		"stop": {
+			"name": "停止",
+			"description": "停止音樂並清除佇列"
+		},
+		"volume": {
+			"name": "音量",
+			"description": "設定音量",
+			"options": {
+				"volume": {
+					"name": "音量",
+					"description": "音量級別（0-500）"
+				}
+			}
+		},
+		"loop": {
+			"name": "循環",
+			"description": "切換循環模式",
+			"options": {
+				"enabled": {
+					"name": "啟用",
+					"description": "設定循環模式"
+				}
+			}
+		},
+		"forcereset": {
+			"name": "強制重置",
+			"description": "重置播放器 (如果發生錯誤)"
+		},
+		"superreset": {
+			"name": "超級重置",
+			"description": "超級重置播放器 (如果發生非常嚴重的錯誤)"
+		},
+		"nowplaying": {
+			"name": "正在播放",
+			"description": "顯示目前正在播放的歌曲"
+		},
+		"version": {
+			"name": "版本",
+			"description": "顯示目前版本"
+		},
+		"dashboard": {
+			"name": "儀表板",
+			"description": "取得儀表板連結"
+		},
+		"skipnonmusic": {
+			"name": "跳過非音樂",
+			"description": "跳過目前的非音樂部分"
+		},
+		"join": {
+			"name": "加入",
+			"description": "讓機器人加入你的語音頻道"
+		},
+		"disconnect": {
+			"name": "斷線",
+			"description": "讓機器人離開語音頻道"
+		}
+	}
 }

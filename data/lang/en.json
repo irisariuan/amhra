@@ -71,5 +71,102 @@
 	"FIRST_PAGE_LABEL": "First Page",
 	"LAST_PAGE_LABEL": "Last Page",
 	"QUEUE_LABEL": "Queue",
-	"QUEUE_FOOTER": "Showing songs {minShowingSong}-{maxShowingSong} of {totalSong}"
+	"QUEUE_FOOTER": "Showing songs {minShowingSong}-{maxShowingSong} of {totalSong}",
+	"commands": {
+		"play": {
+			"description": "Play a song or playlist from YouTube",
+			"options": {
+				"search": {
+					"description": "Play a link or searching on YouTube"
+				},
+				"force": {
+					"description": "Skip the cache and force to download, only use when the song is not playing correctly"
+				},
+				"volume": {
+					"description": "Set the volume"
+				}
+			}
+		},
+		"skip": {
+			"description": "Skip current song",
+			"options": {
+				"amount": {
+					"description": "The number of songs to skip"
+				}
+			}
+		},
+		"relocate": {
+			"description": "Relocate the current song to a specific timestamp",
+			"options": {
+				"position": {
+					"description": "The position to relocate to (in seconds or (HH:)MM:SS format)"
+				}
+			}
+		},
+		"remove": {
+			"description": "Remove a song from the queue",
+			"options": {
+				"index": {
+					"description": "The index of the song in the queue (starting from 1)"
+				}
+			}
+		},
+		"queue": {
+			"description": "Show the current queue",
+			"options": {
+				"page": {
+					"description": "The page number"
+				}
+			}
+		},
+		"pause": {
+			"description": "Pause the current song"
+		},
+		"resume": {
+			"description": "Resume the paused song"
+		},
+		"stop": {
+			"description": "Stop the music and clear the queue"
+		},
+		"volume": {
+			"description": "Set the volume",
+			"options": {
+				"volume": {
+					"description": "The volume level (0-500)"
+				}
+			}
+		},
+		"loop": {
+			"description": "Toggle loop mode",
+			"options": {
+				"enabled": {
+					"description": "Set loop mode"
+				}
+			}
+		},
+		"forcereset": {
+			"description": "Reset the player (if something goes wrong)"
+		},
+		"superreset": {
+			"description": "Super reset the player (if something REALLY goes wrong)"
+		},
+		"nowplaying": {
+			"description": "Show the currently playing song"
+		},
+		"version": {
+			"description": "Show the current version"
+		},
+		"dashboard": {
+			"description": "Get the dashboard link"
+		},
+		"skipnonmusic": {
+			"description": "Skip the current non-music part"
+		},
+		"join": {
+			"description": "Make the bot join your voice channel"
+		},
+		"disconnect": {
+			"description": "Make the bot leave the voice channel"
+		}
+	}
 }

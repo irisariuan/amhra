@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { Language } from "./interaction";
 import { join } from "node:path";
+import { Locale } from "discord.js";
 
 export function reloadLanguages() {
 	for (const lang of Object.values(Language)) {
@@ -10,14 +11,22 @@ export function reloadLanguages() {
 	}
 }
 
-let languages: Record<Language, Record<string, string> | null> = {
+let languages = {
 	en: loadLanguage(Language.English),
 	ja: loadLanguage(Language.Japanese),
 	zhTw: loadLanguage(Language.TraditionalChinese),
 	unsupported: null,
 };
 
-function loadLanguage(lang: Language): Record<string, string> {
+export interface CommandLocale {
+	name?: string;
+	description?: string;
+	options?: Record<string, CommandLocale>;
+}
+
+function loadLanguage(
+	lang: Language,
+): { commands: Record<string, CommandLocale> } & Record<string, string> {
 	return JSON.parse(
 		readFileSync(
 			join(process.cwd(), "data", "lang", `${lang}.json`),
@@ -47,4 +56,28 @@ export function languageText(
 		return base;
 	}
 	return fallback ?? id;
+}
+
+export function languageCommandName(
+	name: string,
+	language: Language,
+	isContextCommand = false,
+) {
+	return (
+		languages[language]?.commands[isContextCommand ? `{${name}}` : name] ??
+		null
+	);
+}
+
+export function parseLanguageToLocale(language: Language): Locale {
+	switch (language) {
+		case Language.English:
+			return Locale.EnglishUS;
+		case Language.Japanese:
+			return Locale.Japanese;
+		case Language.TraditionalChinese:
+			return Locale.ChineseTW;
+		default:
+			return Locale.EnglishUS;
+	}
 }

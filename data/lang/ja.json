@@ -71,5 +71,129 @@
 	"FIRST_PAGE_LABEL": "最初のページ",
 	"LAST_PAGE_LABEL": "最後のページ",
 	"QUEUE_LABEL": "キュー",
-	"QUEUE_FOOTER": "全{totalSong}曲中{minShowingSong}～{maxShowingSong}曲を表示"
+	"QUEUE_FOOTER": "全{totalSong}曲中{minShowingSong}～{maxShowingSong}曲を表示",
+	"commands": {
+		"play": {
+			"name": "再生",
+			"description": "YouTubeの曲またはプレイリストを再生します",
+			"options": {
+				"search": {
+					"name": "検索",
+					"description": "リンクを再生するか、YouTubeで検索します"
+				},
+				"force": {
+					"name": "強制",
+					"description": "キャッシュをスキップして強制的にダウンロードします。曲が正しく再生されない場合にのみ使用してください"
+				},
+				"volume": {
+					"name": "音量",
+					"description": "音量を設定します"
+				}
+			}
+		},
+		"skip": {
+			"name": "スキップ",
+			"description": "現在の曲をスキップします",
+			"options": {
+				"amount": {
+					"name": "量",
+					"description": "スキップする曲の数"
+				}
+			}
+		},
+		"relocate": {
+			"name": "再配置",
+			"description": "現在の曲を特定のタイムスタンプに再配置します",
+			"options": {
+				"position": {
+					"name": "位置",
+					"description": "再配置する位置（秒単位または(HH:)MM:SS形式）"
+				}
+			}
+		},
+		"remove": {
+			"name": "削除",
+			"description": "キューから曲を削除します",
+			"options": {
+				"index": {
+					"name": "インデックス",
+					"description": "キュー内の曲のインデックス（1から開始）"
+				}
+			}
+		},
+		"queue": {
+			"name": "キュー",
+			"description": "現在のキューを表示します",
+			"options": {
+				"page": {
+					"name": "ページ",
+					"description": "ページ番号"
+				}
+			}
+		},
+		"pause": {
+			"name": "一時停止",
+			"description": "現在の曲を一時停止します"
+		},
+		"resume": {
+			"name": "再開",
+			"description": "一時停止した曲を再開します"
+		},
+		"stop": {
+			"name": "停止",
+			"description": "音楽を停止してキューをクリアします"
+		},
+		"volume": {
+			"name": "音量",
+			"description": "音量を設定します",
+			"options": {
+				"volume": {
+					"name": "音量",
+					"description": "音量レベル（0〜500）"
+				}
+			}
+		},
+		"loop": {
+			"name": "ループ",
+			"description": "ループモードを切り替えます",
+			"options": {
+				"enabled": {
+					"name": "有効",
+					"description": "ループモードを設定します"
+				}
+			}
+		},
+		"forcereset": {
+			"name": "強制リセット",
+			"description": "プレイヤーをリセットします（問題が発生した場合）"
+		},
+		"superreset": {
+			"name": "スーパーリセット",
+			"description": "プレイヤーをスーパーリセットします（本当に問題が発生した場合）"
+		},
+		"nowplaying": {
+			"name": "再生中",
+			"description": "現在再生中の曲を表示します"
+		},
+		"version": {
+			"name": "バージョン",
+			"description": "現在のバージョンを表示します"
+		},
+		"dashboard": {
+			"name": "ダッシュボード",
+			"description": "ダッシュボードのリンクを取得します"
+		},
+		"skipnonmusic": {
+			"name": "音楽以外をスキップ",
+			"description": "現在の音楽以外の部分をスキップします"
+		},
+		"join": {
+			"name": "参加",
+			"description": "ボットにあなたのボイスチャンネルに参加させます"
+		},
+		"disconnect": {
+			"name": "切断",
+			"description": "ボットにボイスチャンネルから退出させます"
+		}
+	}
 }

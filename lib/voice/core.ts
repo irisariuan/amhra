@@ -119,7 +119,7 @@ function createAudioPlayer(
 					dcb.log("Playing next music");
 					if (resource.segments) {
 						if (!(await sendSkipMessage(player))) {
-							globalApp.warn('Failed to send skip message')
+							globalApp.warn("Failed to send skip message");
 						}
 					}
 				} else {
@@ -157,6 +157,9 @@ export function getAudioPlayer(
 		return player;
 	}
 	if (channel) player?.setChannel(channel);
+	if (player && player.currentLanguage !== language) {
+		player.currentLanguage = language;
+	}
 	return player;
 }
 

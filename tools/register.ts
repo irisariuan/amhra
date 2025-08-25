@@ -1,13 +1,73 @@
-import { REST, Routes, type SlashCommandBuilder } from "discord.js";
+import {
+	ApplicationCommandOptionType,
+	ApplicationCommandType,
+	REST,
+	Routes,
+	type SlashCommandBuilder,
+} from "discord.js";
 import { readSetting } from "../lib/setting";
 import { select } from "@inquirer/prompts";
 import { loadCommandsJson } from "../lib/core";
+import {
+	CommandLocale,
+	languageCommandName,
+	parseLanguageToLocale,
+} from "../lib/language";
+import { Language } from "../lib/interaction";
 
 const setting = readSetting();
 
 (async () => {
 	const commands = await loadCommandsJson<SlashCommandBuilder>("slash");
 	const contextCommands = await loadCommandsJson("context");
+	for (const command of commands) {
+		for (const lang of Object.values(Language).filter(
+			(v) => v !== Language.Unsupported,
+		)) {
+			const locale = languageCommandName(command.name, lang);
+			if (!locale) continue;
+			if (!command.name_localizations) command.name_localizations = {};
+			if (locale.name) {
+				console.log(`Loaded locale name ${lang} for ${command.name}`);
+				command.name_localizations[parseLanguageToLocale(lang)] =
+					locale.name;
+			}
+			if (!command.description_localizations)
+				command.description_localizations = {};
+			if (locale.description) {
+				console.log(
+					`Loaded locale description ${lang} for ${command.name}`,
+				);
+				command.description_localizations[parseLanguageToLocale(lang)] =
+					locale.description;
+			}
+			if (locale.options && command.options) {
+				for (const option of command.options) {
+					const localeOption = locale.options[option.name];
+					if (!localeOption) continue;
+					if (localeOption.name) {
+						if (!option.name_localizations)
+							option.name_localizations = {};
+						option.name_localizations[parseLanguageToLocale(lang)] =
+							localeOption.name;
+						console.log(
+							`Loaded locale name ${lang} for option ${option.name} of ${command.name}`,
+						);
+					}
+					if (localeOption.description) {
+						if (!option.description_localizations)
+							option.description_localizations = {};
+						option.description_localizations[
+							parseLanguageToLocale(lang)
+						] = localeOption.description;
+						console.log(
+							`Loaded locale description ${lang} for option ${option.name} of ${command.name}`,
+						);
+					}
+				}
+			}
+		}
+	}
 	console.log(`Loaded commands ${commands.map((c) => c.name).join(", ")}`);
 	console.log(
 		`Loaded context commands ${contextCommands.map((c) => c.name).join(", ")}`,
