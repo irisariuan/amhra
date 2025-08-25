@@ -83,6 +83,17 @@ export async function getSegments(
 	return segments;
 }
 
+export function calculateReducedTime(
+	segments: Segment[],
+	totalDuration: number,
+) {
+	return segments.reduce(
+		(dur, segment) =>
+			dur - Math.abs(segment.segment[1] - segment.segment[0]),
+		totalDuration,
+	);
+}
+
 export async function deleteSkipMessage(player: CustomAudioPlayer) {
 	if (!player.activeSkipMessage) return false;
 	if (await player.activeSkipMessage.delete().catch(() => null)) {
