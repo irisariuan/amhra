@@ -8,8 +8,7 @@ import {
 	type Message,
 	type ChatInputCommandInteraction,
 } from "discord.js";
-import type { TransformableResource } from "./voice/core";
-import moment from "moment";
+import { timeFormat, type TransformableResource } from "./voice/core";
 import { languageText } from "./language";
 import { Language } from "./interaction";
 
@@ -101,7 +100,7 @@ export function createEmbed(
 				.map((v, i) => ({
 					name: `${i + page * pageSize + 1}. ${v.title}`,
 					value: [
-						`${v.url} (${moment.duration(v.details.durationInSec).humanize()})`,
+						`${v.url} (${timeFormat(v.details.durationInSec)})`,
 					].join("\n"),
 				}))
 				.slice(page * pageSize, (page + 1) * pageSize),
