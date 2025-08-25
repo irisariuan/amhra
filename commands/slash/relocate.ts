@@ -14,6 +14,7 @@ import {
 	timeFormat,
 } from "../../lib/voice/core";
 import { SegmentCategory } from "../../lib/voice/segment";
+import { languageText } from "../../lib/language";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -27,10 +28,10 @@ export default {
 				)
 				.setRequired(true),
 		),
-	async execute({ interaction, client }) {
+	async execute({ interaction, client, language }) {
 		if (!interaction.guild)
 			return await interaction.reply({
-				content: "This command can only be used in a server.",
+				content: languageText("server_only_command", language),
 			});
 		if (
 			!interaction.member ||
@@ -38,7 +39,7 @@ export default {
 			!interaction.member.voice.channel
 		)
 			return await interaction.reply({
-				content: "You are not in a voice channel",
+				content: languageText("user_not_in_voice", language),
 			});
 		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client);
 		const connection = getConnection(interaction.guild.id);
@@ -48,7 +49,7 @@ export default {
 			interaction.member.voice.channel.id !== botVoiceChannel.id
 		) {
 			return await interaction.reply({
-				content: "You are not in the same voice channel as me",
+				content: languageText("not_same_voice", language),
 			});
 		}
 		const unformattedString = interaction.options.getString(
@@ -60,8 +61,7 @@ export default {
 			!unformattedString.match(/^(?:(\d{1,}):)?(\d{1,2}):(\d{1,2})$/)
 		)
 			return await interaction.reply({
-				content:
-					"Invalid position format. Use seconds or (HH:)MM:SS format.",
+				content: languageText("invalid_position_format", language),
 			});
 		const parts = unformattedString.split(":");
 		let position = 0;
@@ -69,8 +69,7 @@ export default {
 			const part = Number(parts[i]);
 			if (isNaN(part) || part < 0 || (part > 59 && i < parts.length - 1))
 				return await interaction.reply({
-					content:
-						"Invalid position format. Use seconds or HH:MM:SS format.",
+					content: languageText("invalid_position_format", language),
 				});
 			position += 60 ** (parts.length - (i + 1)) * part;
 		}
@@ -79,6 +78,7 @@ export default {
 			client,
 			interaction.guild.id,
 			interaction.channel,
+			language,
 			{
 				createPlayer: false,
 			},
@@ -86,20 +86,22 @@ export default {
 
 		if (!player || !player.isPlaying || !player.nowPlaying)
 			return await interaction.reply({
-				content: "I am not playing any song",
+				content: languageText("not_playing", language),
 			});
 		if (position >= player.nowPlaying.details.durationInSec)
 			return await interaction.reply({
-				content: "Position is greater than song duration",
+				content: languageText("position_overflow", language),
 			});
 		const resource = await createResource(player.nowPlaying.url, position);
 		if (!resource)
 			return await interaction.reply({
-				content: "Failed to create resource",
+				content: languageText("fail_resource", language),
 			});
 		player.playResource(resource, true);
 		await interaction.reply({
-			content: `Relocated the song to ${timeFormat(position)}`,
+			content: languageText("relocate", language, {
+				pos: timeFormat(position),
+			}),
 		});
 
 		if (!resource.segments) return;
@@ -125,7 +127,10 @@ export default {
 				});
 				if (player.playCounter !== count) {
 					return confirmation.update({
-						content: "The song has changed, skipping cancelled",
+						content: languageText(
+							"skip_cancel_song_changed",
+							player.currentLanguage,
+						),
 						components: [],
 					});
 				}
@@ -133,12 +138,20 @@ export default {
 					const result = await player.skipCurrentSegment();
 					if (!result.success) {
 						return confirmation.update({
-							...misc.errorMessageObj,
+							...misc.errorMessageObj(player.currentLanguage),
 							components: [],
 						});
 					}
 					await confirmation.update({
-						content: `Skipped to ${result.skipped ? "next song" : timeFormat(skipTo)}`,
+						content: languageText(
+							result.skipped
+								? "SEGMENT_SKIP_NEXT"
+								: "SEGMENT_SKIP",
+							player.currentLanguage,
+							{
+								pos: timeFormat(skipTo),
+							},
+						),
 						components: [],
 					});
 				}
@@ -151,7 +164,10 @@ export default {
 					await response.reactions.removeAll().catch(() => {});
 					await response
 						.edit({
-							content: "Timed out, skipping cancelled",
+							content: languageText(
+								"skip_cancel_timeout",
+								language,
+							),
 							components: [],
 						})
 						.catch(() => {});

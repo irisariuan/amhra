@@ -5,23 +5,24 @@ import { getVoiceConnection } from "@discordjs/voice";
 import { joinVoice, getAudioPlayer } from "../../lib/voice/core";
 import { dcb } from "../../lib/misc";
 import { misc } from "../../lib/misc";
+import { languageText } from "../../lib/language";
 
 export default {
 	data: new SlashCommandBuilder()
 		.setName("join")
 		.setDescription("Join the voice channel"),
-	async execute({ interaction, client }) {
+	async execute({ interaction, client, language }) {
 		if (
 			!interaction.guild ||
 			!interaction.inGuild() ||
 			!("voice" in interaction.member)
 		) {
-			return interaction.reply(misc.errorMessageObj);
+			return interaction.reply(misc.errorMessageObj(language));
 		}
 
 		if (!interaction.member.voice.channel) {
 			return interaction.reply({
-				content: "You are not in a voice channel",
+				content: languageText("user_not_in_voice", language),
 			});
 		}
 
@@ -29,6 +30,7 @@ export default {
 			client,
 			interaction.guildId,
 			null,
+			language,
 			{ createPlayer: false },
 		);
 		const existingConnection = getVoiceConnection(interaction.guild.id);
@@ -38,7 +40,7 @@ export default {
 			(existingPlayer.isPlaying || existingPlayer.queue.length > 0)
 		) {
 			return interaction.reply({
-				content: "I am already in a voice channel",
+				content: languageText("already_connected", language),
 			});
 		} else if (existingPlayer) {
 			existingConnection?.destroy();
@@ -50,7 +52,7 @@ export default {
 			newConnection.subscribe(existingPlayer);
 			dcb.log("Joined voice channel");
 			return interaction.reply({
-				content: "Joined voice channel",
+				content: languageText("joined_voice", language),
 			});
 		}
 		dcb.log("Joined voice");
@@ -65,13 +67,14 @@ export default {
 			client,
 			interaction.guildId,
 			interaction.channel,
+			language,
 			{ createPlayer: true },
 		);
 		if (!player) return;
 		connection.subscribe(player);
 
 		interaction.reply({
-			content: "Joined voice channel",
+			content: languageText("joined_voice", language),
 		});
 	},
 } as Command<SlashCommandBuilder>;

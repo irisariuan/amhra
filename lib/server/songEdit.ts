@@ -1,4 +1,5 @@
 import { CustomClient } from "../custom";
+import { languageText } from "../language";
 import { globalApp, dcb } from "../misc";
 import {
 	createResource,
@@ -150,7 +151,13 @@ export async function handleSongInterruption(
 			if (result.success) {
 				if (player.activeSkipMessage && result.skipTo) {
 					await player.activeSkipMessage.edit({
-						content: `Skipped to ${result.skipped ? "next song" : timeFormat(result.skipTo.segment[1])}`,
+						content: languageText(
+							result.skipped
+								? "segment_skip_next"
+								: "segment_skip",
+							player.currentLanguage,
+							{ pos: timeFormat(result.skipTo.segment[1]) },
+						),
 						components: [],
 					});
 					for (const reaction of player.activeSkipMessage.reactions.cache.values()) {

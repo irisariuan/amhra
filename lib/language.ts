@@ -1,4 +1,6 @@
+import { readFileSync } from "node:fs";
 import { Language } from "./interaction";
+import { join } from "node:path";
 
 const languages: Record<Language, Record<string, string> | null> = {
 	en: loadLanguage(Language.English),
@@ -8,9 +10,33 @@ const languages: Record<Language, Record<string, string> | null> = {
 };
 
 function loadLanguage(lang: Language): Record<string, string> {
-	return {};
+	return JSON.parse(
+		readFileSync(
+			join(process.cwd(), "data", "lang", `${lang}.json`),
+			"utf8",
+		),
+	);
 }
 
-export function languageText(id: string, language: Language) {
-	return id;
+export function languageText(
+	id: string,
+	language: Language,
+	replace?: Record<string, string | number>,
+	fallback?: string,
+) {
+	const processedId = id.trim().toUpperCase();
+	const base =
+		languages[language]?.[processedId] ??
+		languages[Language.English]?.[processedId];
+	if (base) {
+		if (replace) {
+			let result = base;
+			for (const [key, value] of Object.entries(replace)) {
+				result = result.replaceAll(`{${key}}`, value.toString());
+			}
+			return result;
+		}
+		return base;
+	}
+	return fallback ?? id;
 }

@@ -9,6 +9,7 @@ import {
 import { video_info } from "play-dl";
 import { dcb } from "../../lib/misc";
 import { pageSize, sendPaginationMessage } from "../../lib/page";
+import { languageText } from "../../lib/language";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -20,10 +21,10 @@ export default {
 				.setName("page")
 				.setDescription("Page number of queue"),
 		),
-	async execute({ interaction, client }) {
+	async execute({ interaction, client, language }) {
 		if (!interaction.guildId)
 			return await interaction.reply({
-				content: "This command can only be used in a server.",
+				content: languageText("server_only_command", language),
 			});
 
 		await interaction.deferReply();
@@ -31,23 +32,24 @@ export default {
 			client,
 			interaction.guildId,
 			interaction.channel,
+			language,
 		);
 		if (!getConnection(interaction.guildId)) {
 			dcb.log("Bot not in voice channel");
 			return interaction.editReply({
-				content: "I'm not in a voice channel!",
+				content: languageText("not_connected", language),
 			});
 		}
 		if (!player) {
 			dcb.log("Bot not playing song");
 			return interaction.editReply({
-				content: "I'm not playing anything!",
+				content: languageText("not_playing", language),
 			});
 		}
 		if (player.queue.length <= 0) {
 			dcb.log("Queue clear");
 			return interaction.editReply({
-				content: "There is no more things to be played!",
+				content: languageText("empty_queue", language),
 			});
 		}
 
@@ -84,6 +86,7 @@ export default {
 				return transformedSongs;
 			},
 			interaction,
+			language,
 			page,
 		);
 	},

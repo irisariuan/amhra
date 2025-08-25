@@ -39,6 +39,7 @@ import {
 import { clipAudio, createYtDlpStream } from "./stream";
 import type { Readable } from "node:stream";
 import { getSegments, SegmentCategory, sendSkipMessage } from "./segment";
+import { Language } from "../interaction";
 dotenv.config();
 
 const videoInfoCache = new NodeCache();
@@ -145,6 +146,7 @@ export function getAudioPlayer(
 	client: CustomClient,
 	guildId: string,
 	channel: Channel | null,
+	language: Language,
 	option: GetAudioPlayerOption = { createPlayer: true },
 ) {
 	const player = client.player.get(guildId) ?? null;

@@ -11,6 +11,7 @@ import { event } from "./server/event";
 import { dcb, globalApp, misc } from "./misc";
 import { readSetting } from "./setting";
 import { parseLocale } from "./interaction";
+import { languageText } from "./language";
 
 const setting = readSetting();
 export const client = new CustomClient({
@@ -37,13 +38,16 @@ client.on("ready", () => {
 });
 
 client.on("interactionCreate", async (interaction) => {
+	const language = parseLocale(interaction.locale);
 	if (interaction.isUserContextMenuCommand()) {
 		const command = contextCommands.get(interaction.commandName);
 		if (!command) {
 			globalApp.important(
 				`Command not implemented: ${interaction.commandName}`,
 			);
-			interaction.reply("Command not implemented!");
+			interaction.reply(
+				languageText("command_not_implemented", language),
+			);
 			return;
 		}
 		try {
@@ -53,15 +57,23 @@ client.on("interactionCreate", async (interaction) => {
 			await command.execute({
 				interaction,
 				client,
-				language: parseLocale(interaction.locale),
+				language,
 			});
 		} catch (e) {
 			globalApp.err(e);
-			try {
-				await interaction.reply(misc.errorMessage);
-			} catch {
-				globalApp.err("Cannot send error message");
-			}
+			await interaction
+				.reply(misc.errorMessageObj(language))
+				.catch(async () => {
+					await interaction
+						.editReply(misc.errorMessageObj(language))
+						.catch(async () => {
+							await interaction
+								.followUp(misc.errorMessageObj(language))
+								.catch(() => {
+									globalApp.err("Cannot send error message");
+								});
+						});
+				});
 		}
 	}
 	if (interaction.isChatInputCommand()) {
@@ -70,7 +82,9 @@ client.on("interactionCreate", async (interaction) => {
 			globalApp.important(
 				`Command not implemented: ${interaction.commandName}`,
 			);
-			interaction.reply("Command not implemented!");
+			interaction.reply(
+				languageText("command_not_implemented", language),
+			);
 			return;
 		}
 		try {
@@ -80,15 +94,23 @@ client.on("interactionCreate", async (interaction) => {
 			await command.execute({
 				interaction,
 				client,
-				language: parseLocale(interaction.locale),
+				language,
 			});
 		} catch (e) {
 			globalApp.err(e);
-			try {
-				await interaction.reply(misc.errorMessage);
-			} catch {
-				globalApp.err("Cannot send error message");
-			}
+			await interaction
+				.reply(misc.errorMessageObj(language))
+				.catch(async () => {
+					await interaction
+						.editReply(misc.errorMessageObj(language))
+						.catch(async () => {
+							await interaction
+								.followUp(misc.errorMessageObj(language))
+								.catch(() => {
+									globalApp.err("Cannot send error message");
+								});
+						});
+				});
 		}
 	}
 });

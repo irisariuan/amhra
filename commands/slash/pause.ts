@@ -6,15 +6,16 @@ import {
 	getConnection,
 } from "../../lib/voice/core";
 import { dcb } from "../../lib/misc";
+import { languageText } from "../../lib/language";
 
 export default {
 	data: new SlashCommandBuilder()
 		.setName("pause")
 		.setDescription("Pause the music playing"),
-	async execute({ interaction, client }) {
+	async execute({ interaction, client, language }) {
 		if (!interaction.guild)
 			return await interaction.reply({
-				content: "This command can only be used in a server.",
+				content: languageText("server_only_command", language),
 			});
 		if (
 			!interaction.member ||
@@ -22,7 +23,7 @@ export default {
 			!interaction.member.voice.channel
 		)
 			return await interaction.reply({
-				content: "You are not in a voice channel",
+				content: languageText("user_not_in_voice", language),
 			});
 		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client);
 		const connection = getConnection(interaction.guild.id);
@@ -32,7 +33,7 @@ export default {
 			interaction.member.voice.channel.id !== botVoiceChannel.id
 		) {
 			return await interaction.reply({
-				content: "You are not in the same voice channel as me",
+				content: languageText("not_same_voice", language),
 			});
 		}
 
@@ -40,17 +41,24 @@ export default {
 			client,
 			interaction.guild.id,
 			interaction.channel,
+			language,
 			{
 				createPlayer: false,
 			},
 		);
 		if (!player)
-			return await interaction.reply({ content: "Not playing any song" });
+			return await interaction.reply({
+				content: languageText("not_playing", language),
+			});
 		if (player.pause()) {
 			dcb.log(`(Guild ID: ${player.guildId}) Paused the music`);
-			await interaction.reply({ content: "Paused!" });
+			await interaction.reply({
+				content: languageText("paused", language),
+			});
 		} else {
-			await interaction.reply({ content: "Failed to pause" });
+			await interaction.reply({
+				content: languageText("failed_pause", language),
+			});
 		}
 	},
 } as Command<SlashCommandBuilder>;

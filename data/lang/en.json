@@ -1,0 +1,75 @@
+{
+	"ERROR": "An error occurred while processing this command",
+	"NOT_CONNECTED": "I am not connected to a voice channel",
+	"ALREADY_CONNECTED": "I am already in a voice channel",
+	"USER_NOT_IN_VOICE": "You are not in a voice channel",
+	"SERVER_ONLY_COMMAND": "This command can only be used in a server",
+	"NOT_SAME_VOICE": "You are not in the same voice channel as me",
+	"EMPTY_QUEUE": "There is no more things to be played!",
+	"NOT_PLAYING": "I am not playing any song",
+	"NOT_PLAYING_NON_MUSIC": "I am not playing any non-music part",
+	"JOINED_VOICE": "Joined voice channel",
+
+	"DISCONNECTED": "Disconnected!",
+	"STOP": "Stopped the music!",
+	"SUPER_RESET": "Super reset done!",
+
+	"RESUME": "Resumed!",
+	"FAILED_RESUME": "Fail to resume the song!",
+
+	"PAUSE": "Paused!",
+	"FAILED_PAUSE": "Fail to pause the song!",
+
+	"RESET_PLAYER": "I've reset the player!",
+	"PLAYER_NOT_FOUND": "Player not found",
+
+	"EMPTY_PLAYLIST": "The playlist is empty!",
+	"SEGMENT_SKIP_MESSAGE_NEXT": "Found non-music content, want to skip to next song?\nType `/skip` or react to skip",
+	"SEGMENT_SKIP_MESSAGE": "Found non-music content, want to skip to `{pos}`?\nType `/relocate ${posNum}` or react to skip",
+
+	"PLAYING_DISPLAY": "Playing {title} ({url})",
+	"ADD_TO_QUEUE": "Added {input}({url}) to queue",
+	"PLAYLIST_ADD_TO_QUEUE": "Added playlist {input}({url}) to queue",
+
+	"REMOVE_QUEUE_DETAIL": "Removed {title} ({removed})",
+	"REMOVE_QUEUE": "Removed {removed}",
+
+	"RELOCATE": "Relocated the song to {pos}",
+	"SET_VOLUME": "Set volume to {volume}%",
+	"CURRENT_VERSION": "Current version is **{version}**",
+
+	"SKIP_SONG": "Skipped {amount} song(s)",
+	"SEGMENT_SKIP": "Skipped to {pos}",
+	"SEGMENT_SKIP_NEXT": "Skipped to next song",
+
+	"PAGE": "Page {page}/{maxPage}",
+
+	"TOGGLE_LOOP_TRUE": "Loop mode is now enabled",
+	"TOGGLE_LOOP_FALSE": "Loop mode is now disabled",
+	"LOOP_ALREADY_TRUE": "Loop mode is already enabled",
+	"LOOP_ALREADY_FALSE": "Loop mode is already disabled",
+	"SET_LOOP_TRUE": "Loop mode is now enabled",
+	"SET_LOOP_FALSE": "Loop mode is now disabled",
+
+	"SKIP_CANCEL_TIMEOUT": "Timed out, skipping cancelled",
+	"SKIP_CANCEL_NO_NON_MUSIC": "Not playing any non-music part now, skipping cancelled",
+	"SKIP_CANCEL_SONG_CHANGED": "The song has changed, skipping cancelled",
+
+	"NO_SONG_FOUND": "No song found",
+	"INVALID_POSITION_FORMAT": "Invalid position format. Use seconds or (HH:)MM:SS format",
+	"POSITION_OVERFLOW": "The specified position exceeds the song duration",
+	"QUEUE_INDEX_OVERFLOW": "The specified index exceeds the queue length",
+	"FAIL_RESOURCE": "Failed to create resource",
+	"FAIL_SKIP_SEGMENT": "Failed to skip the current non-music part",
+	"COMMAND_NOT_IMPLEMENTED": "This command is not implemented yet",
+
+	"DASHBOARD_LABEL": "Dashboard",
+	"NOW_PLAYING_LABEL": "Now Playing",
+	"PREVIOUS_PAGE_LABEL": "Previous Page",
+	"NEXT_PAGE_LABEL": "Next Page",
+	"REFRESH_LABEL": "Refresh",
+	"FIRST_PAGE_LABEL": "First Page",
+	"LAST_PAGE_LABEL": "Last Page",
+	"QUEUE_LABEL": "Queue",
+	"QUEUE_FOOTER": "Showing songs {minShowingSong}-{maxShowingSong} of {totalSong}"
+}

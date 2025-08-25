@@ -5,6 +5,7 @@ import {
 	getConnection,
 	getAudioPlayer,
 } from "../../lib/voice/core";
+import { languageText } from "../../lib/language";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -18,11 +19,11 @@ export default {
 				.setDescription("Enable or disable the loop mode")
 				.setRequired(false),
 		),
-	async execute({ interaction, client }) {
+	async execute({ interaction, client, language }) {
 		const setLoop = interaction.options.getBoolean("enabled");
 		if (!interaction.guild)
 			return await interaction.reply({
-				content: "This command can only be used in a server.",
+				content: languageText("server_only_command", language),
 			});
 		if (
 			!interaction.member ||
@@ -30,7 +31,7 @@ export default {
 			!interaction.member.voice.channel
 		)
 			return await interaction.reply({
-				content: "You are not in a voice channel",
+				content: languageText("user_not_in_voice", language),
 			});
 		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client);
 		const connection = getConnection(interaction.guild.id);
@@ -40,39 +41,48 @@ export default {
 			interaction.member.voice.channel.id !== botVoiceChannel.id
 		) {
 			return await interaction.reply({
-				content: "You are not in the same voice channel as me",
+				content: languageText("not_same_voice", language),
 			});
 		}
 		const player = getAudioPlayer(
 			client,
 			interaction.guild.id,
 			interaction.channel,
+			language,
 			{ createPlayer: false },
 		);
 		if (!player) {
 			return await interaction.reply({
-				content: "I am not playing anything",
+				content: languageText("not_playing", language),
 			});
 		}
 		if (setLoop === null) {
 			return await interaction.reply({
-				content: `Loop mode is now ${player.toggleLoop() ? "enabled" : "disabled"}.`,
+				content: languageText(
+					player.toggleLoop()
+						? "toggle_loop_true"
+						: "toggle_loop_false",
+					language,
+				),
 			});
 		}
 		if (setLoop === player.looping) {
 			return await interaction.reply({
-				content: `Loop mode is already ${setLoop ? "enabled" : "disabled"}.`,
+				content: languageText(
+					setLoop ? "loop_already_true" : "loop_already_false",
+					language,
+				),
 			});
 		}
 		if (setLoop) {
 			player.enableLoop();
 			return await interaction.reply({
-				content: "Loop mode is now enabled.",
+				content: languageText("set_loop_true", language),
 			});
 		}
 		player.disableLoop();
 		return await interaction.reply({
-			content: "Loop mode is now disabled.",
+			content: languageText("set_loop_false", language),
 		});
 	},
 } as Command<SlashCommandBuilder>;

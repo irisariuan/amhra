@@ -123,11 +123,13 @@ import { writeJsonSync } from "../lib/setting";
 			default: false,
 		})
 	) {
-		setting.QUEUE_SIZE = Number(await input({
-			message: "Set up your cache size for logs",
-			validate: (v) => !isNaN(Number(v)) && Number(v) > 0,
-			default: "4000",
-		}));
+		setting.QUEUE_SIZE = Number(
+			await input({
+				message: "Set up your cache size for logs",
+				validate: (v) => !isNaN(Number(v)) && Number(v) > 0,
+				default: "4000",
+			}),
+		);
 	}
 	setting.USE_YOUTUBE_DL = await confirm({
 		message: "Would you like to use youtube-dl?",

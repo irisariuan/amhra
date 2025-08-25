@@ -18,6 +18,7 @@ import {
 	isVideo,
 	timeFormat,
 } from "../../lib/voice/core";
+import { languageText } from "../../lib/language";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -43,10 +44,10 @@ export default {
 				.setMaxValue(500)
 				.setMinValue(0),
 		),
-	async execute({ interaction, client }) {
+	async execute({ interaction, client, language }) {
 		if (!interaction.guild)
 			return await interaction.reply({
-				content: "This command can only be used in a server.",
+				content: languageText("server_only_command", language),
 			});
 		if (
 			!interaction.member ||
@@ -54,7 +55,7 @@ export default {
 			!interaction.member.voice.channel
 		)
 			return await interaction.reply({
-				content: "You are not in a voice channel",
+				content: languageText("user_not_in_voice", language),
 			});
 		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client);
 		if (
@@ -64,7 +65,7 @@ export default {
 			interaction.member.voice.channel.id !== botVoiceChannel.id
 		) {
 			return await interaction.reply({
-				content: "You are not in the same voice channel as me",
+				content: languageText("not_same_voice", language),
 			});
 		}
 		//prevent error caused by long response time
@@ -72,7 +73,7 @@ export default {
 		await interaction.deferReply();
 
 		if (!interaction.member || !("voice" in interaction.member)) {
-			return interaction.editReply(misc.errorMessageObj);
+			return interaction.editReply(misc.errorMessageObj(language));
 		}
 
 		const input = interaction.options.getString("search", true);
@@ -84,19 +85,20 @@ export default {
 			`Connected to voice channel (ID: ${voiceChannel.id}, Guild ID: ${interaction.guildId})`,
 		);
 
-		const audioPlayer = getAudioPlayer(
+		const player = getAudioPlayer(
 			client,
 			interaction.guild.id,
 			interaction.channel,
+			language,
 			{
 				createPlayer: true,
 			},
 		);
 
-		if (!audioPlayer || !connection) {
+		if (!player || !connection) {
 			throw new Error("Execution Error");
 		}
-		connection.subscribe(audioPlayer);
+		connection.subscribe(player);
 
 		//searching data on youtube and add to queue
 		// find if there is cache, cache is saved in YoutubeVideo form
@@ -114,15 +116,17 @@ export default {
 			}
 			const allVideos = await playlist.all_videos();
 
-			audioPlayer.queue = audioPlayer.queue.concat(
+			player.queue = player.queue.concat(
 				allVideos.map((v) => ({
 					repeating: false,
 					url: v.url,
 				})),
 			);
-			videoUrl = audioPlayer.getNextQueueItem() ?? allVideos[0].url;
+			videoUrl = player.getNextQueueItem() ?? allVideos[0].url;
 			if (!videoUrl)
-				return interaction.editReply("The playlist is empty!");
+				return interaction.editReply(
+					languageText("empty_playlist", language),
+				);
 		} else {
 			const cached = client.cache.get(input);
 			if (cached?.isVideo()) {
@@ -132,35 +136,44 @@ export default {
 					limit: 1,
 				});
 				if (!query.length) {
-					return interaction.editReply(misc.errorMessageObj);
+					return interaction.editReply(
+						misc.errorMessageObj(language),
+					);
 				}
 				client.cache.set(input, query[0], "video");
 				videoUrl = query[0].url;
 			}
 		}
 
-		audioPlayer.addToQueue(videoUrl);
+		player.addToQueue(videoUrl);
 		// interaction content
-		if (!audioPlayer.isPlaying) {
+		if (!player.isPlaying) {
 			dcb.log("Started to play music");
 			try {
-				const videoUrl = audioPlayer.getNextQueueItem();
+				const videoUrl = player.getNextQueueItem();
 				if (!videoUrl) {
-					return interaction.editReply(misc.errorMessageObj);
+					return interaction.editReply(
+						misc.errorMessageObj(language),
+					);
 				}
 				const data = await createResource(videoUrl, undefined, force);
 				if (!data) {
-					return interaction.editReply(misc.errorMessageObj);
+					return interaction.editReply(
+						misc.errorMessageObj(language),
+					);
 				}
-				audioPlayer.playResource(data);
+				player.playResource(data);
 
 				dcb.log(`Playing Searched URL ${videoUrl}`);
 				await interaction.editReply({
-					content: `Playing ${data.title} (${videoUrl})`,
+					content: languageText("playing_display", language, {
+						title: data.title,
+						url: videoUrl,
+					}),
 				});
-				const skipTo = audioPlayer.currentSegment();
+				const skipTo = player.currentSegment();
 				if (!data.segments || !skipTo) return;
-				const count = audioPlayer.playCounter;
+				const count = player.playCounter;
 				const response = await interaction.followUp({
 					content: `Found non-music content at start, want to skip to \`${timeFormat(skipTo.segment[1])}\`?`,
 					components: [
@@ -176,22 +189,33 @@ export default {
 					const confirmation = await response.awaitMessageComponent({
 						time: Math.min(10 * 1000, skipTo.segment[1] * 1000),
 					});
-					if (audioPlayer.playCounter !== count) {
+					if (player.playCounter !== count) {
 						return confirmation.update({
-							content: "The song has changed, skipping cancelled",
+							content: languageText(
+								"SKIP_CANCEL_SONG_CHANGED",
+								player.currentLanguage,
+							),
 							components: [],
 						});
 					}
 					if (confirmation.customId === "skip") {
-						const result = await audioPlayer.skipCurrentSegment();
+						const result = await player.skipCurrentSegment();
 						if (!result.success) {
 							return confirmation.update({
-								...misc.errorMessageObj,
+								...misc.errorMessageObj(player.currentLanguage),
 								components: [],
 							});
 						}
 						await confirmation.update({
-							content: `Skipped to ${result.skipped ? "next song" : timeFormat(skipTo.segment[1])}`,
+							content: languageText(
+								result.skipped
+									? "SEGMENT_SKIP_NEXT"
+									: "SEGMENT_SKIP",
+								player.currentLanguage,
+								{
+									pos: timeFormat(skipTo.segment[1]),
+								},
+							),
 							components: [],
 						});
 					}
@@ -204,7 +228,10 @@ export default {
 						await response.reactions.removeAll().catch(() => {});
 						await response
 							.edit({
-								content: "Timed out, skipping cancelled",
+								content: languageText(
+									"SKIP_CANCEL_TIMEOUT",
+									language,
+								),
 								components: [],
 							})
 							.catch(() => {});
@@ -217,15 +244,20 @@ export default {
 					"An error occurred while trying to start playing music: ",
 					e,
 				);
-				return interaction.editReply({
-					content: "An error occurred while processing the song",
-				});
+				return interaction.editReply(languageText("error", language));
 			}
 		}
 
 		dcb.log("Searched URL and added URL to queue");
 		return await interaction.editReply({
-			content: `Added ${isPlaylist(input) ? "playlist " : ""}${input}(${videoUrl}) to queue`,
+			content: languageText(
+				isPlaylist(input) ? "PLAYLIST_ADD_TO_QUEUE" : "ADD_TO_QUEUE",
+				language,
+				{
+					input,
+					url: videoUrl,
+				},
+			),
 		});
 	},
 } as Command<SlashCommandBuilder>;

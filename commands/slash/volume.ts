@@ -5,6 +5,7 @@ import {
 	getConnection,
 } from "../../lib/voice/core";
 import { type Command } from "../../lib/interaction";
+import { languageText } from "../../lib/language";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -18,10 +19,10 @@ export default {
 				.setMaxValue(500)
 				.setRequired(true),
 		),
-	async execute({ interaction, client }) {
+	async execute({ interaction, client, language }) {
 		if (!interaction.guild)
 			return await interaction.reply({
-				content: "This command can only be used in a server.",
+				content: languageText("server_only_command", language),
 			});
 		if (
 			!interaction.member ||
@@ -29,7 +30,7 @@ export default {
 			!interaction.member.voice.channel
 		)
 			return await interaction.reply({
-				content: "You are not in a voice channel",
+				content: languageText("user_not_in_voice", language),
 			});
 		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client);
 		const connection = getConnection(interaction.guild.id);
@@ -39,7 +40,7 @@ export default {
 			interaction.member.voice.channel.id !== botVoiceChannel.id
 		) {
 			return await interaction.reply({
-				content: "You are not in the same voice channel as me",
+				content: languageText("not_same_voice", language),
 			});
 		}
 		const volume = interaction.options.getNumber("volume", true) / 100;
@@ -47,15 +48,18 @@ export default {
 			client,
 			interaction.guild.id,
 			interaction.channel,
+			language,
 			{ createPlayer: false },
 		);
 		if (!getConnection(interaction.guildId))
 			return interaction.reply({
-				content: "I'm not in a voice channel!",
+				content: languageText("not_connected", language),
 			});
 		if (!player)
-			return interaction.reply({ content: "I'm not playing song!" });
+			return interaction.reply({
+				content: languageText("not_playing", language),
+			});
 		player.setVolume(volume);
-		interaction.reply({ content: `Set the volume to ${volume * 100}%` });
+		interaction.reply({ content: languageText("set_volume", language) });
 	},
 } as Command<SlashCommandBuilder>;

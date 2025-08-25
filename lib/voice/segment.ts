@@ -2,6 +2,8 @@ import z from "zod";
 import { CustomAudioPlayer } from "../custom";
 import { dcb, globalApp, misc } from "../misc";
 import { timeFormat } from "./core";
+import { Language } from "../interaction";
+import { languageText } from "../language";
 
 export enum SegmentCategory {
 	Sponsor = "sponsor",
@@ -147,8 +149,11 @@ export async function sendSkipMessage(
 		Math.abs(skipTo - player.nowPlaying.details.durationInSec) <= 1;
 	const response = await player.channel.send({
 		content: isSkippingSong
-			? "Found non-music content, want to skip to next song?\nType \`/skip\` or react to skip"
-			: `Found non-music content, want to skip to \`${timeFormat(skipTo)}\`?\nType \`/relocate ${Math.round(skipTo)}\` or react to skip`,
+			? languageText("segment_skip_message_next", player.currentLanguage)
+			: languageText("segment_skip_message", player.currentLanguage, {
+					pos: timeFormat(skipTo),
+					posNum: Math.round(skipTo),
+				}),
 	});
 	dcb.log("Sent skip message, waiting for reaction");
 	player.activeSkipMessage = response;
@@ -178,31 +183,47 @@ export async function sendSkipMessage(
 		}
 		if (!player.currentSegment()) {
 			await response.edit({
-				content:
-					"Not playing any non-music part now, skipping cancelled",
+				content: languageText(
+					"skip_cancel_no_non_music",
+					player.currentLanguage,
+				),
 				components: [],
 			});
 			return true;
 		}
 		if (player.playCounter !== count) {
 			response.edit({
-				content: "The song has changed, skipping cancelled",
+				content: languageText(
+					"skip_cancel_song_changed",
+					player.currentLanguage,
+				),
 				components: [],
 			});
 			return true;
 		}
 		if (isSkippingSong) {
 			player.stop();
-			await response.edit({ content: "Skipped!" });
+			await response.edit({
+				content: languageText(
+					"segment_skip_next",
+					player.currentLanguage,
+				),
+			});
 			return true;
 		}
 		const result = await player.skipCurrentSegment();
 		if (!result.success) {
-			await response.edit(misc.errorMessageObj);
+			await response.edit(misc.errorMessageObj(player.currentLanguage));
 			return true;
 		}
 		await response.edit({
-			content: `Skipped to \`${result.skipped ? "next song" : timeFormat(skipTo)}\``,
+			content: languageText(
+				result.skipped ? "segment_skip_next" : "segment_skip",
+				player.currentLanguage,
+				{
+					pos: timeFormat(skipTo),
+				},
+			),
 			components: [],
 		});
 		return true;
@@ -217,7 +238,7 @@ export async function sendSkipMessage(
 			await response.reactions.removeAll().catch(() => {});
 			await response
 				.edit({
-					content: "Timed out, skipping cancelled",
+					content: languageText("skip_cancel_timeout", player.currentLanguage),
 					components: [],
 				})
 				.catch(() => {});

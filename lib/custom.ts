@@ -8,6 +8,7 @@ import { readSetting } from "./setting";
 import { createResource, Stream } from "./voice/core";
 import { Segment, sendSkipMessage } from "./voice/segment";
 import { prefetch } from "./voice/stream";
+import { Language } from "./interaction";
 
 const setting = readSetting();
 
@@ -199,6 +200,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 	playCounter: number;
 
 	activeSkipMessage: Message | null;
+	currentLanguage: Language;
 
 	constructor(
 		guildId: string,
@@ -233,6 +235,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.songSegmentsTimeoutArray = [];
 		this.channel = channel;
 		this.activeSkipMessage = null;
+		this.currentLanguage = Language.English;
 	}
 
 	setChannel(channel?: Channel | null) {

@@ -1,1 +1,75 @@
-{}
+{
+	"ERROR": "處理此指令時發生錯誤",
+	"NOT_CONNECTED": "我沒有連接到語音頻道",
+	"ALREADY_CONNECTED": "我已經在語音頻道中",
+	"USER_NOT_IN_VOICE": "你不在語音頻道中",
+	"SERVER_ONLY_COMMAND": "此指令只能在伺服器中使用",
+	"NOT_SAME_VOICE": "你沒有和我同一個語音頻道中",
+	"EMPTY_QUEUE": "沒有更多要播放的內容了！",
+	"NOT_PLAYING": "我沒有播放任何歌曲",
+	"NOT_PLAYING_NON_MUSIC": "我沒有播放任何非音樂內容",
+	"JOINED_VOICE": "已加入語音頻道",
+
+	"DISCONNECTED": "已斷線！",
+	"STOP": "已停止音樂！",
+	"SUPER_RESET": "超級重置完成！",
+
+	"RESUME": "已恢復！",
+	"FAILED_RESUME": "恢復歌曲失敗！",
+
+	"PAUSE": "已暫停！",
+	"FAILED_PAUSE": "暫停歌曲失敗！",
+
+	"RESET_PLAYER": "我已重置播放器！",
+	"PLAYER_NOT_FOUND": "找不到播放器",
+
+	"EMPTY_PLAYLIST": "播放清單是空的！",
+	"SEGMENT_SKIP_MESSAGE_NEXT": "發現非音樂內容，想要跳到下一首歌曲嗎？\n輸入 `/skip` 或點擊反應來跳過",
+	"SEGMENT_SKIP_MESSAGE": "發現非音樂內容，想要跳到 `{pos}` 嗎？\n輸入 `/relocate ${posNum}` 或點擊反應來跳過",
+
+	"PLAYING_DISPLAY": "正在播放 {title} ({url})",
+	"ADD_TO_QUEUE": "已將 {input}({url}) 加入佇列",
+	"PLAYLIST_ADD_TO_QUEUE": "已將播放清單 {input}({url}) 加入佇列",
+
+	"REMOVE_QUEUE_DETAIL": "已移除 {title} ({removed})",
+	"REMOVE_QUEUE": "已移除 {removed}",
+
+	"RELOCATE": "已將歌曲重新定位到 {pos}",
+	"SET_VOLUME": "已將音量設定為 {volume}%",
+	"CURRENT_VERSION": "目前版本為 **{version}**",
+
+	"SKIP_SONG": "已跳過 {amount} 首歌曲",
+	"SEGMENT_SKIP": "已跳到 {pos}",
+	"SEGMENT_SKIP_NEXT": "已跳到下一首歌曲",
+
+	"PAGE": "頁面 {page}/{maxPage}",
+
+	"TOGGLE_LOOP_TRUE": "循環模式現在已啟用",
+	"TOGGLE_LOOP_FALSE": "循環模式現在已停用",
+	"LOOP_ALREADY_TRUE": "循環模式已啟用",
+	"LOOP_ALREADY_FALSE": "循環模式已停用",
+	"SET_LOOP_TRUE": "循環模式現在已啟用",
+	"SET_LOOP_FALSE": "循環模式現在已停用",
+
+	"SKIP_CANCEL_TIMEOUT": "已逾時，跳過已取消",
+	"SKIP_CANCEL_NO_NON_MUSIC": "現在沒有播放任何非音樂內容，跳過已取消",
+	"SKIP_CANCEL_SONG_CHANGED": "歌曲已變更，跳過已取消",
+
+	"NO_SONG_FOUND": "找不到歌曲",
+	"INVALID_POSITION_FORMAT": "無效的位置格式。請使用秒數或 (HH:)MM:SS 格式",
+	"POSITION_OVERFLOW": "指定的位置超過歌曲長度",
+	"QUEUE_INDEX_OVERFLOW": "指定的索引超過佇列長度",
+	"FAIL_RESOURCE": "建立資源失敗",
+	"FAIL_SKIP_SEGMENT": "跳過目前的非音樂部分失敗",
+	"COMMAND_NOT_IMPLEMENTED": "此指令尚未實作",
+
+	"DASHBOARD_LABEL": "儀表板",
+	"NOW_PLAYING_LABEL": "正在播放",
+	"PREVIOUS_PAGE_LABEL": "上一頁",
+	"NEXT_PAGE_LABEL": "下一頁",
+	"REFRESH_LABEL": "重新整理",
+	"FIRST_PAGE_LABEL": "第一頁",
+	"LAST_PAGE_LABEL": "最後一頁",
+	"QUEUE_LABEL": "佇列",
+	"QUEUE_FOOTER": "顯示歌曲 {minShowingSong}-{maxShowingSong}，共 {totalSong} 首"
+}

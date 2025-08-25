@@ -1,0 +1,75 @@
+{
+	"ERROR": "コマンド処理中にエラーが発生しました",
+	"NOT_CONNECTED": "ボイスチャンネルに接続されていません",
+	"ALREADY_CONNECTED": "すでにボイスチャンネルに接続されています",
+	"USER_NOT_IN_VOICE": "あなたはボイスチャンネルに参加していません",
+	"SERVER_ONLY_COMMAND": "このコマンドはサーバーでのみ使用できます",
+	"NOT_SAME_VOICE": "私と同じボイスチャンネルに参加していません",
+	"EMPTY_QUEUE": "もう再生するものはありません！",
+	"NOT_PLAYING": "何も曲を再生していません",
+	"NOT_PLAYING_NON_MUSIC": "音楽以外のコンテンツは再生していません",
+	"JOINED_VOICE": "ボイスチャンネルに参加しました",
+
+	"DISCONNECTED": "切断されました！",
+	"STOP": "音楽を停止しました！",
+	"SUPER_RESET": "スーパーリセット完了！",
+
+	"RESUME": "再開しました！",
+	"FAILED_RESUME": "曲の再開に失敗しました！",
+
+	"PAUSE": "一時停止しました！",
+	"FAILED_PAUSE": "曲の一時停止に失敗しました！",
+
+	"RESET_PLAYER": "プレイヤーをリセットしました！",
+	"PLAYER_NOT_FOUND": "プレイヤーが見つかりません",
+
+	"EMPTY_PLAYLIST": "プレイリストは空です！",
+	"SEGMENT_SKIP_MESSAGE_NEXT": "音楽以外のコンテンツが見つかりました。次の曲にスキップしますか？\n`/skip`と入力するか、リアクションでスキップしてください",
+	"SEGMENT_SKIP_MESSAGE": "音楽以外のコンテンツが見つかりました。`{pos}`にスキップしますか？\n`/relocate ${posNum}`と入力するか、リアクションでスキップしてください",
+
+	"PLAYING_DISPLAY": "{title} ({url})を再生中",
+	"ADD_TO_QUEUE": "{input}({url})をキューに追加しました",
+	"PLAYLIST_ADD_TO_QUEUE": "プレイリスト{input}({url})をキューに追加しました",
+
+	"REMOVE_QUEUE_DETAIL": "{title} ({removed})を削除しました",
+	"REMOVE_QUEUE": "{removed}を削除しました",
+
+	"RELOCATE": "曲を{pos}に移動しました",
+	"SET_VOLUME": "音量を{volume}%に設定しました",
+	"CURRENT_VERSION": "現在のバージョンは**{version}**です",
+
+	"SKIP_SONG": "{amount}曲スキップしました",
+	"SEGMENT_SKIP": "{pos}にスキップしました",
+	"SEGMENT_SKIP_NEXT": "次の曲にスキップしました",
+
+	"PAGE": "{page}/{maxPage}ページ",
+
+	"TOGGLE_LOOP_TRUE": "ループモードが有効になりました",
+	"TOGGLE_LOOP_FALSE": "ループモードが無効になりました",
+	"LOOP_ALREADY_TRUE": "ループモードはすでに有効です",
+	"LOOP_ALREADY_FALSE": "ループモードはすでに無効です",
+	"SET_LOOP_TRUE": "ループモードが有効になりました",
+	"SET_LOOP_FALSE": "ループモードが無効になりました",
+
+	"SKIP_CANCEL_TIMEOUT": "タイムアウトしました。スキップをキャンセルします",
+	"SKIP_CANCEL_NO_NON_MUSIC": "現在、音楽以外のコンテンツを再生していないため、スキップをキャンセルします",
+	"SKIP_CANCEL_SONG_CHANGED": "曲が変更されたため、スキップをキャンセルします",
+
+	"NO_SONG_FOUND": "曲が見つかりませんでした",
+	"INVALID_POSITION_FORMAT": "無効な位置形式です。秒数または(HH:)MM:SS形式を使用してください",
+	"POSITION_OVERFLOW": "指定された位置が曲の長さを超えています",
+	"QUEUE_INDEX_OVERFLOW": "指定されたインデックスがキューの長さを超えています",
+	"FAIL_RESOURCE": "リソースの作成に失敗しました",
+	"FAIL_SKIP_SEGMENT": "現在の音楽以外の部分をスキップできませんでした",
+	"COMMAND_NOT_IMPLEMENTED": "このコマンドはまだ実装されていません",
+
+	"DASHBOARD_LABEL": "ダッシュボード",
+	"NOW_PLAYING_LABEL": "再生中",
+	"PREVIOUS_PAGE_LABEL": "前のページ",
+	"NEXT_PAGE_LABEL": "次のページ",
+	"REFRESH_LABEL": "更新",
+	"FIRST_PAGE_LABEL": "最初のページ",
+	"LAST_PAGE_LABEL": "最後のページ",
+	"QUEUE_LABEL": "キュー",
+	"QUEUE_FOOTER": "全{totalSong}曲中{minShowingSong}～{maxShowingSong}曲を表示"
+}

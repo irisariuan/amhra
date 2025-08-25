@@ -4,6 +4,8 @@ import { event } from "./server/event";
 import { appendFile, writeFile } from "node:fs/promises";
 import removeAnsi from "strip-ansi";
 import { existsSync } from "node:fs";
+import { Language } from "./interaction";
+import { languageText } from "./language";
 
 export const errorMessage = "An error occurred during running this command";
 
@@ -76,11 +78,12 @@ export const globalApp = {
 };
 
 export const misc = {
-	errorMessageObj: {
-		content: errorMessage,
-		ephemeral: true,
+	errorMessageObj(language: Language) {
+		return {
+			content: languageText("error", language),
+			ephemeral: true,
+		};
 	},
-	errorMessage,
 	prefixFormatter(format: string): (input: string) => string {
 		return (input) => {
 			return `${format} ${input}`;

@@ -5,15 +5,16 @@ import {
 	getConnection,
 } from "../../lib/voice/core";
 import { type Command } from "../../lib/interaction";
+import { languageText } from "../../lib/language";
 
 export default {
 	data: new SlashCommandBuilder()
 		.setName("resume")
 		.setDescription("Resume the song"),
-	async execute({ interaction, client }) {
+	async execute({ interaction, client, language }) {
 		if (!interaction.guild)
 			return await interaction.reply({
-				content: "This command can only be used in a server.",
+				content: languageText("server_only_command", language),
 			});
 		if (
 			!interaction.member ||
@@ -21,7 +22,7 @@ export default {
 			!interaction.member.voice.channel
 		)
 			return await interaction.reply({
-				content: "You are not in a voice channel",
+				content: languageText("user_not_in_voice", language),
 			});
 		const botVoiceChannel = getBotVoiceChannel(interaction.guild, client);
 		const connection = getConnection(interaction.guild.id);
@@ -31,24 +32,29 @@ export default {
 			interaction.member.voice.channel.id !== botVoiceChannel.id
 		) {
 			return await interaction.reply({
-				content: "You are not in the same voice channel as me",
+				content: languageText("not_same_voice", language),
 			});
 		}
 		const player = getAudioPlayer(
 			client,
 			interaction.guild.id,
 			interaction.channel,
+			language,
 			{ createPlayer: false },
 		);
 
 		if (!player)
 			return await interaction.reply({
-				content: "I am not playing any song",
+				content: languageText("not_playing", language),
 			});
 		if (player.unpause()) {
-			await interaction.reply({ content: "Resumed!" });
+			await interaction.reply({
+				content: languageText("resumed", language),
+			});
 		} else {
-			await interaction.reply({ content: "Fail to resume the song!" });
+			await interaction.reply({
+				content: languageText("failed_resume", language),
+			});
 		}
 	},
 } as Command<SlashCommandBuilder>;
