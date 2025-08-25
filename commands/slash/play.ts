@@ -175,7 +175,10 @@ export default {
 				if (!data.segments || !skipTo) return;
 				const count = player.playCounter;
 				const response = await interaction.followUp({
-					content: `Found non-music content at start, want to skip to \`${timeFormat(skipTo.segment[1])}\`?`,
+					content: languageText("segment_skip_message", language, {
+						pos: timeFormat(skipTo.segment[1]),
+						posNum: Math.round(skipTo.segment[1]),
+					}),
 					components: [
 						new ActionRowBuilder<ButtonBuilder>().addComponents(
 							new ButtonBuilder()
