@@ -151,11 +151,6 @@ export async function prefetch(url: string, force = false) {
 		stdio: ["ignore", "pipe", "inherit"],
 	});
 	const rawOutputStream = spawnedProcess.stdout;
-
-	await new Promise<void>((resolve) => {
-		rawOutputStream.once("data", resolve);
-	});
-
 	const writeStream = createWriteStream(
 		`${process.cwd()}/cache/${id}.temp.music`,
 	);
@@ -212,6 +207,10 @@ export async function prefetch(url: string, force = false) {
 		promise,
 		data,
 	});
+	await new Promise<void>((resolve) => {
+		rawOutputStream.once("data", resolve);
+	});
+
 	return { rawOutputStream, copiedStream: copyStreamSafe(rawOutputStream) };
 }
 
