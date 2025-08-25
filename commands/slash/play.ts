@@ -19,6 +19,7 @@ import {
 	timeFormat,
 } from "../../lib/voice/core";
 import { languageText } from "../../lib/language";
+import { cancelThreshold } from "../../lib/voice/segment";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -172,7 +173,12 @@ export default {
 					}),
 				});
 				const skipTo = player.currentSegment();
-				if (!data.segments || !skipTo) return;
+				if (
+					!data.segments ||
+					!skipTo ||
+					skipTo.segment[1] <= cancelThreshold
+				)
+					return;
 				const count = player.playCounter;
 				const response = await interaction.followUp({
 					content: languageText("segment_skip_message", language, {

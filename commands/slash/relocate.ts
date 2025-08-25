@@ -13,7 +13,7 @@ import {
 	getConnection,
 	timeFormat,
 } from "../../lib/voice/core";
-import { SegmentCategory } from "../../lib/voice/segment";
+import { cancelThreshold, SegmentCategory } from "../../lib/voice/segment";
 import { languageText } from "../../lib/language";
 
 export default {
@@ -105,11 +105,12 @@ export default {
 		});
 
 		if (!resource.segments) return;
-		const firstEl = resource.segments.at(0);
+		const firstEl = resource.segments[0];
 		if (firstEl?.category === SegmentCategory.MusicOffTopic) {
 			const [start, skipTo] = firstEl.segment;
 			const count = player.playCounter;
-			if (start !== 0 || position >= skipTo) return;
+			if (start !== 0 || position >= skipTo || skipTo <= cancelThreshold)
+				return;
 			const response = await interaction.followUp({
 				content: languageText("segment_skip_message", language, {
 					pos: timeFormat(skipTo),
@@ -118,9 +119,7 @@ export default {
 				components: [
 					new ActionRowBuilder<ButtonBuilder>().addComponents(
 						new ButtonBuilder()
-							.setLabel(
-								languageText("skip_label", language),
-							)
+							.setLabel(languageText("skip_label", language))
 							.setStyle(ButtonStyle.Primary)
 							.setCustomId("skip"),
 					),

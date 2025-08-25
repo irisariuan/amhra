@@ -4,6 +4,8 @@ import { dcb, globalApp, misc } from "../misc";
 import { timeFormat } from "./core";
 import { languageText } from "../language";
 
+export const cancelThreshold = 2; // in seconds, set to <=0 to disable
+
 export enum SegmentCategory {
 	Sponsor = "sponsor",
 	SelfPromotion = "selfpromo",
@@ -118,7 +120,6 @@ export async function deleteSkipMessage(player: CustomAudioPlayer) {
 export async function sendSkipMessage(
 	player: CustomAudioPlayer,
 	force = true,
-	cancelThreshold = 5,
 ) {
 	if (
 		!player.isPlaying ||
