@@ -104,8 +104,7 @@ export async function prefetch(url: string, force = false) {
 			await reviewCaches(streams.keys().toArray());
 			resolve();
 		});
-
-		writeStream.on("error", async (error) => {
+		const errorHandler = async (error: NodeJS.ErrnoException) => {
 			globalApp.err(`Write error: ${id}`, error);
 			streams.delete(id);
 			if (existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
@@ -126,7 +125,9 @@ export async function prefetch(url: string, force = false) {
 			await updateLastUsed([], [id]);
 			await reviewCaches(streams.keys().toArray());
 			err(error);
-		});
+		};
+		rawOutputStream.on("error", errorHandler);
+		writeStream.on("error", errorHandler);
 	});
 
 	rawOutputStream.on("data", (chunk) => {
