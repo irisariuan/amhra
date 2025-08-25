@@ -68,7 +68,6 @@ export default {
 			interaction.guildId,
 			interaction.channel,
 			language,
-			{ createPlayer: true },
 		);
 		if (!player) return;
 		connection.subscribe(player);

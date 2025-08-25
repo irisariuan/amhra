@@ -91,9 +91,6 @@ export default {
 			interaction.guild.id,
 			interaction.channel,
 			language,
-			{
-				createPlayer: true,
-			},
 		);
 
 		if (!player || !connection) {

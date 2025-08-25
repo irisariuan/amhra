@@ -67,7 +67,12 @@ export default {
 		let position = 0;
 		for (let i = 0; i < parts.length; i++) {
 			const part = Number(parts[i]);
-			if (isNaN(part) || part < 0 || (part > 59 && i < parts.length - 1))
+			if (
+				isNaN(part) ||
+				part < 0 ||
+				// allow hour to be any positive integer
+				(part > 59 && i < parts.length - 1)
+			)
 				return await interaction.reply({
 					content: languageText("invalid_position_format", language),
 				});
