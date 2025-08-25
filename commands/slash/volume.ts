@@ -43,7 +43,7 @@ export default {
 				content: languageText("not_same_voice", language),
 			});
 		}
-		const volume = interaction.options.getNumber("volume", true) / 100;
+		const volume = interaction.options.getNumber("volume", true);
 		const player = getAudioPlayer(
 			client,
 			interaction.guild.id,
@@ -59,7 +59,9 @@ export default {
 			return interaction.reply({
 				content: languageText("not_playing", language),
 			});
-		player.setVolume(volume);
-		interaction.reply({ content: languageText("set_volume", language) });
+		player.setVolume(volume / 100);
+		interaction.reply({
+			content: languageText("set_volume", language, { volume }),
+		});
 	},
 } as Command<SlashCommandBuilder>;
