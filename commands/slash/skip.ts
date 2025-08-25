@@ -109,9 +109,7 @@ export default {
 					globalApp.warn(
 						"Play count changed during vote, aborting skip",
 					);
-					return await interaction.followUp(
-						languageText("skip_vote_fail_song_changed", language),
-					);
+					throw "";
 				}
 				await message.resource?.message?.reactions.removeAll();
 				await interaction.followUp(
