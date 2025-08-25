@@ -335,6 +335,11 @@ export class CustomAudioPlayer extends AudioPlayer {
 	}
 
 	playResource(resource: Resource, replay = false) {
+		if (
+			(this.nowPlaying && this.nowPlaying.url !== resource.url) ||
+			!this.nowPlaying
+		)
+			this.playCounter++;
 		resource.resource.volume?.setVolume(
 			(this.isMuting ? 0 : this.volume) * (setting.VOLUME_MODIFIER ?? 1),
 		);
@@ -342,7 +347,6 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.isPlaying = true;
 		this.isPaused = false;
 
-		this.playCounter++;
 		this.pauseCounter = 0;
 		this.startFrom = resource.startFrom ?? 0;
 		this.updateStartTime();
