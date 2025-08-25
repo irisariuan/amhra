@@ -75,6 +75,7 @@
 	"REFRESH_LABEL": "새로 고침",
 	"FIRST_PAGE_LABEL": "첫 페이지",
 	"LAST_PAGE_LABEL": "마지막 페이지",
+	"SKIP_LABEL": "건너뛰기",
 	"QUEUE_LABEL": "대기열",
 	"QUEUE_FOOTER": "총 {totalSong}곡 중 {minShowingSong}-{maxShowingSong}곡 표시 중",
 	"commands": {

@@ -75,6 +75,7 @@
 	"REFRESH_LABEL": "重新整理",
 	"FIRST_PAGE_LABEL": "第一頁",
 	"LAST_PAGE_LABEL": "最後一頁",
+	"SKIP_LABEL": "跳過",
 	"QUEUE_LABEL": "佇列",
 	"QUEUE_FOOTER": "顯示歌曲 {minShowingSong}-{maxShowingSong}，共 {totalSong} 首",
 	"commands": {

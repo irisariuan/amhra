@@ -75,6 +75,7 @@
 	"REFRESH_LABEL": "更新",
 	"FIRST_PAGE_LABEL": "最初のページ",
 	"LAST_PAGE_LABEL": "最後のページ",
+	"SKIP_LABEL": "スキップ",
 	"QUEUE_LABEL": "キュー",
 	"QUEUE_FOOTER": "全{totalSong}曲中{minShowingSong}～{maxShowingSong}曲を表示",
 	"commands": {

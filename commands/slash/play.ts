@@ -182,7 +182,7 @@ export default {
 					components: [
 						new ActionRowBuilder<ButtonBuilder>().addComponents(
 							new ButtonBuilder()
-								.setLabel("Skip")
+								.setLabel(languageText("skip_label", language))
 								.setStyle(ButtonStyle.Primary)
 								.setCustomId("skip"),
 						),

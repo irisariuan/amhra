@@ -75,6 +75,7 @@
 	"REFRESH_LABEL": "Refresh",
 	"FIRST_PAGE_LABEL": "First Page",
 	"LAST_PAGE_LABEL": "Last Page",
+	"SKIP_LABEL": "Skip",
 	"QUEUE_LABEL": "Queue",
 	"QUEUE_FOOTER": "Showing songs {minShowingSong}-{maxShowingSong} of {totalSong}",
 	"commands": {
