@@ -15,6 +15,7 @@ let languages = {
 	en: loadLanguage(Language.English),
 	ja: loadLanguage(Language.Japanese),
 	zhTw: loadLanguage(Language.TraditionalChinese),
+	ko: loadLanguage(Language.Korean),
 	unsupported: null,
 };
 
@@ -77,7 +78,17 @@ export function parseLanguageToLocale(language: Language): Locale {
 			return Locale.Japanese;
 		case Language.TraditionalChinese:
 			return Locale.ChineseTW;
+		case Language.Korean:
+			return Locale.Korean;
 		default:
 			return Locale.EnglishUS;
 	}
+}
+
+export function parseLocale(locale: Locale): Language {
+	if (locale.startsWith("en")) return Language.English;
+	if (locale === Locale.ChineseTW) return Language.TraditionalChinese;
+	if (locale === Locale.Japanese) return Language.Japanese;
+	if (locale === Locale.Korean) return Language.Korean;
+	return Language.Unsupported;
 }

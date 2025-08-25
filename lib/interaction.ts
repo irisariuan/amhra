@@ -12,6 +12,7 @@ export enum Language {
 	English = "en",
 	TraditionalChinese = "zhTw",
 	Japanese = "ja",
+	Korean = "ko",
 	Unsupported = "unsupported",
 }
 
@@ -34,11 +35,4 @@ export function hasVoice(
 	interaction: ChatInputCommandInteraction,
 ): interaction is ChatInputCommandInteraction & { member: GuildMember } {
 	return !!(interaction.member && "voice" in interaction.member);
-}
-
-export function parseLocale(locale: Locale): Language {
-	if (locale.startsWith("en")) return Language.English;
-	if (locale === Locale.ChineseTW) return Language.TraditionalChinese;
-	if (locale === Locale.Japanese) return Language.Japanese;
-	return Language.Unsupported;
 }

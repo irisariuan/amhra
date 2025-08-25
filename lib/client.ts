@@ -10,8 +10,7 @@ import { CustomClient } from "./custom";
 import { event } from "./server/event";
 import { dcb, globalApp, misc } from "./misc";
 import { readSetting } from "./setting";
-import { parseLocale } from "./interaction";
-import { languageText } from "./language";
+import { languageText, parseLocale } from "./language";
 
 const setting = readSetting();
 export const client = new CustomClient({
