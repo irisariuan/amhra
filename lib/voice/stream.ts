@@ -303,7 +303,7 @@ export async function createYtDlpStream(
 ): Promise<Readable> {
 	const id = extractID(url);
 	const fetchedStream = streams.get(id);
-	if (fetchedStream && !fetchedStream.rawStream?.closed && !force) {
+	if (fetchedStream && !force) {
 		// it is still being fetched or already fetched in current process
 		dcb.log(`Stream hit memory: ${id}`);
 		const readable = new Readable();
@@ -311,12 +311,21 @@ export async function createYtDlpStream(
 			readable.push(chunk);
 		}
 		// all data is already in memory, so we can just end the stream by pushing null
-		readable.push(null);
+		if (fetchedStream.rawStream?.closed) {
+			readable.push(null);
+			return readable;
+		}
+		fetchedStream.rawStream?.on("data", (chunk) => {
+			readable.push(chunk);
+		});
+		fetchedStream.rawStream?.on("end", () => {
+			readable.push(null);
+		});
 		return readable;
 	}
 	// Check if the file is already cached (fetched in previous process)
 	if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
-		return await getCachedStream(id);
+		return await getFileCachedStream(id);
 	}
 	// Cache miss, we need to download the file
 	dcb.log(`Cache miss: ${id}, downloading...`);
@@ -330,7 +339,7 @@ export async function createYtDlpStream(
 			return copyStreamSafe(resultStream.rawStream, resultStream.data);
 		}
 		if (existsSync(`${process.cwd()}/cache/${id}.music`)) {
-			return await getCachedStream(id);
+			return await getFileCachedStream(id);
 		}
 		throw new Error(
 			`Failed to create stream (cached already or downloading): ${id}`,
@@ -344,7 +353,7 @@ export async function createYtDlpStream(
 	return copiedStream;
 }
 
-async function getCachedStream(id: string) {
+async function getFileCachedStream(id: string) {
 	dcb.log(`Cache hit: ${id}`);
 	await updateLastUsed([id]);
 	const stream = createReadStream(`${process.cwd()}/cache/${id}.music`);

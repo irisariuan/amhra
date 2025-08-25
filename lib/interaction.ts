@@ -1,15 +1,18 @@
-import type {
+import {
 	ChatInputCommandInteraction,
 	ContextMenuCommandBuilder,
 	GuildMember,
+	Locale,
 	SlashCommandBuilder,
 	UserContextMenuCommandInteraction,
 } from "discord.js";
 import type { CustomClient } from "./custom";
 
-enum Language {
+export enum Language {
 	English = "en",
-	TraditionalChinese = "zh-TW",
+	TraditionalChinese = "zhTw",
+	Japanese = "ja",
+	Unsupported = "unsupported",
 }
 
 interface InteractionReactParams<T> {
@@ -31,4 +34,11 @@ export function hasVoice(
 	interaction: ChatInputCommandInteraction,
 ): interaction is ChatInputCommandInteraction & { member: GuildMember } {
 	return !!(interaction.member && "voice" in interaction.member);
+}
+
+export function parseLocale(locale: Locale): Language {
+	if (locale.startsWith("en")) return Language.English;
+	if (locale === Locale.ChineseTW) return Language.TraditionalChinese;
+	if (locale === Locale.Japanese) return Language.Japanese;
+	return Language.Unsupported;
 }

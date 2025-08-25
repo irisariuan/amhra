@@ -10,6 +10,7 @@ import { CustomClient } from "./custom";
 import { event } from "./server/event";
 import { dcb, globalApp, misc } from "./misc";
 import { readSetting } from "./setting";
+import { parseLocale } from "./interaction";
 
 const setting = readSetting();
 export const client = new CustomClient({
@@ -49,7 +50,11 @@ client.on("interactionCreate", async (interaction) => {
 			dcb.log(
 				`${misc.createFormattedName((interaction.targetMember || interaction.targetUser || interaction.member) as GuildMember)} called context command ${chalk.bgGray.whiteBright(interaction.commandName)}`,
 			);
-			await command.execute({ interaction, client });
+			await command.execute({
+				interaction,
+				client,
+				language: parseLocale(interaction.locale),
+			});
 		} catch (e) {
 			globalApp.err(e);
 			try {
@@ -72,7 +77,11 @@ client.on("interactionCreate", async (interaction) => {
 			dcb.log(
 				`${misc.createFormattedName(interaction.member as GuildMember)} called command ${chalk.bgGray.whiteBright(interaction.commandName)}`,
 			);
-			await command.execute({ interaction, client });
+			await command.execute({
+				interaction,
+				client,
+				language: parseLocale(interaction.locale),
+			});
 		} catch (e) {
 			globalApp.err(e);
 			try {
