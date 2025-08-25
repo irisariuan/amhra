@@ -25,7 +25,7 @@
 
 	"EMPTY_PLAYLIST": "播放清單是空的！",
 	"SEGMENT_SKIP_MESSAGE_NEXT": "發現非音樂內容，想要跳到下一首歌曲嗎？\n輸入 `/skip` 或點擊反應來跳過",
-	"SEGMENT_SKIP_MESSAGE": "發現非音樂內容，想要跳到 `{pos}` 嗎？\n輸入 `/relocate ${posNum}` 或點擊反應來跳過",
+	"SEGMENT_SKIP_MESSAGE": "發現非音樂內容，想要跳到 `{pos}` 嗎？\n輸入 `/relocate {posNum}` 或點擊反應來跳過",
 
 	"PLAYING_DISPLAY": "正在播放 {title} ({url})",
 	"ADD_TO_QUEUE": "已將 {input}({url}) 加入佇列",

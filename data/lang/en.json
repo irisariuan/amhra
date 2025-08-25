@@ -25,7 +25,7 @@
 
 	"EMPTY_PLAYLIST": "The playlist is empty!",
 	"SEGMENT_SKIP_MESSAGE_NEXT": "Found non-music content, want to skip to next song?\nType `/skip` or react to skip",
-	"SEGMENT_SKIP_MESSAGE": "Found non-music content, want to skip to `{pos}`?\nType `/relocate ${posNum}` or react to skip",
+	"SEGMENT_SKIP_MESSAGE": "Found non-music content, want to skip to `{pos}`?\nType `/relocate {posNum}` or react to skip",
 
 	"PLAYING_DISPLAY": "Playing {title} ({url})",
 	"ADD_TO_QUEUE": "Added {input}({url}) to queue",

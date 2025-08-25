@@ -25,7 +25,7 @@
 
 	"EMPTY_PLAYLIST": "プレイリストは空です！",
 	"SEGMENT_SKIP_MESSAGE_NEXT": "音楽以外のコンテンツが見つかりました。次の曲にスキップしますか？\n`/skip`と入力するか、リアクションでスキップしてください",
-	"SEGMENT_SKIP_MESSAGE": "音楽以外のコンテンツが見つかりました。`{pos}`にスキップしますか？\n`/relocate ${posNum}`と入力するか、リアクションでスキップしてください",
+	"SEGMENT_SKIP_MESSAGE": "音楽以外のコンテンツが見つかりました。`{pos}`にスキップしますか？\n`/relocate {posNum}`と入力するか、リアクションでスキップしてください",
 
 	"PLAYING_DISPLAY": "{title} ({url})を再生中",
 	"ADD_TO_QUEUE": "{input}({url})をキューに追加しました",
