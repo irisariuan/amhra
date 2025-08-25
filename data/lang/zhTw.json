@@ -42,7 +42,7 @@
 	"SEGMENT_SKIP": "已跳到 {pos}",
 	"SEGMENT_SKIP_NEXT": "已跳到下一首歌曲",
 
-	"SKIP_VOTE": "要跳過目前的歌曲嗎？ (需要 {requiredAmount} 票)",
+	"SKIP_VOTE": "要跳過 {skipAmount}首歌嗎？ (需要 {requiredAmount} 票)",
 	"SKIP_VOTE_SUCCESS": "跳過投票通過，已跳過歌曲",
 	"SKIP_VOTE_FAIL": "跳過投票失敗，票數不足",
 	"SKIP_VOTE_FAIL_SONG_CHANGED": "歌曲已變更，跳過投票失敗",

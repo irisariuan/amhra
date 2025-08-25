@@ -27,7 +27,7 @@
 	"SEGMENT_SKIP_MESSAGE_NEXT": "Found non-music content, want to skip to next song?\nType `/skip` or react to skip",
 	"SEGMENT_SKIP_MESSAGE": "Found non-music content, want to skip to `{pos}`?\nType `/relocate {posNum}` or react to skip",
 
-	"SKIP_VOTE": "Skip current song? (require {requiredAmount} vote)",
+	"SKIP_VOTE": "Skip {skipAmount} song? (require {requiredAmount} vote)",
 	"SKIP_VOTE_SUCCESS": "Skip vote passed, skipped the song",
 	"SKIP_VOTE_FAIL": "Skip vote failed, not enough votes",
 	"SKIP_VOTE_FAIL_SONG_CHANGED": "The song has changed, skip vote failed",

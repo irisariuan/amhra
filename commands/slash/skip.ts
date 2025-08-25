@@ -73,6 +73,7 @@ export default {
 			await interaction.editReply({
 				content: languageText("skip_vote", language, {
 					requiredAmount,
+					skipAmount: Math.min(player.queue.length + 1, amount),
 				}),
 			});
 			if (!message.resource?.message) throw new Error("No message found");
