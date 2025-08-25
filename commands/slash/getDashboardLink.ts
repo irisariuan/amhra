@@ -24,7 +24,7 @@ export default {
 
 		const link = await createLink(interaction.guildId, token);
 		const linkButton = new ButtonBuilder()
-			.setLabel(languageText("dashboard_label", language))
+			.setLabel(languageText("dashboard_label_label", language))
 			.setURL(link)
 			.setStyle(ButtonStyle.Link);
 		const row = new ActionRowBuilder<ButtonBuilder>().addComponents(

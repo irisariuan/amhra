@@ -29,23 +29,23 @@ export function createButtons(
 ) {
 	const prevBtn = new ButtonBuilder()
 		.setCustomId(PageAction.PREVIOUS)
-		.setLabel(languageText("previous_page", language))
+		.setLabel(languageText("previous_page_label", language))
 		.setStyle(ButtonStyle.Primary);
 	const nextBtn = new ButtonBuilder()
 		.setCustomId(PageAction.NEXT)
-		.setLabel(languageText("next_page", language))
+		.setLabel(languageText("next_page_label", language))
 		.setStyle(ButtonStyle.Primary);
 	const refreshBtn = new ButtonBuilder()
 		.setCustomId(PageAction.REFRESH)
-		.setLabel(languageText("refresh", language))
+		.setLabel(languageText("refresh_label", language))
 		.setStyle(ButtonStyle.Secondary);
 	const firstBtn = new ButtonBuilder()
 		.setCustomId(PageAction.FIRST)
-		.setLabel(languageText("first_page", language))
+		.setLabel(languageText("first_page_label", language))
 		.setStyle(ButtonStyle.Secondary);
 	const lastBtn = new ButtonBuilder()
 		.setCustomId(PageAction.LAST)
-		.setLabel(languageText("last_page", language))
+		.setLabel(languageText("last_page_label", language))
 		.setStyle(ButtonStyle.Secondary);
 
 	const row = new ActionRowBuilder<ButtonBuilder>();
