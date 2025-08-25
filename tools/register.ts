@@ -99,6 +99,87 @@ const setting = readSetting();
 			}
 		}
 	}
+	
+	for (const command of contextCommands) {
+		for (const lang of Object.values(Language).filter(
+			(v) => v !== Language.Unsupported,
+		)) {
+			const locale = languageCommandName(command.name, lang, true);
+			if (!locale) continue;
+			if (!command.name_localizations) command.name_localizations = {};
+			if (locale.name) {
+				console.log(`Loaded locale name ${lang} for ${command.name}`);
+				command.name_localizations[parseLanguageToLocale(lang)] =
+					locale.name;
+			}
+			if (!command.description_localizations)
+				command.description_localizations = {};
+			if (locale.description) {
+				console.log(
+					`Loaded locale description ${lang} for ${command.name}`,
+				);
+				command.description_localizations[parseLanguageToLocale(lang)] =
+					locale.description;
+			}
+			if (locale.options && command.options) {
+				for (const option of command.options) {
+					const localeOption = locale.options[option.name];
+					if (!localeOption) continue;
+					if (localeOption.name) {
+						if (!option.name_localizations)
+							option.name_localizations = {};
+						option.name_localizations[parseLanguageToLocale(lang)] =
+							localeOption.name;
+						console.log(
+							`Loaded locale name ${lang} for option ${option.name} of ${command.name}`,
+						);
+					}
+					if (localeOption.description) {
+						if (!option.description_localizations)
+							option.description_localizations = {};
+						option.description_localizations[
+							parseLanguageToLocale(lang)
+						] = localeOption.description;
+						console.log(
+							`Loaded locale description ${lang} for option ${option.name} of ${command.name}`,
+						);
+					}
+					if (
+						option.type ===
+							ApplicationCommandOptionType.SubcommandGroup &&
+						localeOption.options
+					) {
+						for (const subOption of option.options ?? []) {
+							const localeSubOption =
+								localeOption.options[subOption.name];
+							if (!localeSubOption) continue;
+							if (localeSubOption.name) {
+								if (!subOption.name_localizations)
+									subOption.name_localizations = {};
+								subOption.name_localizations[
+									parseLanguageToLocale(lang)
+								] = localeSubOption.name;
+								console.log(
+									`Loaded locale name ${lang} for sub-option ${subOption.name} of ${option.name} of ${command.name}`,
+								);
+							}
+							if (localeSubOption.description) {
+								if (!subOption.description_localizations)
+									subOption.description_localizations = {};
+								subOption.description_localizations[
+									parseLanguageToLocale(lang)
+								] = localeSubOption.description;
+								console.log(
+									`Loaded locale description ${lang} for sub-option ${subOption.name} of ${option.name} of ${command.name}`,
+								);
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	
 	console.log(`Loaded commands ${commands.map((c) => c.name).join(", ")}`);
 	console.log(
 		`Loaded context commands ${contextCommands.map((c) => c.name).join(", ")}`,

@@ -67,7 +67,7 @@ export function languageCommandName(
 	isContextCommand = false,
 ) {
 	return (
-		languages[language]?.commands[isContextCommand ? `{${name}}` : name] ??
+		languages[language]?.commands[isContextCommand ? `#${name}` : name] ??
 		null
 	);
 }

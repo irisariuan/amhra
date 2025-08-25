@@ -193,6 +193,10 @@
 			"name": "ダッシュボード",
 			"description": "ダッシュボードのリンクを取得します"
 		},
+		"#dashboard": {
+			"name": "ダッシュボード",
+			"description": "ダッシュボードのリンクを取得します"
+		},
 		"skipnonmusic": {
 			"name": "音楽以外をスキップ",
 			"description": "現在の音楽以外の部分をスキップします"
@@ -202,6 +206,14 @@
 			"description": "ボットにあなたのボイスチャンネルに参加させます"
 		},
 		"disconnect": {
+			"name": "切断",
+			"description": "ボットにボイスチャンネルから退出させます"
+		},
+		"#join": {
+			"name": "参加",
+			"description": "ボットにあなたのボイスチャンネルに参加させます"
+		},
+		"#disconnect": {
 			"name": "切断",
 			"description": "ボットにボイスチャンネルから退出させます"
 		}

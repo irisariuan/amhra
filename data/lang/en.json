@@ -168,13 +168,22 @@
 		"dashboard": {
 			"description": "Get the dashboard link"
 		},
+		"#dashboard": {
+			"description": "Get the dashboard link"
+		},
 		"skipnonmusic": {
 			"description": "Skip the current non-music part"
 		},
 		"join": {
 			"description": "Make the bot join your voice channel"
 		},
+		"#join": {
+			"description": "Make the bot join your voice channel"
+		},
 		"disconnect": {
+			"description": "Make the bot leave the voice channel"
+		},
+		"#disconnect": {
 			"description": "Make the bot leave the voice channel"
 		}
 	}

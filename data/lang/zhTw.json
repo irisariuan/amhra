@@ -193,6 +193,10 @@
 			"name": "儀表板",
 			"description": "取得儀表板連結"
 		},
+		"#dashboard": {
+			"name": "儀表板",
+			"description": "取得儀表板連結"
+		},
 		"skipnonmusic": {
 			"name": "跳過非音樂",
 			"description": "跳過目前的非音樂部分"
@@ -202,6 +206,14 @@
 			"description": "讓機器人加入你的語音頻道"
 		},
 		"disconnect": {
+			"name": "斷線",
+			"description": "讓機器人離開語音頻道"
+		},
+		"#join": {
+			"name": "加入",
+			"description": "讓機器人加入你的語音頻道"
+		},
+		"#disconnect": {
 			"name": "斷線",
 			"description": "讓機器人離開語音頻道"
 		}
