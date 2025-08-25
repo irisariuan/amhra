@@ -124,9 +124,7 @@ export async function sendSkipMessage(
 
 	if (player.activeSkipMessage) {
 		if (force) {
-			if (await deleteSkipMessage(player)) {
-				dcb.log("Deleted previous skip message");
-			} else {
+			if (!(await deleteSkipMessage(player))) {
 				globalApp.err("Failed to delete previous skip message");
 			}
 		} else {
@@ -238,7 +236,10 @@ export async function sendSkipMessage(
 			await response.reactions.removeAll().catch(() => {});
 			await response
 				.edit({
-					content: languageText("skip_cancel_timeout", player.currentLanguage),
+					content: languageText(
+						"skip_cancel_timeout",
+						player.currentLanguage,
+					),
 					components: [],
 				})
 				.catch(() => {});

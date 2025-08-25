@@ -3,7 +3,7 @@ import { AudioPlayer, type CreateAudioPlayerOptions } from "@discordjs/voice";
 import { Channel, Client, Message, type ClientOptions } from "discord.js";
 import { type YouTubeChannel, type YouTubeVideo } from "play-dl";
 import { SearchCache } from "./cache";
-import { dcb, misc } from "./misc";
+import { misc } from "./misc";
 import { readSetting } from "./setting";
 import { createResource, Stream } from "./voice/core";
 import { Segment, sendSkipMessage } from "./voice/segment";
@@ -73,7 +73,6 @@ export class CustomClient extends Client {
 		}
 		this.player.clear();
 		this.tokenMap.clear();
-		dcb.log("Cleared all players, cache and tokens");
 	}
 
 	/**
@@ -452,13 +451,11 @@ export class CustomAudioPlayer extends AudioPlayer {
 		if (this.isPaused) {
 			return this.clearSongTimeouts();
 		}
-		dcb.log(`Updating song timeouts at ${currentPos}`);
 		for (const segment of this.nowPlaying.segments) {
 			const [startInSec] = segment.segment;
 			const start = startInSec * 1000;
 			if (start < currentPos) continue;
 			const id = setTimeout(() => {
-				dcb.log("Sending skip message");
 				sendSkipMessage(this);
 			}, start - currentPos);
 			this.songSegmentsTimeoutArray.push(id);
