@@ -182,9 +182,7 @@ export default {
 					components: [
 						new ActionRowBuilder<ButtonBuilder>().addComponents(
 							new ButtonBuilder()
-								.setLabel(
-									languageText("skip_label", language),
-								)
+								.setLabel(languageText("skip_label", language))
 								.setStyle(ButtonStyle.Primary)
 								.setCustomId("skip"),
 						),
@@ -197,7 +195,7 @@ export default {
 					if (player.playCounter !== count) {
 						return confirmation.update({
 							content: languageText(
-								"SKIP_CANCEL_SONG_CHANGED",
+								"skip_cancel_song_changed",
 								player.currentLanguage,
 							),
 							components: [],
@@ -214,8 +212,8 @@ export default {
 						await confirmation.update({
 							content: languageText(
 								result.skipped
-									? "SEGMENT_SKIP_NEXT"
-									: "SEGMENT_SKIP",
+									? "segment_skip_next"
+									: "segment_skip",
 								player.currentLanguage,
 								{
 									pos: timeFormat(skipTo.segment[1]),
@@ -234,7 +232,7 @@ export default {
 						await response
 							.edit({
 								content: languageText(
-									"SKIP_CANCEL_TIMEOUT",
+									"skip_cancel_timeout",
 									language,
 								),
 								components: [],
@@ -256,7 +254,7 @@ export default {
 		dcb.log("Searched URL and added URL to queue");
 		return await interaction.editReply({
 			content: languageText(
-				isPlaylist(input) ? "PLAYLIST_ADD_TO_QUEUE" : "ADD_TO_QUEUE",
+				isPlaylist(input) ? "playlist_add_to_queue" : "add_to_queue",
 				language,
 				{
 					input,

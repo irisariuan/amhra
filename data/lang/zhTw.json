@@ -28,8 +28,8 @@
 	"SEGMENT_SKIP_MESSAGE": "發現非音樂內容，想要跳到 `{pos}` 嗎？\n輸入 `/relocate {posNum}` 或點擊反應來跳過",
 
 	"PLAYING_DISPLAY": "正在播放 {title} ({url})",
-	"ADD_TO_QUEUE": "已將 {input}({url}) 加入佇列",
-	"PLAYLIST_ADD_TO_QUEUE": "已將播放清單 {input}({url}) 加入佇列",
+	"ADD_TO_QUEUE": "已將 {input} ({url}) 加入佇列",
+	"PLAYLIST_ADD_TO_QUEUE": "已將播放清單 {input} ({url}) 加入佇列",
 
 	"REMOVE_QUEUE_DETAIL": "已移除 {title} ({removed})",
 	"REMOVE_QUEUE": "已移除 {removed}",

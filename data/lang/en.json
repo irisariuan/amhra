@@ -33,8 +33,8 @@
 	"SKIP_VOTE_FAIL_SONG_CHANGED": "The song has changed, skip vote failed",
 	
 	"PLAYING_DISPLAY": "Playing {title} ({url})",
-	"ADD_TO_QUEUE": "Added {input}({url}) to queue",
-	"PLAYLIST_ADD_TO_QUEUE": "Added playlist {input}({url}) to queue",
+	"ADD_TO_QUEUE": "Added {input} ({url}) to queue",
+	"PLAYLIST_ADD_TO_QUEUE": "Added playlist {input} ({url}) to queue",
 
 	"REMOVE_QUEUE_DETAIL": "Removed {title} ({removed})",
 	"REMOVE_QUEUE": "Removed {removed}",

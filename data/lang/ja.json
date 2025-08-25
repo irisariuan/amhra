@@ -32,12 +32,12 @@
 	"SKIP_VOTE_FAIL": "スキップ投票が失敗しました。票数が足りません",
 	"SKIP_VOTE_FAIL_SONG_CHANGED": "曲が変更されたため、スキップ投票が失敗しました",
 
-	"PLAYING_DISPLAY": "{title} ({url})を再生中",
-	"ADD_TO_QUEUE": "{input}({url})をキューに追加しました",
-	"PLAYLIST_ADD_TO_QUEUE": "プレイリスト{input}({url})をキューに追加しました",
+	"PLAYING_DISPLAY": "{title} ({url}) を再生中",
+	"ADD_TO_QUEUE": "{input} ({url}) をキューに追加しました",
+	"PLAYLIST_ADD_TO_QUEUE": "プレイリスト{input} ({url}) をキューに追加しました",
 
-	"REMOVE_QUEUE_DETAIL": "{title} ({removed})を削除しました",
-	"REMOVE_QUEUE": "{removed}を削除しました",
+	"REMOVE_QUEUE_DETAIL": "{title} ({removed}) を削除しました",
+	"REMOVE_QUEUE": "{removed} を削除しました",
 
 	"RELOCATE": "曲を{pos}に移動しました",
 	"SET_VOLUME": "音量を{volume}%に設定しました",
