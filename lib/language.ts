@@ -2,7 +2,15 @@ import { readFileSync } from "node:fs";
 import { Language } from "./interaction";
 import { join } from "node:path";
 
-const languages: Record<Language, Record<string, string> | null> = {
+export function reloadLanguages() {
+	for (const lang of Object.values(Language)) {
+		if (lang !== Language.Unsupported) {
+			languages[lang] = loadLanguage(lang);
+		}
+	}
+}
+
+let languages: Record<Language, Record<string, string> | null> = {
 	en: loadLanguage(Language.English),
 	ja: loadLanguage(Language.Japanese),
 	zhTw: loadLanguage(Language.TraditionalChinese),
