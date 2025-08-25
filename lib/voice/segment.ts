@@ -169,6 +169,7 @@ export async function sendSkipMessage(
 			if (response.deletable) {
 				await response.delete().catch(() => {});
 			}
+			globalApp.warn("Skip message changed, aborting skip");
 			return false;
 		}
 		player.activeSkipMessage = null;
