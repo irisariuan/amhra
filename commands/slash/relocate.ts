@@ -154,8 +154,8 @@ export default {
 					await confirmation.update({
 						content: languageText(
 							result.skipped
-								? "SEGMENT_SKIP_NEXT"
-								: "SEGMENT_SKIP",
+								? "segment_skip_next"
+								: "segment_skip",
 							player.currentLanguage,
 							{
 								pos: timeFormat(skipTo),
