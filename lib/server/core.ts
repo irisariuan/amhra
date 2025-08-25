@@ -85,8 +85,6 @@ export async function initServer(client: CustomClient) {
 		logQueue.push({ message: msg, type, time: Date.now() });
 	});
 
-	event.on("page", (pageName) => exp.log(`Fetched page ${pageName}`));
-
 	app.post(
 		"/api/register",
 		jsonParser,
