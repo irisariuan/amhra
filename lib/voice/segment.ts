@@ -2,7 +2,6 @@ import z from "zod";
 import { CustomAudioPlayer } from "../custom";
 import { dcb, globalApp, misc } from "../misc";
 import { timeFormat } from "./core";
-import { Language } from "../interaction";
 import { languageText } from "../language";
 
 export enum SegmentCategory {
