@@ -64,6 +64,37 @@ const setting = readSetting();
 							`Loaded locale description ${lang} for option ${option.name} of ${command.name}`,
 						);
 					}
+					if (
+						option.type ===
+							ApplicationCommandOptionType.SubcommandGroup &&
+						localeOption.options
+					) {
+						for (const subOption of option.options ?? []) {
+							const localeSubOption =
+								localeOption.options[subOption.name];
+							if (!localeSubOption) continue;
+							if (localeSubOption.name) {
+								if (!subOption.name_localizations)
+									subOption.name_localizations = {};
+								subOption.name_localizations[
+									parseLanguageToLocale(lang)
+								] = localeSubOption.name;
+								console.log(
+									`Loaded locale name ${lang} for sub-option ${subOption.name} of ${option.name} of ${command.name}`,
+								);
+							}
+							if (localeSubOption.description) {
+								if (!subOption.description_localizations)
+									subOption.description_localizations = {};
+								subOption.description_localizations[
+									parseLanguageToLocale(lang)
+								] = localeSubOption.description;
+								console.log(
+									`Loaded locale description ${lang} for sub-option ${subOption.name} of ${option.name} of ${command.name}`,
+								);
+							}
+						}
+					}
 				}
 			}
 		}
