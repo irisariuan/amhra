@@ -6,7 +6,14 @@ import {
 	readdirSync,
 	writeFileSync,
 } from "node:fs";
-import { readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
+import {
+	readdir,
+	readFile,
+	rename,
+	stat,
+	unlink,
+	writeFile,
+} from "node:fs/promises";
 import { PassThrough, Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { extractID } from "play-dl";
@@ -53,9 +60,18 @@ process.on("SIGINT", async () => {
 	process.exit(64);
 });
 
+async function getFolderSize() {
+	let totalSize = 0;
+	for (const filename of await readdir(`${process.cwd()}/cache`)) {
+		const { size } = await stat(`${process.cwd()}/cache/${filename}`);
+		totalSize += size;
+	}
+	return totalSize;
+}
+
 async function reviewCaches(forceReview = false) {
 	const maxSize = readSetting().MAX_CACHE_IN_GB * 1024 * 1024 * 1024;
-	let { size } = await stat(`${process.cwd()}/cache`);
+	let size = await getFolderSize();
 	if (size < maxSize && !forceReview) return;
 	dcb.log(`Reviewing caches, cache size: ${size} / ${maxSize}`);
 	const data = (
@@ -66,6 +82,7 @@ async function reviewCaches(forceReview = false) {
 	for (const line of data) {
 		const [id, lastUsedStr] = line.split("=");
 		const lastUsed = Number(lastUsedStr);
+		if (streams.has(id)) continue; // do not delete if it is being streamed
 		if (actualCaches.includes(`${id}.music`)) {
 			const metadata = await stat(`${process.cwd()}/cache/${id}.music`);
 			if (
