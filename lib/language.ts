@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { Language } from "./interaction";
 import { join } from "node:path";
 import { Locale } from "discord.js";
+import { globalApp } from "./misc";
 
 export function reloadLanguages() {
 	for (const lang of Object.values(Language)) {
@@ -56,6 +57,7 @@ export function languageText(
 		}
 		return base;
 	}
+	globalApp.warn(`Unknown label: ${id}`)
 	return fallback ?? id;
 }
 

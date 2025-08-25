@@ -35,7 +35,7 @@ export default {
 		interaction.reply({
 			embeds: [
 				new EmbedBuilder()
-					.setTitle(languageText("now_playing", language))
+					.setTitle(languageText("now_playing_label", language))
 					.setDescription(
 						songToString(
 							player.nowPlaying,
