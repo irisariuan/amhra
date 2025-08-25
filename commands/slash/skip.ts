@@ -6,11 +6,18 @@ import {
 } from "../../lib/voice/core";
 import { type Command } from "../../lib/interaction";
 import { languageText } from "../../lib/language";
+import { globalApp } from "../../lib/misc";
 
 export default {
 	data: new SlashCommandBuilder()
 		.setName("skip")
 		.setDescription("Skip the song")
+		.addBooleanOption((option) =>
+			option
+				.setName("force")
+				.setDescription("Force skip the song (no vote)")
+				.setRequired(false),
+		)
 		.addIntegerOption((option) =>
 			option
 				.setName("amount")
@@ -43,6 +50,7 @@ export default {
 			});
 		}
 		const amount = interaction.options.getInteger("amount") ?? 1;
+		const force = interaction.options.getBoolean("force") ?? false;
 		const player = getAudioPlayer(
 			client,
 			interaction.guild.id,
@@ -54,12 +62,74 @@ export default {
 			return await interaction.reply(
 				languageText("not_playing", language),
 			);
+		const message = await interaction.deferReply({ withResponse: true });
+		if (
+			botVoiceChannel?.members &&
+			!force &&
+			botVoiceChannel.members.size > 2
+		) {
+			const requiredAmount = Math.ceil(botVoiceChannel.members.size / 2);
+			const playCount = player.playCounter;
+			await interaction.editReply({
+				content: languageText("skip_vote", language, {
+					requiredAmount,
+				}),
+			});
+			if (!message.resource?.message) throw new Error("No message found");
+			await message.resource?.message?.react("✅");
+			try {
+				const collector =
+					message.resource.message.createReactionCollector({
+						filter: (reaction, user) => {
+							return !!(
+								reaction.emoji.name === "✅" &&
+								!user.bot &&
+								botVoiceChannel.members.find(
+									(member) => member.id === user.id,
+								)
+							);
+						},
+						time: 15 * 1000,
+					});
+				await new Promise<void>((resolve, reject) => {
+					collector.on("collect", (reaction) => {
+						if (
+							reaction.users.cache.filter((user) =>
+								botVoiceChannel.members.find(
+									(member) =>
+										member.id === user.id && !user.bot,
+								),
+							).size >= requiredAmount
+						)
+							resolve();
+					});
+					collector.on("end", () => reject());
+				});
+				if (playCount !== player.playCounter) {
+					globalApp.warn(
+						"Play count changed during vote, aborting skip",
+					);
+					return await interaction.followUp(
+						languageText("skip_vote_fail_song_changed", language),
+					);
+				}
+				await message.resource?.message?.reactions.removeAll();
+				await interaction.followUp(
+					languageText("skip_vote_success", language),
+				);
+			} catch {
+				await message.resource?.message?.reactions.removeAll();
+				return await message.resource?.message?.edit({
+					content: languageText("skip_vote_fail", language),
+				});
+			}
+		}
 		player.stop();
 		const queueSize = player.queue.length;
 		if (amount > 1) {
 			player.queue.splice(0, amount - 1);
 		}
-		interaction.reply({
+		await interaction.editReply({
 			content: languageText("skip_song", language, {
 				amount: Math.min(queueSize + 1, amount),
 			}),

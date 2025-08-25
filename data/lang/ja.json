@@ -27,6 +27,11 @@
 	"SEGMENT_SKIP_MESSAGE_NEXT": "音楽以外のコンテンツが見つかりました。次の曲にスキップしますか？\n`/skip`と入力するか、リアクションでスキップしてください",
 	"SEGMENT_SKIP_MESSAGE": "音楽以外のコンテンツが見つかりました。`{pos}`にスキップしますか？\n`/relocate {posNum}`と入力するか、リアクションでスキップしてください",
 
+	"SKIP_VOTE": "現在の曲をスキップしますか？ (最低{requiredAmount}票が必要です)",
+	"SKIP_VOTE_SUCCESS": "スキップ投票が可決され、曲をスキップしました",
+	"SKIP_VOTE_FAIL": "スキップ投票が失敗しました。票数が足りません",
+	"SKIP_VOTE_FAIL_SONG_CHANGED": "曲が変更されたため、スキップ投票が失敗しました",
+
 	"PLAYING_DISPLAY": "{title} ({url})を再生中",
 	"ADD_TO_QUEUE": "{input}({url})をキューに追加しました",
 	"PLAYLIST_ADD_TO_QUEUE": "プレイリスト{input}({url})をキューに追加しました",
@@ -98,6 +103,10 @@
 				"amount": {
 					"name": "量",
 					"description": "スキップする曲の数"
+				},
+				"force": {
+					"name": "強制",
+					"description": "確認を待たずに強制的にスキップします"
 				}
 			}
 		},

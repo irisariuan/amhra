@@ -42,6 +42,11 @@
 	"SEGMENT_SKIP": "已跳到 {pos}",
 	"SEGMENT_SKIP_NEXT": "已跳到下一首歌曲",
 
+	"SKIP_VOTE": "要跳過目前的歌曲嗎？ (需要 {requiredAmount} 票)",
+	"SKIP_VOTE_SUCCESS": "跳過投票通過，已跳過歌曲",
+	"SKIP_VOTE_FAIL": "跳過投票失敗，票數不足",
+	"SKIP_VOTE_FAIL_SONG_CHANGED": "歌曲已變更，跳過投票失敗",
+
 	"PAGE": "頁面 {page}/{maxPage}",
 
 	"TOGGLE_LOOP_TRUE": "循環模式現在已啟用",
@@ -98,6 +103,10 @@
 				"amount": {
 					"name": "數量",
 					"description": "要跳過的歌曲數量"
+				},
+				"force": {
+					"name": "強制",
+					"description": "強制跳過而不等待確認"
 				}
 			}
 		},

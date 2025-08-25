@@ -321,13 +321,17 @@ export function joinVoice(
 	return connection;
 }
 
-export function getBotVoiceChannel(guild: Guild, client: CustomClient) {
-	return guild.channels.cache.find(
-		(channel) =>
-			channel.type === ChannelType.GuildVoice &&
+export function getBotVoiceChannel(
+	guild: Guild,
+	client: CustomClient,
+): VoiceChannel | undefined {
+	return guild.channels.cache.find((channel): channel is VoiceChannel => {
+		return !!(
+			channel.isVoiceBased() &&
 			client.user &&
-			channel.members.has(client.user.id),
-	);
+			channel.members.has(client.user.id)
+		);
+	});
 }
 
 export function isYoutube(query: string) {

@@ -27,6 +27,11 @@
 	"SEGMENT_SKIP_MESSAGE_NEXT": "음악이 아닌 콘텐츠를 발견했습니다. 다음 곡으로 건너뛰시겠습니까?\n`/skip`을 입력하거나 반응하여 건너뛰세요",
 	"SEGMENT_SKIP_MESSAGE": "`{pos}`로 건너뛰시겠습니까?\n`/relocate {posNum}`을 입력하거나 반응하여 건너뛰세요",
 
+	"SKIP_VOTE": "현재 곡을 건너뛸까요? (최소 {requiredAmount}표 필요)",
+	"SKIP_VOTE_SUCCESS": "건너뛰기 투표가 통과되어 곡을 건너뜁니다",
+	"SKIP_VOTE_FAIL": "건너뛰기 투표가 실패했습니다. 투표수가 부족합니다",
+	"SKIP_VOTE_FAIL_SONG_CHANGED": "곡이 변경되어 건너뛰기 투표가 실패했습니다",
+
 	"PLAYING_DISPLAY": "{title} ({url}) 재생 중",
 	"ADD_TO_QUEUE": "{input}({url})을(를) 대기열에 추가했습니다",
 	"PLAYLIST_ADD_TO_QUEUE": "재생 목록 {input}({url})을(를) 대기열에 추가했습니다",
@@ -94,6 +99,9 @@
 			"options": {
 				"amount": {
 					"description": "건너뛸 곡 수"
+				},
+				"force": {
+					"description": "음악이 아닌 부분을 건너뜁니다"
 				}
 			}
 		},
