@@ -215,7 +215,7 @@
 			"description": "봇이 음성 채널에서 나가도록 합니다"
 		},
 		"autoskipnonmusic": {
-			"name": "음악 외 자동 건너뛰기",
+			"name": "음악외자동건너뛰기",
 			"description": "음악 외 모드 자동 건너뛰기 토글",
 			"options": {
 				"enabled": {
