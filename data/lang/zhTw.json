@@ -223,6 +223,16 @@
 		"#disconnect": {
 			"name": "斷線",
 			"description": "讓機器人離開語音頻道"
+		},
+		"autoskipnonmusic": {
+			"name": "自動跳過非音樂",
+			"description": "切換自動跳過非音樂模式",
+			"options": {
+				"enabled": {
+					"name": "啟用",
+					"description": "設定自動跳過非音樂模式"
+				}
+			}
 		}
 	}
 }

@@ -192,6 +192,14 @@
 		},
 		"#disconnect": {
 			"description": "Make the bot leave the voice channel"
+		},
+		"autoskipnonmusic": {
+			"description": "Toggle the auto-skip non-music mode",
+			"options": {
+				"enabled": {
+					"description": "Set auto-skip non-music mode"
+				}
+			}
 		}
 	}
 }

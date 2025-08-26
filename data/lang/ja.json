@@ -223,6 +223,16 @@
 		"#disconnect": {
 			"name": "切断",
 			"description": "ボットにボイスチャンネルから退出させます"
+		},
+		"autoskipnonmusic": {
+			"name": "音楽以外の自動スキップ",
+			"description": "音楽以外のモードを自動スキップするかの切り替え",
+			"options": {
+				"enabled": {
+					"name": "有効",
+					"description": "音楽以外のモードの自動スキップを設定"
+				}
+			}
 		}
 	}
 }
