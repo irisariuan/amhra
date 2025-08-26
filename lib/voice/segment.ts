@@ -115,15 +115,32 @@ export async function deleteSkipMessage(player: CustomAudioPlayer) {
 export async function sendInteractionSkipMessage(
 	interaction: ChatInputCommandInteraction,
 	player: CustomAudioPlayer,
+	force = true,
 ) {
 	const skipTo = player.currentSegment();
-	if (!skipTo) {
-		return interaction.followUp({
-			content: languageText(
-				"skip_cancel_no_non_music",
-				player.currentLanguage,
-			),
-		});
+	if (
+		!skipTo ||
+		!player.isPlaying ||
+		!player.nowPlaying?.segments ||
+		player.nowPlaying.segments.length <= 0
+	) {
+		return false;
+	}
+	if (player.activeSkipMessage) {
+		if (force) {
+			if (!(await deleteSkipMessage(player))) {
+				globalApp.err("Failed to delete previous skip message");
+			}
+		} else {
+			return false;
+		}
+	}
+	if (
+		cancelThreshold > 0 &&
+		Math.abs(skipTo.segment[1] - skipTo.segment[0]) <= cancelThreshold
+	) {
+		dcb.log("Skipping message cancelled due to short segment");
+		return false;
 	}
 	const count = player.playCounter;
 	const response = await interaction.followUp({
@@ -142,26 +159,29 @@ export async function sendInteractionSkipMessage(
 			),
 		],
 	});
+	player.activeSkipMessage = response;
 	try {
 		const confirmation = await response.awaitMessageComponent({
 			time: Math.min(10 * 1000, skipTo.segment[1] * 1000),
 		});
 		if (player.playCounter !== count) {
-			return confirmation.update({
+			await confirmation.update({
 				content: languageText(
 					"skip_cancel_song_changed",
 					player.currentLanguage,
 				),
 				components: [],
 			});
+			return true;
 		}
 		if (confirmation.customId === "skip") {
 			const result = await player.skipCurrentSegment();
 			if (!result.success) {
-				return confirmation.update({
+				await confirmation.update({
 					...misc.errorMessageObj(player.currentLanguage),
 					components: [],
 				});
+				return true;
 			}
 			await confirmation.update({
 				content: languageText(
@@ -173,11 +193,12 @@ export async function sendInteractionSkipMessage(
 				),
 				components: [],
 			});
+			return true;
 		}
 	} catch {
 		if (response.deletable) {
 			await response.delete().catch(() => {});
-			return;
+			return false;
 		}
 		if (response.editable) {
 			await response.reactions.removeAll().catch(() => {});
@@ -192,11 +213,10 @@ export async function sendInteractionSkipMessage(
 				.catch(() => {});
 		}
 	}
+	return true;
 }
 
 /**
- * @param [cancelThreshold=2] - The threshold in seconds to cancel the skip message if the segment is too short
- *
  * Set to <=0 to disable this feature
  * @param [force=true] - Whether to force send the skip message even if there is already one
  *
