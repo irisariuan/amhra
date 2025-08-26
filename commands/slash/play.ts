@@ -164,10 +164,15 @@ export default {
 					}),
 				});
 				if (!data.segments) return;
-				return await sendInteractionSkipMessage(
-					interaction,
-					player,
-				);
+				if (player.currentSegment()) {
+					if (player.customSetting.autoSkipSegment) {
+						return await player.skipCurrentSegment();
+					}
+					return await sendInteractionSkipMessage(
+						interaction,
+						player,
+					);
+				}
 			} catch (e) {
 				globalApp.err(
 					"An error occurred while trying to start playing music: ",

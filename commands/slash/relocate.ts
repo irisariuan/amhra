@@ -115,7 +115,11 @@ export default {
 
 		if (!resource.segments) return;
 		const firstEl = resource.segments[0];
-		if (firstEl)
+		if (firstEl) {
+			if (player.customSetting.autoSkipSegment) {
+				return await player.skipCurrentSegment();
+			}
 			await sendInteractionSkipMessage(interaction, player);
+		}
 	},
 } as Command<SlashCommandBuilder>;
