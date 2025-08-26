@@ -143,6 +143,11 @@ export interface QueueItem {
 	repeating: boolean;
 }
 
+export interface AudioPlayerSetting {
+	autoSkipSegment: boolean;
+	looping: boolean;
+}
+
 export class CustomAudioPlayer extends AudioPlayer {
 	guildId: string;
 
@@ -191,12 +196,11 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	channel: Channel | null;
 
-	looping: boolean;
-
 	/**
 	 * @description Accumulative counter for music played
 	 */
 	playCounter: number;
+	customSetting: Partial<AudioPlayerSetting>;
 
 	activeSkipMessage: Message | null;
 	currentLanguage: Language;
@@ -226,8 +230,6 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.pauseCounter = 0;
 
 		this.pauseTimestamp = 0;
-
-		this.looping = false;
 		this.playCounter = 0;
 
 		this.voiceStateTimeoutArray = [];
@@ -235,6 +237,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.channel = channel;
 		this.activeSkipMessage = null;
 		this.currentLanguage = Language.English;
+		this.customSetting = {};
 	}
 
 	setChannel(channel?: Channel | null) {
@@ -268,7 +271,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.isPaused = false;
 		this.nowPlaying = null;
 
-		this.looping = false;
+		this.customSetting = {};
 
 		this.startTime = 0;
 		this.startFrom = 0;
@@ -290,7 +293,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 	}
 
 	toggleLoop(): boolean {
-		if (this.looping) {
+		if (this.customSetting.looping) {
 			this.disableLoop();
 			return false;
 		} else {
@@ -300,7 +303,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 	}
 
 	enableLoop() {
-		this.looping = true;
+		this.customSetting.looping = true;
 		const lastItem = this.queue.at(-1);
 		if (
 			this.nowPlaying &&
@@ -311,7 +314,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		}
 	}
 	disableLoop() {
-		this.looping = false;
+		this.customSetting.looping = false;
 		for (let i = 0; i < this.queue.length; i++) {
 			if (this.queue[i].repeating) {
 				this.queue.splice(i, 1);
@@ -401,7 +404,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 			pausedTimestamp: this.pauseTimestamp,
 			useYoutubeDl: setting.USE_YOUTUBE_DL,
 			canSeek: setting.SEEK,
-			loop: this.looping,
+			loop: this.customSetting.looping ?? false,
 			skipToTimestamp: this.currentSegment()?.segment[1] ?? null,
 		};
 	}
@@ -456,6 +459,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 			const start = startInSec * 1000;
 			if (start < currentPos) continue;
 			const id = setTimeout(() => {
+				if (this.customSetting.autoSkipSegment)
+					return this.skipCurrentSegment();
 				sendSkipMessage(this);
 			}, start - currentPos);
 			this.songSegmentsTimeoutArray.push(id);

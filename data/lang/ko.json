@@ -56,6 +56,13 @@
 	"SET_LOOP_TRUE": "반복 모드가 활성화되었습니다",
 	"SET_LOOP_FALSE": "반복 모드가 비활성화되었습니다",
 
+	"TOGGLE_AUTO_SKIP_TRUE": "자동 건너뛰기 (음악 외 모드) 기능이 활성화되었습니다.",
+	"TOGGLE_AUTO_SKIP_FALSE": "자동 건너뛰기 (음악 외 모드) 기능이 비활성화되었습니다.",
+	"AUTO_SKIP_ALREADY_TRUE": "자동 건너뛰기 (음악 외 모드) 기능은 이미 활성화되어 있습니다.",
+	"AUTO_SKIP_ALREADY_FALSE": "자동 건너뛰기 (음악 외 모드) 기능은 이미 비활성화되어 있습니다.",
+	"SET_AUTO_SKIP_TRUE": "자동 건너뛰기 (음악 외 모드) 기능이 활성화되었습니다.",
+	"SET_AUTO_SKIP_FALSE": "자동 건너뛰기 (음악 외 모드) 기능이 비활성화되었습니다.",
+
 	"SKIP_CANCEL_TIMEOUT": "시간 초과, 건너뛰기 취소됨",
 	"SKIP_CANCEL_NO_NON_MUSIC": "현재 음악이 아닌 부분을 재생하고 있지 않습니다. 건너뛰기 취소됨",
 	"SKIP_CANCEL_SONG_CHANGED": "노래가 변경되었습니다. 건너뛰기 취소됨",

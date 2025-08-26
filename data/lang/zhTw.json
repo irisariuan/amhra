@@ -56,6 +56,13 @@
 	"SET_LOOP_TRUE": "循環模式現在已啟用",
 	"SET_LOOP_FALSE": "循環模式現在已停用",
 
+	"TOGGLE_AUTO_SKIP_TRUE": "已啟用自動跳過非音樂模式",
+	"TOGGLE_AUTO_SKIP_FALSE": "已停用自動跳過非音樂模式",
+	"AUTO_SKIP_ALREADY_TRUE": "自動跳過非音樂模式已啟用",
+	"AUTO_SKIP_ALREADY_FALSE": "自動跳過非音樂模式已停用",
+	"SET_AUTO_SKIP_TRUE": "已啟用自動跳過非音樂模式",
+	"SET_AUTO_SKIP_FALSE": "已停用自動跳過非音樂模式",
+
 	"SKIP_CANCEL_TIMEOUT": "已逾時，跳過已取消",
 	"SKIP_CANCEL_NO_NON_MUSIC": "現在沒有播放任何非音樂內容，跳過已取消",
 	"SKIP_CANCEL_SONG_CHANGED": "歌曲已變更，跳過已取消",

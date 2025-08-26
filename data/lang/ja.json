@@ -56,6 +56,13 @@
 	"SET_LOOP_TRUE": "ループモードが有効になりました",
 	"SET_LOOP_FALSE": "ループモードが無効になりました",
 
+	"TOGGLE_AUTO_SKIP_TRUE": "自動スキップ（音楽以外のモード）が有効になりました",
+	"TOGGLE_AUTO_SKIP_FALSE": "自動スキップ（音楽以外のモード）が無効になりました",
+	"AUTO_SKIP_ALREADY_TRUE": "自動スキップ（音楽以外のモード）はすでに有効です",
+	"AUTO_SKIP_ALREADY_FALSE": "自動スキップ（音楽以外のモード）はすでに無効です",
+	"SET_AUTO_SKIP_TRUE": "自動スキップ（音楽以外のモード）が有効になりました",
+	"SET_AUTO_SKIP_FALSE": "自動スキップ（音楽以外のモード）が無効になりました",
+
 	"SKIP_CANCEL_TIMEOUT": "タイムアウトしました。スキップをキャンセルします",
 	"SKIP_CANCEL_NO_NON_MUSIC": "現在、音楽以外のコンテンツを再生していないため、スキップをキャンセルします",
 	"SKIP_CANCEL_SONG_CHANGED": "曲が変更されたため、スキップをキャンセルします",

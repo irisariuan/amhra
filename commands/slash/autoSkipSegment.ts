@@ -9,9 +9,9 @@ import { languageText } from "../../lib/language";
 
 export default {
 	data: new SlashCommandBuilder()
-		.setName("loop")
+		.setName("autoskipnonmusic")
 		.setDescription(
-			"Toggle the loop mode or set the loop mode to a specific type",
+			"Toggle the mode or set the mode to a specific type for auto skipping non-music parts behavior",
 		)
 		.addBooleanOption((option) =>
 			option
@@ -20,7 +20,7 @@ export default {
 				.setRequired(false),
 		),
 	async execute({ interaction, client, language }) {
-		const setLoop = interaction.options.getBoolean("enabled");
+		const setSkip = interaction.options.getBoolean("enabled");
 		if (!interaction.guild)
 			return await interaction.reply({
 				content: languageText("server_only_command", language),
@@ -56,33 +56,39 @@ export default {
 				content: languageText("not_playing", language),
 			});
 		}
-		if (setLoop === null) {
+		if (setSkip === null) {
+			player.customSetting.autoSkipSegment = !(
+				player.customSetting.autoSkipSegment ?? false
+			);
 			return await interaction.reply({
 				content: languageText(
-					player.toggleLoop()
-						? "toggle_loop_true"
-						: "toggle_loop_false",
+					player.customSetting.autoSkipSegment
+						? "toggle_auto_skip_true"
+						: "toggle_auto_skip_false",
 					language,
 				),
 			});
 		}
-		if (setLoop === player.customSetting.looping) {
+		if (setSkip === player.customSetting.autoSkipSegment) {
 			return await interaction.reply({
 				content: languageText(
-					setLoop ? "loop_already_true" : "loop_already_false",
+					setSkip
+						? "auto_skip_already_true"
+						: "auto_skip_already_false",
 					language,
 				),
 			});
 		}
-		if (setLoop) {
-			player.enableLoop();
+		if (setSkip) {
+			player.customSetting.autoSkipSegment = true;
 			return await interaction.reply({
-				content: languageText("set_loop_true", language),
+				content: languageText("set_auto_skip_true", language),
 			});
 		}
-		player.disableLoop();
+
+		player.customSetting.autoSkipSegment = false;
 		return await interaction.reply({
-			content: languageText("set_loop_false", language),
+			content: languageText("set_auto_skip_false", language),
 		});
 	},
 } as Command<SlashCommandBuilder>;

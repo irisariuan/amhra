@@ -31,7 +31,7 @@
 	"SKIP_VOTE_SUCCESS": "Skip vote passed, skipped the song",
 	"SKIP_VOTE_FAIL": "Skip vote failed, not enough votes",
 	"SKIP_VOTE_FAIL_SONG_CHANGED": "The song has changed, skip vote failed",
-	
+
 	"PLAYING_DISPLAY": "Playing {title} ({url})",
 	"ADD_TO_QUEUE": "Added {input} ({url}) to queue",
 	"PLAYLIST_ADD_TO_QUEUE": "Added playlist {input} ({url}) to queue",
@@ -55,6 +55,13 @@
 	"LOOP_ALREADY_FALSE": "Loop mode is already disabled",
 	"SET_LOOP_TRUE": "Loop mode is now enabled",
 	"SET_LOOP_FALSE": "Loop mode is now disabled",
+
+	"TOGGLE_AUTO_SKIP_TRUE": "Auto-skip non-music mode is now enabled",
+	"TOGGLE_AUTO_SKIP_FALSE": "Auto-skip non-music mode is now disabled",
+	"AUTO_SKIP_ALREADY_TRUE": "Auto-skip non-music mode is already enabled",
+	"AUTO_SKIP_ALREADY_FALSE": "Auto-skip non-music mode is already disabled",
+	"SET_AUTO_SKIP_TRUE": "Auto-skip non-music mode is now enabled",
+	"SET_AUTO_SKIP_FALSE": "Auto-skip non-music mode is now disabled",
 
 	"SKIP_CANCEL_TIMEOUT": "Timed out, skipping cancelled",
 	"SKIP_CANCEL_NO_NON_MUSIC": "Not playing any non-music part now, skipping cancelled",
