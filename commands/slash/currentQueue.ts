@@ -55,7 +55,7 @@ export default {
 
 		const page = Math.min(
 			(interaction.options.getInteger("page") ?? 1) - 1,
-			Math.ceil(player.queue.length / pageSize),
+			Math.ceil(player.queue.length / pageSize) - 1,
 		);
 
 		sendPaginationMessage(

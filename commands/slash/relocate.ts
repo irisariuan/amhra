@@ -13,7 +13,11 @@ import {
 	getConnection,
 	timeFormat,
 } from "../../lib/voice/core";
-import { cancelThreshold, SegmentCategory } from "../../lib/voice/segment";
+import {
+	cancelThreshold,
+	sendInteractionSkipMessage,
+	SegmentCategory,
+} from "../../lib/voice/segment";
 import { languageText } from "../../lib/language";
 
 export default {
@@ -111,77 +115,7 @@ export default {
 
 		if (!resource.segments) return;
 		const firstEl = resource.segments[0];
-		if (firstEl?.category === SegmentCategory.MusicOffTopic) {
-			const [start, skipTo] = firstEl.segment;
-			const count = player.playCounter;
-			if (start !== 0 || position >= skipTo || skipTo <= cancelThreshold)
-				return;
-			const response = await interaction.followUp({
-				content: languageText("segment_skip_message", language, {
-					pos: timeFormat(skipTo),
-					posNum: Math.round(skipTo),
-				}),
-				components: [
-					new ActionRowBuilder<ButtonBuilder>().addComponents(
-						new ButtonBuilder()
-							.setLabel(languageText("skip_label", language))
-							.setStyle(ButtonStyle.Primary)
-							.setCustomId("skip"),
-					),
-				],
-			});
-			try {
-				const confirmation = await response.awaitMessageComponent({
-					time: Math.min(10 * 1000, skipTo * 1000),
-				});
-				if (player.playCounter !== count) {
-					return confirmation.update({
-						content: languageText(
-							"skip_cancel_song_changed",
-							player.currentLanguage,
-						),
-						components: [],
-					});
-				}
-				if (confirmation.customId === "skip") {
-					const result = await player.skipCurrentSegment();
-					if (!result.success) {
-						return confirmation.update({
-							...misc.errorMessageObj(player.currentLanguage),
-							components: [],
-						});
-					}
-					await confirmation.update({
-						content: languageText(
-							result.skipped
-								? "segment_skip_next"
-								: "segment_skip",
-							player.currentLanguage,
-							{
-								pos: timeFormat(skipTo),
-							},
-						),
-						components: [],
-					});
-				}
-			} catch {
-				if (response.deletable) {
-					await response.delete().catch(() => {});
-					return;
-				}
-				if (response.editable) {
-					await response.reactions.removeAll().catch(() => {});
-					await response
-						.edit({
-							content: languageText(
-								"skip_cancel_timeout",
-								language,
-							),
-							components: [],
-						})
-						.catch(() => {});
-				}
-			}
-		}
+		if (firstEl)
+			await sendInteractionSkipMessage(interaction, player);
 	},
 } as Command<SlashCommandBuilder>;

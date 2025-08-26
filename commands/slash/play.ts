@@ -1,12 +1,8 @@
 import { type Command } from "../../lib/interaction";
 
-import {
-	ActionRowBuilder,
-	ButtonBuilder,
-	ButtonStyle,
-	SlashCommandBuilder,
-} from "discord.js";
+import { SlashCommandBuilder } from "discord.js";
 import { type YouTubePlayList, playlist_info, search } from "play-dl";
+import { languageText } from "../../lib/language";
 import { dcb, globalApp, misc } from "../../lib/misc";
 import {
 	createResource,
@@ -16,10 +12,8 @@ import {
 	getConnection,
 	isPlaylist,
 	isVideo,
-	timeFormat,
 } from "../../lib/voice/core";
-import { languageText } from "../../lib/language";
-import { cancelThreshold } from "../../lib/voice/segment";
+import { sendInteractionSkipMessage } from "../../lib/voice/segment";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -169,82 +163,11 @@ export default {
 						url: videoUrl,
 					}),
 				});
-				const skipTo = player.currentSegment();
-				if (
-					!data.segments ||
-					!skipTo ||
-					skipTo.segment[1] <= cancelThreshold
-				)
-					return;
-				const count = player.playCounter;
-				const response = await interaction.followUp({
-					content: languageText("segment_skip_message", language, {
-						pos: timeFormat(skipTo.segment[1]),
-						posNum: Math.round(skipTo.segment[1]),
-					}),
-					components: [
-						new ActionRowBuilder<ButtonBuilder>().addComponents(
-							new ButtonBuilder()
-								.setLabel(languageText("skip_label", language))
-								.setStyle(ButtonStyle.Primary)
-								.setCustomId("skip"),
-						),
-					],
-				});
-				try {
-					const confirmation = await response.awaitMessageComponent({
-						time: Math.min(10 * 1000, skipTo.segment[1] * 1000),
-					});
-					if (player.playCounter !== count) {
-						return confirmation.update({
-							content: languageText(
-								"skip_cancel_song_changed",
-								player.currentLanguage,
-							),
-							components: [],
-						});
-					}
-					if (confirmation.customId === "skip") {
-						const result = await player.skipCurrentSegment();
-						if (!result.success) {
-							return confirmation.update({
-								...misc.errorMessageObj(player.currentLanguage),
-								components: [],
-							});
-						}
-						await confirmation.update({
-							content: languageText(
-								result.skipped
-									? "segment_skip_next"
-									: "segment_skip",
-								player.currentLanguage,
-								{
-									pos: timeFormat(skipTo.segment[1]),
-								},
-							),
-							components: [],
-						});
-					}
-				} catch {
-					if (response.deletable) {
-						await response.delete().catch(() => {});
-						return;
-					}
-					if (response.editable) {
-						await response.reactions.removeAll().catch(() => {});
-						await response
-							.edit({
-								content: languageText(
-									"skip_cancel_timeout",
-									language,
-								),
-								components: [],
-							})
-							.catch(() => {});
-					}
-				}
-
-				return;
+				if (!data.segments) return;
+				return await sendInteractionSkipMessage(
+					interaction,
+					player,
+				);
 			} catch (e) {
 				globalApp.err(
 					"An error occurred while trying to start playing music: ",

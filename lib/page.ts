@@ -98,7 +98,7 @@ export function createEmbed(
 		.addFields(
 			...result
 				.map((v, i) => ({
-					name: `${i + page * pageSize + 1}. ${v.title}`,
+					name: `${i + 1}. ${v.title}`,
 					value: [
 						`${v.url} (${timeFormat(v.details.durationInSec)})`,
 					].join("\n"),
@@ -114,6 +114,14 @@ export function createEmbed(
 		});
 }
 
+export function createNotFoundEmbed(language: Language) {
+	return new EmbedBuilder()
+		.setTitle(languageText("queue_label", language))
+		.setColor("DarkRed")
+		.setDescription(languageText("no_song_found", language))
+		.setTimestamp(Date.now());
+}
+
 export const pageSize = 20;
 
 export async function sendPaginationMessage(
@@ -127,8 +135,8 @@ export async function sendPaginationMessage(
 	let page = initalPage;
 	if (!result || result.length <= 0) {
 		interactionResponse = await interaction.editReply({
-			content: languageText("no_song_found", language),
-			embeds: [],
+			content: "",
+			embeds: [createNotFoundEmbed(language)],
 			components: [createButtons(0, 0, language)],
 		});
 	} else {
@@ -152,8 +160,8 @@ export async function sendPaginationMessage(
 
 			if (!reloadResult || reloadResult.length <= 0)
 				return interaction.editReply({
-					content: languageText("no_song_found", language),
-					embeds: [],
+					content: "",
+					embeds: [createNotFoundEmbed(language)],
 					components: [createButtons(0, 0, language)],
 				});
 
@@ -162,8 +170,8 @@ export async function sendPaginationMessage(
 
 			if (!reloadResult)
 				return await interaction.editReply({
-					content: languageText("no_song_found", language),
-					embeds: [],
+					content: "",
+					embeds: [createNotFoundEmbed(language)],
 					components: [createButtons(0, 0, language)],
 				});
 
