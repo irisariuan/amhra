@@ -4,10 +4,10 @@
 	"ALREADY_CONNECTED": "我已經在語音頻道中",
 	"USER_NOT_IN_VOICE": "你不在語音頻道中",
 	"SERVER_ONLY_COMMAND": "此指令只能在伺服器中使用",
-	"NOT_SAME_VOICE": "你沒有和我同一個語音頻道中",
+	"NOT_SAME_VOICE": "你沒有和我在同一個語音頻道中",
 	"EMPTY_QUEUE": "沒有更多要播放的內容了！",
-	"NOT_PLAYING": "我沒有播放任何歌曲",
-	"NOT_PLAYING_NON_MUSIC": "我沒有播放任何非音樂內容",
+	"NOT_PLAYING": "現在沒有播放任何歌曲",
+	"NOT_PLAYING_NON_MUSIC": "現在沒有播放任何非音樂內容",
 	"JOINED_VOICE": "已加入語音頻道",
 
 	"DISCONNECTED": "已斷線！",
@@ -28,8 +28,8 @@
 	"SEGMENT_SKIP_MESSAGE": "發現非音樂內容，想要跳到 `{pos}` 嗎？\n輸入 `/relocate {posNum}` 或點擊反應來跳過",
 
 	"PLAYING_DISPLAY": "正在播放 {title} ({url})",
-	"ADD_TO_QUEUE": "已將 {input} ({url}) 加入佇列",
-	"PLAYLIST_ADD_TO_QUEUE": "已將播放清單 {input} ({url}) 加入佇列",
+	"ADD_TO_QUEUE": "已將 {input} ({url}) 加入播放清單",
+	"PLAYLIST_ADD_TO_QUEUE": "已將播放清單 {input} ({url}) 加入播放清單",
 
 	"REMOVE_QUEUE_DETAIL": "已移除 {title} ({removed})",
 	"REMOVE_QUEUE": "已移除 {removed}",
@@ -70,10 +70,10 @@
 	"NO_SONG_FOUND": "找不到歌曲",
 	"INVALID_POSITION_FORMAT": "無效的位置格式。請使用秒數或 (HH:)MM:SS 格式",
 	"POSITION_OVERFLOW": "指定的位置超過歌曲長度",
-	"QUEUE_INDEX_OVERFLOW": "指定的索引超過佇列長度",
+	"QUEUE_INDEX_OVERFLOW": "指定的索引超過播放清單長度",
 	"FAIL_RESOURCE": "建立資源失敗",
 	"FAIL_SKIP_SEGMENT": "跳過目前的非音樂部分失敗",
-	"COMMAND_NOT_IMPLEMENTED": "此指令尚未實作",
+	"COMMAND_NOT_IMPLEMENTED": "此指令尚未實裝",
 
 	"DASHBOARD_LABEL": "儀表板",
 	"NOW_PLAYING_LABEL": "正在播放",
@@ -83,7 +83,7 @@
 	"FIRST_PAGE_LABEL": "第一頁",
 	"LAST_PAGE_LABEL": "最後一頁",
 	"SKIP_LABEL": "跳過",
-	"QUEUE_LABEL": "佇列",
+	"QUEUE_LABEL": "播放清單",
 	"QUEUE_FOOTER": "顯示歌曲 {minShowingSong}-{maxShowingSong}，共 {totalSong} 首",
 	"commands": {
 		"play": {
@@ -130,17 +130,17 @@
 		},
 		"remove": {
 			"name": "移除",
-			"description": "從佇列中移除歌曲",
+			"description": "從播放清單中移除歌曲",
 			"options": {
 				"index": {
 					"name": "索引",
-					"description": "佇列中歌曲的索引（從 1 開始）"
+					"description": "播放清單中歌曲的索引（從 1 開始）"
 				}
 			}
 		},
 		"queue": {
-			"name": "佇列",
-			"description": "顯示目前的佇列",
+			"name": "播放清單",
+			"description": "顯示目前的播放清單",
 			"options": {
 				"page": {
 					"name": "頁碼",
@@ -158,7 +158,7 @@
 		},
 		"stop": {
 			"name": "停止",
-			"description": "停止音樂並清除佇列"
+			"description": "停止音樂並清除播放清單"
 		},
 		"volume": {
 			"name": "音量",
