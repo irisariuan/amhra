@@ -117,7 +117,10 @@ function createAudioPlayer(
 					event.emit("songInfo", nextUrl);
 					player.playResource(resource);
 					dcb.log("Playing next music");
-					if (resource.segments && !player.customSetting.autoSkipSegment) {
+					if (resource.segments) {
+						if (player.customSetting.autoSkipSegment) {
+							return await player.skipCurrentSegment();
+						}
 						if (!(await sendSkipMessage(player))) {
 							globalApp.warn("Failed to send skip message");
 						}
