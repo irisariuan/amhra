@@ -108,8 +108,10 @@ export class CustomClient extends Client {
 	getToken(guildId: string | string[]): TokenReturn | null {
 		const entries = this.tokenMap.entries();
 		if (Array.isArray(guildId)) {
-			const entry = entries.find(([_, guildIds]) =>
-				guildIds.every((id) => guildId.includes(id)),
+			const entry = entries.find(
+				([_, guildIds]) =>
+					guildIds.every((id) => guildId.includes(id)) &&
+					guildIds.length === guildId.length,
 			);
 			if (entry) return { guilds: entry[1], token: entry[0] };
 		} else {

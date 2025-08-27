@@ -89,13 +89,13 @@ export async function refreshToken(
 			}
 		 */
 		const oauthData = await tokenResponseData?.json();
-		return await newUser(
-			oauthData.id,
-			oauthData.access_token,
-			oauthData.token_type,
-			oauthData.refresh_token,
-			oauthData.expires_in,
-		);
+		return await newUser({
+			id: oauthData.id,
+			token: oauthData.access_token,
+			tokenType: oauthData.token_type,
+			refreshToken: oauthData.refresh_token,
+			refreshTokenExpiresAt: oauthData.expires_in,
+		});
 	} catch (error) {
 		// NOTE: An unauthorized token will not throw an error
 		// tokenResponseData.statusCode will be 401
@@ -120,13 +120,13 @@ export async function register(code: string): Promise<User | null> {
 		return null;
 	}
 
-	return await newUser(
-		userResult.id,
-		oauthData.access_token,
-		oauthData.token_type,
-		oauthData.refresh_token,
-		oauthData.expires_in,
-	);
+	return await newUser({
+		id: userResult.id,
+		token: oauthData.access_token,
+		tokenType: oauthData.token_type,
+		refreshToken: oauthData.refresh_token,
+		refreshTokenExpiresAt: oauthData.expires_in,
+	});
 }
 
 export async function getUserGuilds(

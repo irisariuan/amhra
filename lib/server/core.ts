@@ -15,7 +15,7 @@ import { readSetting, reloadSetting } from "../setting";
 import {
 	auth,
 	basicCheckBuilder,
-	checkBearerWithGuild,
+	checkTokenWithGuild,
 	checkGuildMiddleware,
 } from "./auth";
 import { ActionType, event } from "./event";
@@ -101,29 +101,25 @@ export async function initServer(client: CustomClient) {
 		},
 	);
 
-	app.get(
-		"/api/new",
-		auth({ allowBearer: true, requirePassword: true }),
-		(req, res) => {
-			if (req.headers["origin-ip"]) {
-				exp.log(
-					`New IP fetched: ${req.headers["origin-ip"]} (${req.ip})`,
-				);
-			} else {
-				exp.log(`New IP fetched: ${req.ip}`);
-			}
-			res.sendStatus(200);
-		},
-	);
+	app.get("/api/new", auth(1), (req, res) => {
+		if (req.headers["origin-ip"]) {
+			exp.log(
+				`New IP fetched (Origin IP found): ${req.headers["origin-ip"]} (${req.ip})`,
+			);
+		} else {
+			exp.log(`New IP fetched: ${req.ip}`);
+		}
+		res.sendStatus(200);
+	});
 
-	app.get("/api/log", auth(), (req, res) => {
+	app.get("/api/log", auth(3), (req, res) => {
 		res.send(JSON.stringify({ content: logQueue }));
 	});
 
 	app.post(
 		"/api/song/edit",
 		jsonParser,
-		auth({ requirePassword: false, allowBearer: true }),
+		auth(1),
 		basicCheckBuilder(["action", "guildId"]),
 		checkGuildMiddleware(client),
 		async (req: Request, res: Response) => {
@@ -150,7 +146,7 @@ export async function initServer(client: CustomClient) {
 	app.post(
 		"/api/action",
 		jsonParser,
-		auth(),
+		auth(2),
 		basicCheckBuilder(["action"]),
 		(req, res) => {
 			const formatter = misc.prefixFormatter(
@@ -206,7 +202,7 @@ export async function initServer(client: CustomClient) {
 	app.post(
 		"/api/search",
 		jsonParser,
-		auth({ requirePassword: false, allowBearer: true }),
+		auth(1),
 		basicCheckBuilder(["query"]),
 		async (req, res) => {
 			if (!req.body.query) {
@@ -237,7 +233,7 @@ export async function initServer(client: CustomClient) {
 	app.post(
 		"/api/getVideoDetail",
 		jsonParser,
-		auth({ requirePassword: false, allowBearer: true }),
+		auth(1),
 		basicCheckBuilder(["url"]),
 		async (req, res) => {
 			if (!req.body.url || !YoutubeVideoRegex.test(req.body.url)) {
@@ -264,7 +260,7 @@ export async function initServer(client: CustomClient) {
 	app.post(
 		"/api/videoSuggestion",
 		jsonParser,
-		auth({ requirePassword: false, allowBearer: true }),
+		auth(1),
 		basicCheckBuilder(["query"]),
 		async (req, res) => {
 			const query = req.body.query ?? null;
@@ -287,76 +283,59 @@ export async function initServer(client: CustomClient) {
 		},
 	);
 
-	app.get(
-		"/api/logout",
-		auth({ requirePassword: true, allowBearer: true }),
-		async (req, res) => {
-			exp.log(`${req.ip} just logout`);
-			res.sendStatus(200);
-		},
-	);
-
-	app.get(
-		"/api/playingGuildIds",
-		auth({ requirePassword: false, allowBearer: true }),
-		async (req, res) => {
-			const content = await Promise.all(
-				Array.from(client.player.keys()).map(async (v) => {
-					return {
-						id: v,
-						name: (await client.guilds.fetch(v)).name ?? null,
-					};
-				}),
-			);
-			if (req.headers.authorization?.startsWith("Bearer")) {
-				const user = await getUser(
-					misc.removeBearer(req.headers.authorization),
-				);
-				if (!user) {
-					return res.sendStatus(401);
-				}
-				let rawGuilds: Guild[];
-				if (userGuildCache.has(user.id)) {
-					rawGuilds = userGuildCache.get(user.id) as Guild[];
-				} else {
-					rawGuilds =
-						(await getUserGuilds(
-							misc.removeBearer(req.headers.authorization),
-						)) ?? [];
-					userGuildCache.set(user.id, rawGuilds);
-				}
-				const guilds = rawGuilds.map((v) => v.id);
-				client.appendGuildsByToken(
-					misc.removeBearer(req.headers.authorization),
-					guilds,
-				);
-				if (!guilds) {
-					return res.sendStatus(401);
-				}
-				return res.send(
-					JSON.stringify({
-						content: content.filter((v) => guilds.includes(v.id)),
-					}),
-				);
-			}
-			exp.log("Sent guild IDs");
-			res.send(JSON.stringify({ content }));
-		},
-	);
-
-	app.get(
-		"/api/guildIds",
-		auth({ allowBearer: true, requirePassword: true }),
-		async (req, res) => {
-			if (!req.headers.authorization) return res.sendStatus(401);
-			const guilds = await getUserGuilds(
+	app.get("/api/playingGuildIds", auth(1), async (req, res) => {
+		const content = await Promise.all(
+			Array.from(client.player.keys()).map(async (v) => {
+				return {
+					id: v,
+					name: (await client.guilds.fetch(v)).name ?? null,
+				};
+			}),
+		);
+		if (req.headers.authorization?.startsWith("Bearer")) {
+			const user = await getUser(
 				misc.removeBearer(req.headers.authorization),
 			);
-			res.send(JSON.stringify({ content: guilds }));
-		},
-	);
+			if (!user) {
+				return res.sendStatus(401);
+			}
+			let rawGuilds: Guild[];
+			if (userGuildCache.has(user.id)) {
+				rawGuilds = userGuildCache.get(user.id) as Guild[];
+			} else {
+				rawGuilds =
+					(await getUserGuilds(
+						misc.removeBearer(req.headers.authorization),
+					)) ?? [];
+				userGuildCache.set(user.id, rawGuilds);
+			}
+			const guilds = rawGuilds.map((v) => v.id);
+			client.appendGuildsByToken(
+				misc.removeBearer(req.headers.authorization),
+				guilds,
+			);
+			if (!guilds) {
+				return res.sendStatus(401);
+			}
+			return res.send(
+				JSON.stringify({
+					content: content.filter((v) => guilds.includes(v.id)),
+				}),
+			);
+		}
+		exp.log("Sent guild IDs");
+		res.send(JSON.stringify({ content }));
+	});
 
-	app.get("/api/guildIds/all", auth(), async (req, res) => {
+	app.get("/api/guildIds", auth(1), async (req, res) => {
+		if (!req.headers.authorization) return res.sendStatus(401);
+		const guilds = await getUserGuilds(
+			misc.removeBearer(req.headers.authorization),
+		);
+		res.send(JSON.stringify({ content: guilds }));
+	});
+
+	app.get("/api/guildIds/all", auth(2), async (req, res) => {
 		const content = (await client.guilds.fetch()).map((v) => {
 			return { id: v.id, name: v.name };
 		});
@@ -364,7 +343,7 @@ export async function initServer(client: CustomClient) {
 		res.send(JSON.stringify({ content }));
 	});
 
-	app.get("/api/messages/:guildId", auth(), async (req, res) => {
+	app.get("/api/messages/:guildId", auth(2), async (req, res) => {
 		if (!(await client.guilds.fetch()).has(req.params.guildId)) {
 			exp.error("Guild not found");
 			return res.sendStatus(404);
@@ -394,23 +373,19 @@ export async function initServer(client: CustomClient) {
 		return res.send(JSON.stringify({ content: await Promise.all(data) }));
 	});
 
-	app.get(
-		"/api/song/get/:guildId",
-		auth({ requirePassword: false, allowBearer: true }),
-		(req, res) => {
-			if (
-				!checkBearerWithGuild(
-					client,
-					req.headers.authorization ?? "",
-					req.params.guildId,
-				)
-			) {
-				return res.sendStatus(401);
-			}
-			const data = client.player.get(req.params.guildId)?.getData();
-			return res.send(JSON.stringify(data ?? null));
-		},
-	);
+	app.get("/api/song/get/:guildId", auth(1), (req, res) => {
+		if (
+			!checkTokenWithGuild(
+				client,
+				req.headers.authorization ?? "",
+				req.params.guildId,
+			)
+		) {
+			return res.sendStatus(401);
+		}
+		const data = client.player.get(req.params.guildId)?.getData();
+		return res.send(JSON.stringify(data ?? null));
+	});
 
 	return app;
 }
