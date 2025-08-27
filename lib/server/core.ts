@@ -19,8 +19,10 @@ import {
 	checkGuildMiddleware,
 } from "./auth";
 import { ActionType, event } from "./event";
-import { SongEditRequestSchema } from "./schema";
+import { SongEditRequestSchema, UserSettingUploadSchema } from "./schema";
 import { handleSongInterruption } from "./songEdit";
+import editUserSetting, { getUserSetting } from "../db/userSetting";
+import { Permission } from "./perm";
 
 export const YoutubeVideoRegex =
 	/^http(?:s?):\/\/(?:www\.)?youtu(?:be\.com\/watch\?v=|\.be\/)([\w\-_]*)(&(amp;)?[\w?=]*)?$/;
@@ -101,7 +103,7 @@ export async function initServer(client: CustomClient) {
 		},
 	);
 
-	app.get("/api/new", auth(1), (req, res) => {
+	app.get("/api/new", auth(Permission.User), (req, res) => {
 		if (req.headers["origin-ip"]) {
 			exp.log(
 				`New IP fetched (Origin IP found): ${req.headers["origin-ip"]} (${req.ip})`,
@@ -119,7 +121,7 @@ export async function initServer(client: CustomClient) {
 	app.post(
 		"/api/song/edit",
 		jsonParser,
-		auth(1),
+		auth(Permission.User),
 		basicCheckBuilder(["action", "guildId"]),
 		checkGuildMiddleware(client),
 		async (req: Request, res: Response) => {
@@ -146,7 +148,7 @@ export async function initServer(client: CustomClient) {
 	app.post(
 		"/api/action",
 		jsonParser,
-		auth(2),
+		auth(Permission.Admin),
 		basicCheckBuilder(["action"]),
 		(req, res) => {
 			const formatter = misc.prefixFormatter(
@@ -202,7 +204,7 @@ export async function initServer(client: CustomClient) {
 	app.post(
 		"/api/search",
 		jsonParser,
-		auth(1),
+		auth(Permission.User),
 		basicCheckBuilder(["query"]),
 		async (req, res) => {
 			if (!req.body.query) {
@@ -233,7 +235,7 @@ export async function initServer(client: CustomClient) {
 	app.post(
 		"/api/getVideoDetail",
 		jsonParser,
-		auth(1),
+		auth(Permission.User),
 		basicCheckBuilder(["url"]),
 		async (req, res) => {
 			if (!req.body.url || !YoutubeVideoRegex.test(req.body.url)) {
@@ -260,7 +262,7 @@ export async function initServer(client: CustomClient) {
 	app.post(
 		"/api/videoSuggestion",
 		jsonParser,
-		auth(1),
+		auth(Permission.User),
 		basicCheckBuilder(["query"]),
 		async (req, res) => {
 			const query = req.body.query ?? null;
@@ -283,7 +285,7 @@ export async function initServer(client: CustomClient) {
 		},
 	);
 
-	app.get("/api/playingGuildIds", auth(1), async (req, res) => {
+	app.get("/api/playingGuildIds", auth(Permission.User), async (req, res) => {
 		const content = await Promise.all(
 			Array.from(client.player.keys()).map(async (v) => {
 				return {
@@ -327,7 +329,7 @@ export async function initServer(client: CustomClient) {
 		res.send(JSON.stringify({ content }));
 	});
 
-	app.get("/api/guildIds", auth(1), async (req, res) => {
+	app.get("/api/guildIds", auth(Permission.User), async (req, res) => {
 		if (!req.headers.authorization) return res.sendStatus(401);
 		const guilds = await getUserGuilds(
 			misc.removeBearer(req.headers.authorization),
@@ -335,7 +337,7 @@ export async function initServer(client: CustomClient) {
 		res.send(JSON.stringify({ content: guilds }));
 	});
 
-	app.get("/api/guildIds/all", auth(2), async (req, res) => {
+	app.get("/api/guildIds/all", auth(Permission.Admin), async (req, res) => {
 		const content = (await client.guilds.fetch()).map((v) => {
 			return { id: v.id, name: v.name };
 		});
@@ -343,37 +345,44 @@ export async function initServer(client: CustomClient) {
 		res.send(JSON.stringify({ content }));
 	});
 
-	app.get("/api/messages/:guildId", auth(2), async (req, res) => {
-		if (!(await client.guilds.fetch()).has(req.params.guildId)) {
-			exp.error("Guild not found");
-			return res.sendStatus(404);
-		}
+	app.get(
+		"/api/messages/:guildId",
+		auth(Permission.Admin),
+		async (req, res) => {
+			if (!(await client.guilds.fetch()).has(req.params.guildId)) {
+				exp.error("Guild not found");
+				return res.sendStatus(404);
+			}
 
-		const guild = await client.guilds.fetch(req.params.guildId);
-		const channels = await guild.channels.fetch();
-		const data = channels.map(async (v) => {
-			if (!v) return [];
-			const message =
-				(await (v as TextChannel).messages?.fetch({ cache: true })) ??
-				[];
+			const guild = await client.guilds.fetch(req.params.guildId);
+			const channels = await guild.channels.fetch();
+			const data = channels.map(async (v) => {
+				if (!v) return [];
+				const message =
+					(await (v as TextChannel).messages?.fetch({
+						cache: true,
+					})) ?? [];
 
-			const messages: Message[] = message.map((v) => {
-				return {
-					message: { content: v.content, id: v.id },
-					author: { id: v.author.id, tag: v.author.tag },
-					timestamp: {
-						createdAt: v.createdTimestamp,
-						editedAt: v.editedTimestamp ?? undefined,
-					},
-				};
+				const messages: Message[] = message.map((v) => {
+					return {
+						message: { content: v.content, id: v.id },
+						author: { id: v.author.id, tag: v.author.tag },
+						timestamp: {
+							createdAt: v.createdTimestamp,
+							editedAt: v.editedTimestamp ?? undefined,
+						},
+					};
+				});
+
+				return { channel: { id: v.id, name: v.name }, messages };
 			});
+			return res.send(
+				JSON.stringify({ content: await Promise.all(data) }),
+			);
+		},
+	);
 
-			return { channel: { id: v.id, name: v.name }, messages };
-		});
-		return res.send(JSON.stringify({ content: await Promise.all(data) }));
-	});
-
-	app.get("/api/song/get/:guildId", auth(1), (req, res) => {
+	app.get("/api/song/get/:guildId", auth(Permission.User), (req, res) => {
 		if (
 			!checkTokenWithGuild(
 				client,
@@ -386,6 +395,65 @@ export async function initServer(client: CustomClient) {
 		const data = client.player.get(req.params.guildId)?.getData();
 		return res.send(JSON.stringify(data ?? null));
 	});
+
+	app.get(
+		"/api/setting",
+		auth(Permission.HasSettings, false),
+		async (req, res) => {
+			if (!req.headers.authorization) {
+				return res.sendStatus(401);
+			}
+			const user = await getUser(req.headers.authorization);
+			if (!user) {
+				exp.error("User not found");
+				return res.sendStatus(401);
+			}
+			const setting = await getUserSetting(user.id);
+			if (!setting) {
+				return res.sendStatus(400);
+			}
+			return res.send(
+				JSON.stringify({
+					userId: user.id,
+					autoSkip: setting.autoSkipNonMusic,
+					loop: setting.loop,
+					language: setting.language,
+				}),
+			);
+		},
+	);
+
+	app.post(
+		"/api/setting",
+		jsonParser,
+		auth(Permission.HasSettings, false),
+		async (req, res) => {
+			const { success, data } = UserSettingUploadSchema.safeParse(
+				req.body,
+			);
+			if (!success || !req.headers.authorization) {
+				exp.error(`User setting upload schema error: ${data}`);
+				return res.sendStatus(400);
+			}
+			const user = await getUser(req.headers.authorization);
+			if (!user) {
+				exp.error("User not found");
+				return res.sendStatus(401);
+			}
+			await editUserSetting(user.id, {
+				autoSkipSegment: data.autoSkip,
+				language: data.language,
+				looping: data.loop,
+			})
+				.catch((err) => {
+					exp.error(`Failed to edit user setting: ${err}`);
+					res.sendStatus(500);
+				})
+				.then(() => {
+					res.sendStatus(200);
+				});
+		},
+	);
 
 	return app;
 }

@@ -2,6 +2,7 @@ import z from "zod";
 import { SongEditType } from "./event";
 import { YoutubeVideoRegex } from "./core";
 import { yt_validate } from "play-dl";
+import { Language } from "../interaction";
 
 // Queue item (from custom.ts)
 export const QueueItemSchema = z.object({
@@ -129,3 +130,9 @@ export const SongEditRequestSchema = z.discriminatedUnion("action", [
 
 // Inferred Type
 export type SongEditRequest = z.infer<typeof SongEditRequestSchema>;
+
+export const UserSettingUploadSchema = z.object({
+	loop: z.boolean().optional(),
+	language: z.enum(Language).optional(),
+	autoSkip: z.boolean().optional(),
+})

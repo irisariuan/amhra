@@ -12,7 +12,10 @@ export interface UserSettingReturn {
 	language: Language;
 }
 
-export default async function editUserSetting(userId: string, setting: UserSetting) {
+export default async function editUserSetting(
+	userId: string,
+	setting: Partial<UserSetting>,
+) {
 	return await prisma.userSetting.upsert({
 		create: {
 			userId,

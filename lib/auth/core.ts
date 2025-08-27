@@ -7,8 +7,6 @@ import { misc } from "../misc";
 
 export interface User {
 	id: string;
-	createdAt: Date;
-	updatedAt: Date;
 	token: string;
 	tokenType: string;
 	refreshToken: string;
@@ -159,7 +157,7 @@ export async function getUserGuilds(
 	return await userResult.json();
 }
 
-export function getAllGuilds() {
+export function getAllPlayingGuilds() {
 	return Promise.all(
 		Array.from(client.player.keys()).map(async (v) => {
 			return { id: v, name: (await client.guilds.fetch(v)).name ?? null };
@@ -168,7 +166,7 @@ export function getAllGuilds() {
 }
 
 export async function getUserGuild(user: User, auth: string) {
-	const allGuilds = await getAllGuilds();
+	const allGuilds = await getAllPlayingGuilds();
 	let rawGuilds: Guild[] | undefined = userGuildCache.get(user.id);
 	if (rawGuilds === undefined) {
 		rawGuilds = (await getUserGuilds(misc.removeBearer(auth))) ?? [];
