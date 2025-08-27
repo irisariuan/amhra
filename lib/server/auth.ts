@@ -8,7 +8,7 @@ import { readSetting } from "../setting";
 
 const setting = readSetting(`${process.cwd()}/data/setting.json`);
 
-export function auth(permission: number = 0) {
+export function auth(permission: number = 0, visitorAllowed = true) {
 	return async (req: Request, res: Response, next: NextFunction) => {
 		const formatter = misc.prefixFormatter(
 			`${chalk.bgGrey(`(IP: ${req.ip})`)}`,
@@ -50,11 +50,11 @@ export function auth(permission: number = 0) {
 			return next();
 		}
 		// visitor (no prefix token)
-		if (permission === 0) {
-			return next();
+		if (!visitorAllowed) {
+			exp.error(formatter("Auth failed (FORBIDDEN, Visitor Token)"));
+			return res.sendStatus(401);
 		}
-		exp.error(formatter("Auth failed (FORBIDDEN, Unknown method)"));
-		return res.sendStatus(401);
+		return next();
 	};
 }
 
