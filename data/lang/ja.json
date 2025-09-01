@@ -35,6 +35,8 @@
 	"PLAYING_DISPLAY": "{title} ({url}) を再生中",
 	"ADD_TO_QUEUE": "{input} ({url}) をキューに追加しました",
 	"PLAYLIST_ADD_TO_QUEUE": "プレイリスト{input} ({url}) をキューに追加しました",
+	"ADD_TO_QUEUE_NEXT": "{input} ({url}) を再生キューに追加しました (次に再生)",
+	"PLAYLIST_ADD_TO_QUEUE_NEXT": "プレイリスト {input} ({url}) を再生キューに追加しました (次に再生)",
 
 	"REMOVE_QUEUE_DETAIL": "{title} ({removed}) を削除しました",
 	"REMOVE_QUEUE": "{removed} を削除しました",
@@ -101,6 +103,10 @@
 				"volume": {
 					"name": "音量",
 					"description": "音量を設定します"
+				},
+				"next": {
+					"description": "將歌曲新增至稍後播放清單 (如果已有歌曲正在播放)",
+					"name": "新增至稍後播放清單"
 				}
 			}
 		},

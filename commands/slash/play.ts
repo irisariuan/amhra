@@ -33,9 +33,7 @@ export default {
 				),
 		)
 		.addBooleanOption((opt) =>
-			opt
-				.setName("next")
-				.setDescription("Play the song next in the queue"),
+			opt.setName("next").setDescription("Add the song to play next"),
 		)
 		.addNumberOption((opt) =>
 			opt
@@ -193,9 +191,12 @@ export default {
 
 		// respond to interaction
 		dcb.log("Searched URL and added URL to queue");
+		const baseText = isPlaylist(input)
+			? "playlist_add_to_queue"
+			: "add_to_queue";
 		return await interaction.editReply({
 			content: languageText(
-				isPlaylist(input) ? "playlist_add_to_queue" : "add_to_queue",
+				next ? `${baseText}_next` : baseText,
 				language,
 				{
 					input,

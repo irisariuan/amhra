@@ -35,6 +35,8 @@
 	"PLAYING_DISPLAY": "Playing {title} ({url})",
 	"ADD_TO_QUEUE": "Added {input} ({url}) to queue",
 	"PLAYLIST_ADD_TO_QUEUE": "Added playlist {input} ({url}) to queue",
+	"ADD_TO_QUEUE_NEXT": "Added {input} ({url}) to queue to play next",
+	"PLAYLIST_ADD_TO_QUEUE_NEXT": "Added playlist {input} ({url}) to queue to play next",
 
 	"REMOVE_QUEUE_DETAIL": "Removed {title} ({removed})",
 	"REMOVE_QUEUE": "Removed {removed}",
@@ -97,6 +99,9 @@
 				},
 				"volume": {
 					"description": "Set the volume"
+				},
+				"next": {
+					"description": "Add the song to play next (if something is playing already)"
 				}
 			}
 		},

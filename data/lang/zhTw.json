@@ -30,6 +30,8 @@
 	"PLAYING_DISPLAY": "正在播放 {title} ({url})",
 	"ADD_TO_QUEUE": "已將 {input} ({url}) 加入播放清單",
 	"PLAYLIST_ADD_TO_QUEUE": "已將播放清單 {input} ({url}) 加入播放清單",
+	"ADD_TO_QUEUE_NEXT": "已將 {input} ({url}) 新增至播放佇列，將於下一首播放",
+	"PLAYLIST_ADD_TO_QUEUE_NEXT": "已將播放清單 {input} ({url}) 新增至播放佇列，將於下一首播放",
 
 	"REMOVE_QUEUE_DETAIL": "已移除 {title} ({removed})",
 	"REMOVE_QUEUE": "已移除 {removed}",
@@ -101,6 +103,10 @@
 				"volume": {
 					"name": "音量",
 					"description": "設定音量"
+				},
+				"next": {
+					"description": "將歌曲新增至稍後播放清單 (如果已有歌曲正在播放)",
+					"name": "新增至稍後播放清單"
 				}
 			}
 		},

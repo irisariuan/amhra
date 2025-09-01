@@ -35,6 +35,8 @@
 	"PLAYING_DISPLAY": "{title} ({url}) 재생 중",
 	"ADD_TO_QUEUE": "{input} ({url}) 을(를) 대기열에 추가했습니다",
 	"PLAYLIST_ADD_TO_QUEUE": "재생 목록 {input} ({url}) 을(를) 대기열에 추가했습니다",
+	"ADD_TO_QUEUE_NEXT": "{input} ({url})을(를) 재생 대기열에 추가했습니다 (다음 재생)",
+	"PLAYLIST_ADD_TO_QUEUE_NEXT": "재생 목록 {input} ({url})을(를) 재생 대기열에 추가했습니다 (다음 재생)",
 
 	"REMOVE_QUEUE_DETAIL": "{title} ({removed}) 을(를) 제거했습니다",
 	"REMOVE_QUEUE": "{removed} 을(를) 제거했습니다",
@@ -98,6 +100,10 @@
 				},
 				"volume": {
 					"description": "볼륨을 설정합니다"
+				},
+				"next": {
+					"description": "다음에 재생할 곡으로 추가 (이미 재생 중인 곡이 있는 경우)",
+					"name": "다음에 재생할 곡으로 추가"
 				}
 			}
 		},
