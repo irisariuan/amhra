@@ -426,12 +426,43 @@ export class CustomAudioPlayer extends AudioPlayer {
 		}
 		return super.unpause();
 	}
-	addToQueue(link: string, repeating = false) {
+	bulkAddToQueue(links: string[], repeating = false, insertIndex?: number) {
+		if (
+			setting.USE_YOUTUBE_DL &&
+			(this.queue.length > 0 || this.isPlaying)
+		) {
+			for (const link of links) {
+				prefetch(link);
+			}
+		}
+		const items = links.map((link) => ({
+			repeating,
+			url: link,
+		}));
+		if (
+			insertIndex !== undefined &&
+			insertIndex >= 0 &&
+			insertIndex <= this.queue.length
+		) {
+			this.queue.splice(insertIndex, 0, ...items);
+			return;
+		}
+		this.queue.push(...items);
+	}
+
+	addToQueue(link: string, repeating = false, insertIndex?: number) {
 		if (
 			setting.USE_YOUTUBE_DL &&
 			(this.queue.length > 0 || this.isPlaying)
 		) {
 			prefetch(link);
+		}
+		if (
+			insertIndex !== undefined &&
+			insertIndex >= 0 &&
+			insertIndex <= this.queue.length
+		) {
+			this.queue.splice(insertIndex, 0, { repeating, url: link });
 		}
 		this.queue.push({
 			repeating,

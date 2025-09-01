@@ -32,6 +32,11 @@ export default {
 					"Skip the cache and force to download, only use when the song is not playing correctly",
 				),
 		)
+		.addBooleanOption((opt) =>
+			opt
+				.setName("next")
+				.setDescription("Play the song next in the queue"),
+		)
 		.addNumberOption((opt) =>
 			opt
 				.setName("volume")
@@ -73,6 +78,7 @@ export default {
 
 		const input = interaction.options.getString("search", true);
 		const force = interaction.options.getBoolean("force") ?? false;
+		const next = interaction.options.getBoolean("next") ?? false;
 		const voiceChannel = interaction.member.voice.channel;
 		const connection = ensureVoiceConnection(interaction);
 
@@ -94,9 +100,11 @@ export default {
 
 		//searching data on youtube and add to queue
 		// find if there is cache, cache is saved in YoutubeVideo form
-		let videoUrl: string;
+		// resultUrl could be a video or playlist
+		let resultUrl: string;
 		if (isVideo(input)) {
-			videoUrl = input;
+			resultUrl = input;
+			player.addToQueue(resultUrl, false, next ? 0 : undefined);
 		} else if (isPlaylist(input)) {
 			let playlist: YouTubePlayList;
 			const cached = client.cache.get(input);
@@ -108,21 +116,22 @@ export default {
 			}
 			const allVideos = await playlist.all_videos();
 
-			player.queue = player.queue.concat(
-				allVideos.map((v) => ({
-					repeating: false,
-					url: v.url,
-				})),
-			);
-			videoUrl = player.getNextQueueItem() ?? allVideos[0].url;
-			if (!videoUrl)
+			if (!playlist.url)
 				return interaction.editReply(
 					languageText("empty_playlist", language),
 				);
+			player.bulkAddToQueue(
+				allVideos.map((v) => v.url),
+				false,
+				next ? 0 : undefined,
+			);
+			resultUrl = playlist.url;
+
+			// searching on YouTube
 		} else {
 			const cached = client.cache.get(input);
 			if (cached?.isVideo()) {
-				videoUrl = cached.value.url;
+				resultUrl = cached.value.url;
 			} else {
 				const query = await search(input, {
 					limit: 1,
@@ -133,12 +142,12 @@ export default {
 					);
 				}
 				client.cache.set(input, query[0], "video");
-				videoUrl = query[0].url;
+				resultUrl = query[0].url;
 			}
+			player.addToQueue(resultUrl, false, next ? 0 : undefined);
 		}
 
-		player.addToQueue(videoUrl);
-		// interaction content
+		// start playing if the player is not playing
 		if (!player.isPlaying) {
 			dcb.log("Started to play music");
 			try {
@@ -182,6 +191,7 @@ export default {
 			}
 		}
 
+		// respond to interaction
 		dcb.log("Searched URL and added URL to queue");
 		return await interaction.editReply({
 			content: languageText(
@@ -189,7 +199,7 @@ export default {
 				language,
 				{
 					input,
-					url: videoUrl,
+					url: resultUrl,
 				},
 			),
 		});
