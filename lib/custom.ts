@@ -148,6 +148,7 @@ export interface QueueItem {
 export interface AudioPlayerSetting {
 	autoSkipSegment: boolean;
 	looping: boolean;
+	volumeNormalization: boolean;
 }
 
 export class CustomAudioPlayer extends AudioPlayer {

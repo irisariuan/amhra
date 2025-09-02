@@ -314,7 +314,11 @@ export function joinVoice(
 			// Seems to be reconnecting to a new channel - ignore disconnect
 		} catch {
 			// Seems to be a real disconnect which SHOULDN'T be recovered from
-			connection.destroy();
+			try {
+				connection.destroy();
+			} catch {
+				globalApp.err("Failed to destroy connection");
+			}
 		}
 	});
 	if (record) {
