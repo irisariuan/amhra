@@ -427,12 +427,19 @@ export class CustomAudioPlayer extends AudioPlayer {
 		}
 		return super.unpause();
 	}
-	bulkAddToQueue(links: string[], repeating = false, insertIndex?: number) {
+	bulkAddToQueue(
+		links: string[],
+		repeating = false,
+		insertIndex?: number,
+		maxPrefetch = 5,
+	) {
 		if (
 			setting.USE_YOUTUBE_DL &&
 			(this.queue.length > 0 || this.isPlaying)
 		) {
-			for (const link of links) {
+			for (const link of maxPrefetch >= 0
+				? links.slice(0, maxPrefetch)
+				: links) {
 				prefetch(link);
 			}
 		}
@@ -451,10 +458,16 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.queue.push(...items);
 	}
 
-	addToQueue(link: string, repeating = false, insertIndex?: number) {
+	addToQueue(
+		link: string,
+		repeating = false,
+		insertIndex?: number,
+		allowPrefetch = true,
+	) {
 		if (
 			setting.USE_YOUTUBE_DL &&
-			(this.queue.length > 0 || this.isPlaying)
+			(this.queue.length > 0 || this.isPlaying) &&
+			allowPrefetch
 		) {
 			prefetch(link);
 		}
