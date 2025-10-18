@@ -82,7 +82,7 @@ export async function prefetch(url: string, force = false) {
 		stdio: ["ignore", "pipe", "inherit"],
 	});
 	const rawOutputStream = spawnedProcess.stdout;
-	const copiedStream = copyStreamSafe(rawOutputStream, "prefetch");
+	const copiedStream = copyStreamSafe("prefetch", rawOutputStream);
 	const writeStream = createWriteStream(
 		`${process.cwd()}/cache/${id}.temp.music`,
 	);
@@ -151,8 +151,8 @@ export async function prefetch(url: string, force = false) {
 }
 
 function copyStreamSafe(
+	tag: string,
 	rawStream: Readable,
-	reason: string,
 	preData?: (string | Buffer<ArrayBufferLike>)[],
 ): Readable {
 	const passThrough = new PassThrough();
@@ -163,7 +163,7 @@ function copyStreamSafe(
 	}
 	const dataHandler = (data: any) => {
 		if (!passThrough.writable) {
-			globalApp.warn("Copied stream not writable, called by " + reason);
+			globalApp.warn("Copied stream not writable, called by " + tag);
 			return rawStream.removeListener("data", dataHandler);
 		}
 		passThrough.write(data);
@@ -231,7 +231,7 @@ export function clipAudio(source: Readable, start: number, end?: number) {
 	);
 	return {
 		buffer: promise,
-		copied: copyStreamSafe(proc.stdout, "clipAudio"),
+		copied: copyStreamSafe("clipAudio", proc.stdout),
 		proc,
 	};
 }
@@ -276,8 +276,8 @@ export async function createYtDlpStream(
 		const resultStream = streams.get(id);
 		if (resultStream?.rawStream) {
 			return copyStreamSafe(
-				resultStream.rawStream,
 				"createYtDlpStream (Cached or downloading)",
+				resultStream.rawStream,
 				resultStream.data,
 			);
 		}
@@ -309,5 +309,5 @@ async function getFileCachedStream(id: string) {
 		data,
 	});
 	dcb.log(`Stream created: ${id}`);
-	return copyStreamSafe(stream, "getFileCachedStream", data);
+	return copyStreamSafe("getFileCachedStream", stream, data);
 }
