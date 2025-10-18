@@ -47,7 +47,7 @@ const setting = readSetting();
 				);
 			}
 		};
-		if (!process.argv.includes("--no-version-warning")) {
+		if (process.argv.includes("--version-warning")) {
 			watch("index.ts", { recursive: true }, watchHandler);
 			watch("lib", { recursive: true }, watchHandler);
 			watch("commands", { recursive: true }, watchHandler);

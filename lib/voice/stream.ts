@@ -149,7 +149,6 @@ export async function prefetch(url: string, force = false) {
 function copyStreamSafe(
 	rawStream: Readable,
 	preData?: (string | Buffer<ArrayBufferLike>)[],
-	safeRun = false,
 ): Readable {
 	const passThrough = new PassThrough();
 	if (preData) {
@@ -159,9 +158,8 @@ function copyStreamSafe(
 	}
 	const dataHandler = (data: any) => {
 		if (!passThrough.writable) {
-			globalApp.warn(`Copied stream not writable`);
-			if (safeRun) rawStream.removeListener("data", dataHandler);
-			return;
+			globalApp.warn("Copied stream not writable");
+			return rawStream.removeListener("data", dataHandler);
 		}
 		passThrough.write(data);
 	};
