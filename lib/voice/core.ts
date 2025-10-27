@@ -317,7 +317,9 @@ export function joinVoice(
 			try {
 				connection.destroy();
 			} catch {
-				globalApp.err("Failed to destroy connection");
+				globalApp.err(
+					"[Auto Disconnection] Failed to destroy connection",
+				);
 			}
 		}
 	});

@@ -54,6 +54,7 @@ process.on("SIGINT", async () => {
 
 /**
  * Return the streams from yt-dlp, pre-streamed to file
+ * Used for prefetching earlier or get the prefetching/fetched stream
  */
 export async function prefetch(url: string, force = false) {
 	const id = extractID(url);
@@ -86,27 +87,20 @@ export async function prefetch(url: string, force = false) {
 	const writeStream = createWriteStream(
 		`${process.cwd()}/cache/${id}.temp.music`,
 	);
+	
+	// Collect data chunks for in-memory caching
 	const data: (string | Buffer)[] = [];
 	rawOutputStream.pipe(writeStream);
-
+	rawOutputStream.on("data", (chunk) => {
+		data.push(chunk);
+	});
+	
+	// Handle errors and completion
 	const promise = new Promise<void>((resolve, err) => {
-		writeStream.on("close", async () => {
-			dcb.log(`Download completed: ${id}`);
-			streams.delete(id);
-			if (existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
-				await rename(
-					`${process.cwd()}/cache/${id}.temp.music`,
-					`${process.cwd()}/cache/${id}.music`,
-				);
-				await updateLastUsed([id]);
-			} else {
-				globalApp.warn(`Temp file not found: ${id}`);
-			}
-			await reviewCaches(streams.keys().toArray());
-			resolve();
-		});
 		const errorHandler = async (error: NodeJS.ErrnoException) => {
-			globalApp.err(`Write error: ${id}`, error);
+			rawOutputStream.destroy();
+			writeStream.destroy();
+			globalApp.err(`Error occurred while prefetching ${id}`, error);
 			streams.delete(id);
 			if (existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
 				globalApp.err(
@@ -127,12 +121,25 @@ export async function prefetch(url: string, force = false) {
 			await reviewCaches(streams.keys().toArray());
 			err(error);
 		};
+		writeStream.on("close", async () => {
+			dcb.log(`Download completed: ${id}`);
+			streams.delete(id);
+			if (existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
+				await rename(
+					`${process.cwd()}/cache/${id}.temp.music`,
+					`${process.cwd()}/cache/${id}.music`,
+				);
+				await updateLastUsed([id]);
+			} else {
+				globalApp.warn(`Temp file not found: ${id}`);
+			}
+			await reviewCaches(streams.keys().toArray());
+			resolve();
+		});
+
 		rawOutputStream.on("error", errorHandler);
 		writeStream.on("error", errorHandler);
-	});
-
-	rawOutputStream.on("data", (chunk) => {
-		data.push(chunk);
+		spawnedProcess.on("error", errorHandler);
 	});
 
 	streams.set(id, {
@@ -140,6 +147,8 @@ export async function prefetch(url: string, force = false) {
 		promise,
 		data,
 	});
+	
+	// Wait for the first data chunk to ensure the stream is active
 	await new Promise<void>((resolve) => {
 		rawOutputStream.once("data", resolve);
 	});
@@ -236,6 +245,9 @@ export function clipAudio(source: Readable, start: number, end?: number) {
 	};
 }
 
+/*
+ * Create a Readable stream from yt-dlp, with caching
+ */
 export async function createYtDlpStream(
 	url: string,
 	force = false,
