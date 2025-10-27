@@ -6,6 +6,7 @@ import { exp, globalApp } from "./lib/misc";
 import { initServer } from "./lib/server/core";
 import { readSetting } from "./lib/setting";
 import { watch } from "node:fs";
+import { updateYtdlpVersion } from "./lib/voice/ytdlp";
 
 const setting = readSetting();
 
@@ -51,6 +52,12 @@ const setting = readSetting();
 			watch("index.ts", { recursive: true }, watchHandler);
 			watch("lib", { recursive: true }, watchHandler);
 			watch("commands", { recursive: true }, watchHandler);
+		}
+		if (setting.USE_YOUTUBE_DL && !process.argv.includes("--no-ytdlp-update")) {
+			await updateYtdlpVersion();
+			setInterval(async () => {
+				await updateYtdlpVersion()
+			}, 1000 * 60 * 60 * 24 * 5); // every 5 days
 		}
 	}
 
