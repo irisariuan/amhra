@@ -68,7 +68,7 @@ export class CustomClient extends Client {
 	}
 	clearPlayers() {
 		for (const player of this.player.values()) {
-			player.clearIntervals();
+			player.clearVoiceStateTimeouts();
 			player.cleanStop();
 		}
 		this.player.clear();
@@ -288,7 +288,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		return false;
 	}
 
-	clearIntervals() {
+	clearVoiceStateTimeouts() {
 		for (const id of this.voiceStateTimeoutArray) {
 			clearInterval(id);
 		}
@@ -356,7 +356,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.startFrom = resource.startFrom ?? 0;
 		this.updateStartTime();
 		if (!replay) this.history.push(resource.url);
-		this.clearIntervals();
+		this.clearVoiceStateTimeouts();
 		this.play(resource.resource);
 
 		this.clearSongTimeouts();

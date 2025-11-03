@@ -107,7 +107,7 @@ function createAudioPlayer(
 		try {
 			dcb.log("Finished music playing");
 			if (player.queue.length > 0) {
-				player.clearIntervals();
+				player.clearVoiceStateTimeouts();
 				const nextUrl = player.getNextQueueItem();
 				if (nextUrl) {
 					const resource = await createResource(nextUrl);
@@ -127,15 +127,27 @@ function createAudioPlayer(
 					}
 				} else {
 					globalApp.err("No next URL found");
+					player.newVoiceStateTimeout(
+						timeoutDetection,
+						setting.AUTO_LEAVE ?? 15 * 60 * 1000,
+					);
 				}
 			} else {
 				player.resetPlaying();
 				dcb.log("Finished playing all music");
 				player.cleanStop();
+				player.newVoiceStateTimeout(
+					timeoutDetection,
+					setting.AUTO_LEAVE ?? 15 * 60 * 1000,
+				);
 			}
 		} catch (error) {
 			dcb.log(`Error: ${error}`);
 			player.resetPlaying();
+			player.newVoiceStateTimeout(
+				timeoutDetection,
+				setting.AUTO_LEAVE ?? 15 * 60 * 1000,
+			);
 		}
 	});
 	return player;
