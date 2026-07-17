@@ -4,9 +4,9 @@ import { SlashCommandBuilder } from "discord.js";
 import {
 	getAudioPlayer,
 	getConnection,
+	getVideoInfo,
 	type TransformableResource,
 } from "../../lib/voice/core";
-import { video_info } from "play-dl";
 import { dcb } from "../../lib/misc";
 import { pageSize, sendPaginationMessage } from "../../lib/page";
 import { languageText } from "../../lib/language";
@@ -71,8 +71,9 @@ export default {
 						dcb.log("Founded cache, using cached URL");
 					}
 					const data = cachedUrl?.isVideo()
-						? cachedUrl?.value
-						: (await video_info(songs[i].url)).video_details;
+						? cachedUrl.value
+						: (await getVideoInfo(songs[i].url))?.video_details;
+					if (!data) continue;
 					if (!cachedUrl) {
 						client.cache.set(songs[i].url, data, "video");
 					}

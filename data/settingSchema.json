@@ -78,7 +78,7 @@
 		},
 		"USE_YOUTUBE_DL": {
 			"type": "boolean",
-			"description": "Use youtube-dl instead of play-dl"
+			"description": "Use yt-dlp instead of the Node.js audio stream"
 		},
 		"SEEK": {
 			"type": "boolean",

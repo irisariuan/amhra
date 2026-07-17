@@ -26,12 +26,13 @@ import NodeCache from "node-cache";
 import fs from "node:fs";
 import type { Readable } from "node:stream";
 import {
-    extractID,
-    stream,
-    video_info,
-    yt_validate,
-    type InfoData,
-} from "play-dl";
+	getYouTubeVideoId,
+	getYouTubeVideoInfo,
+	isYouTubePlaylist,
+	isYouTubeUrl,
+	isYouTubeVideo,
+	type YouTubeVideoInfo,
+} from "../youtube";
 import { CustomAudioPlayer, type CustomClient, type Resource } from "../custom";
 import { Language } from "../interaction";
 import { dcb, globalApp } from "../misc";
@@ -239,17 +240,25 @@ export async function createStream(
 		// const stream = ytdl(url, { filter: 'audioonly', quality: 'highestaudio', begin: seek, agent })
 		return { stream, type: StreamType.Arbitrary };
 	}
-	const source = await stream(url, { seek });
-	return { stream: source.stream, type: source.type as StreamType };
+	const source = ytdl(url, {
+		filter: "audioonly",
+		quality: "highestaudio",
+		...(seek && seek > 0 ? { begin: seek } : {}),
+		agent,
+	});
+	return { stream: source, type: StreamType.Arbitrary };
 }
 
-export async function getVideoInfo(url: string): Promise<InfoData | null> {
-	if (!isYoutube(url)) return null;
-	const id = extractID(url);
+export async function getVideoInfo(
+	url: string,
+): Promise<YouTubeVideoInfo | null> {
+	if (!isVideo(url)) return null;
+	const id = getYouTubeVideoId(url);
+	if (!id) return null;
 	if (videoInfoCache.get(id)) {
-		return videoInfoCache.get(id) as InfoData;
+		return videoInfoCache.get(id) as YouTubeVideoInfo;
 	}
-	const videoInfo = await video_info(id);
+	const videoInfo = await getYouTubeVideoInfo(url, agent);
 	videoInfoCache.set(id, videoInfo);
 	return videoInfo;
 }
@@ -267,7 +276,7 @@ export async function createResource(
 		inputType: source.type as StreamType,
 		inlineVolume: true,
 	});
-	const segments = await getSegments(extractID(url), [
+	const segments = await getSegments(getYouTubeVideoId(url) ?? "", [
 		SegmentCategory.MusicOffTopic,
 	]);
 	if (!detail.channel || !detail.title) {
@@ -370,15 +379,15 @@ export function getBotVoiceChannel(
 }
 
 export function isYoutube(query: string) {
-	return yt_validate(query) !== false;
+	return isYouTubeUrl(query);
 }
 
 export function isVideo(link: string) {
-	return yt_validate(link) === "video";
+	return isYouTubeVideo(link);
 }
 
 export function isPlaylist(link: string) {
-	return yt_validate(link) === "playlist";
+	return isYouTubePlaylist(link);
 }
 
 // https://stackoverflow.com/questions/3733227/javascript-seconds-to-minutes-and-seconds

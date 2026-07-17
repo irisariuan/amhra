@@ -1,7 +1,7 @@
 import type { AudioResource } from "@discordjs/voice";
 import { AudioPlayer, type CreateAudioPlayerOptions } from "@discordjs/voice";
 import { Channel, Client, Message, type ClientOptions } from "discord.js";
-import { type YouTubeChannel, type YouTubeVideo } from "play-dl";
+import { type YouTubeChannel, type YouTubeVideo } from "./youtube";
 import { SearchCache } from "./cache";
 import { readSetting } from "./setting";
 import { createResource, Stream } from "./voice/core";

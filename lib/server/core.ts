@@ -3,7 +3,7 @@ import chalk from "chalk";
 import express, { type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import NodeCache from "node-cache";
-import { search, video_info } from "play-dl";
+import { getYouTubeVideoInfo, searchYouTube } from "../youtube";
 import type { CustomClient } from "../custom";
 import {
 	getPlayingGuildsForAccount,
@@ -290,7 +290,7 @@ export async function initServer(client: CustomClient) {
 		basicCheckBuilder(["query"]),
 		async (req, res) => {
 			exp.log(`Queried ${req.body.query}`);
-			const fetched = await search(req.body.query, { limit: 1 }).catch(
+			const fetched = await searchYouTube(req.body.query).catch(
 				() => null,
 			);
 			if (!fetched || !fetched[0]) {
@@ -319,10 +319,10 @@ export async function initServer(client: CustomClient) {
 				if (videoCache.has(req.body.url)) {
 					return res.send(JSON.stringify(videoCache.get(req.body.url)));
 				}
-				const video = (await video_info(req.body.url)).video_details;
+				const video = (await getYouTubeVideoInfo(req.body.url)).video_details;
 				if (!video) return res.sendStatus(404);
 				videoCache.set(req.body.url, video);
-				return res.send(JSON.stringify(video.toJSON()));
+				return res.send(JSON.stringify(video));
 			} catch {
 				res.sendStatus(500);
 			}

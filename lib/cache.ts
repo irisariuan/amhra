@@ -1,10 +1,10 @@
-import { type YouTubePlayList, yt_validate, type YouTubeVideo } from 'play-dl'
+import { type YouTubePlaylist, type YouTubeVideo } from "./youtube";
 
-export interface SearchCacheData<T extends YouTubeVideo | YouTubePlayList> {
+export interface SearchCacheData<T extends YouTubeVideo | YouTubePlaylist> {
     value: T,
     type: T extends YouTubeVideo ? 'video' : 'playlist',
     isVideo: () => this is SearchCacheData<YouTubeVideo>,
-    isPlaylist: () => this is SearchCacheData<YouTubePlayList>,
+    isPlaylist: () => this is SearchCacheData<YouTubePlaylist>,
     ttl: number
 }
 
@@ -14,8 +14,8 @@ export interface SearchCacheOption {
 }
 
 export class SearchCache {
-    cache: Map<string, SearchCacheData<YouTubeVideo> | SearchCacheData<YouTubePlayList>>
-    urlCache: Map<string, SearchCacheData<YouTubeVideo> | SearchCacheData<YouTubePlayList>>
+    cache: Map<string, SearchCacheData<YouTubeVideo> | SearchCacheData<YouTubePlaylist>>
+    urlCache: Map<string, SearchCacheData<YouTubeVideo> | SearchCacheData<YouTubePlaylist>>
     maxCache: number
     maxCacheNumber: number
 
@@ -38,8 +38,9 @@ export class SearchCache {
         }
         return null
     }
-    set<T extends YouTubeVideo | YouTubePlayList>(key: string, value: T, type: T extends YouTubeVideo ? 'video' : 'playlist', ttl = 3 * 60 * 1000): boolean {
-        if (yt_validate(key) === false) {
+    set<T extends YouTubeVideo | YouTubePlaylist>(key: string, value: T, type: T extends YouTubeVideo ? 'video' : 'playlist', ttl = 3 * 60 * 1000): boolean {
+        const query = key.trim()
+        if (!query) {
             return false
         }
         // auto deletion after reaching maxCacheNumber
@@ -53,8 +54,8 @@ export class SearchCache {
             type,
             isVideo: () => type === 'video',
             isPlaylist: () => type === 'playlist'
-        } as SearchCacheData<YouTubeVideo> | SearchCacheData<YouTubePlayList>
-        this.cache.set(key, data)
+        } as SearchCacheData<YouTubeVideo> | SearchCacheData<YouTubePlaylist>
+        this.cache.set(query, data)
         if (value.url) {
             this.urlCache.set(value.url, data)
         }

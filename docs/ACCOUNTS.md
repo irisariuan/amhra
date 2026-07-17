@@ -63,6 +63,6 @@ scope; Discord-linked web accounts → guilds they are a member of.
 ## Auto song suggestions (radio)
 
 `AccountSetting.autoSuggest` and the per-player `autoSuggest` flag enable radio mode: when a
-player's queue empties, a related track is auto-appended (source: YouTube related videos via
-`play-dl`, excluding recent history). The dashboard also lists clickable suggestions from
+player's queue empties, a suggested track is auto-appended (source: YouTube search,
+excluding recent history). The dashboard also lists clickable suggestions from
 `/api/suggestions/:guildId`. Toggle radio from the dashboard (`autoSuggest` song action).

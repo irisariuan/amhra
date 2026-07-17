@@ -8,7 +8,7 @@ import {
 import { rename, unlink } from "node:fs/promises";
 import { PassThrough, Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { extractID } from "play-dl";
+import { getYouTubeVideoId } from "../youtube";
 import { dcb, globalApp } from "../misc";
 import { updateLastUsed, reviewCaches } from "./cache";
 
@@ -57,7 +57,8 @@ process.on("SIGINT", async () => {
  * Used for prefetching earlier or get the prefetching/fetched stream
  */
 export async function prefetch(url: string, force = false) {
-	const id = extractID(url);
+	const id = getYouTubeVideoId(url);
+	if (!id) throw new Error(`Invalid YouTube video URL: ${url}`);
 	const processedUrl = `https://www.youtube.com/watch?v=${id}`;
 	if (
 		(existsSync(`${process.cwd()}/cache/${id}.music`) || streams.has(id)) &&
@@ -252,7 +253,8 @@ export async function createYtDlpStream(
 	url: string,
 	force = false,
 ): Promise<Readable> {
-	const id = extractID(url);
+	const id = getYouTubeVideoId(url);
+	if (!id) throw new Error(`Invalid YouTube video URL: ${url}`);
 	const fetchedStream = streams.get(id);
 	if (fetchedStream && !force) {
 		// it is still being fetched or already fetched in current process

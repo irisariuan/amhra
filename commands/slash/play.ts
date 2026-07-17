@@ -1,7 +1,11 @@
 import { type Command } from "../../lib/interaction";
 
 import { SlashCommandBuilder } from "discord.js";
-import { type YouTubePlayList, playlist_info, search } from "play-dl";
+import {
+	getYouTubePlaylist,
+	searchYouTube,
+	type YouTubePlaylist,
+} from "../../lib/youtube";
 import { languageText } from "../../lib/language";
 import { dcb, globalApp, misc } from "../../lib/misc";
 import {
@@ -104,12 +108,12 @@ export default {
 			resultUrl = input;
 			player.addToQueue(resultUrl, false, next ? 0 : undefined);
 		} else if (isPlaylist(input)) {
-			let playlist: YouTubePlayList;
+			let playlist: YouTubePlaylist;
 			const cached = client.cache.get(input);
 			if (cached?.isPlaylist()) {
 				playlist = cached.value;
 			} else {
-				playlist = await playlist_info(input, { incomplete: true });
+				playlist = await getYouTubePlaylist(input);
 				client.cache.set(input, playlist, "playlist");
 			}
 			const allVideos = await playlist.all_videos();
@@ -131,9 +135,7 @@ export default {
 			if (cached?.isVideo()) {
 				resultUrl = cached.value.url;
 			} else {
-				const query = await search(input, {
-					limit: 1,
-				});
+				const query = await searchYouTube(input);
 				if (!query.length) {
 					return interaction.editReply(
 						misc.errorMessageObj(language),

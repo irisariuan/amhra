@@ -1,7 +1,7 @@
 import z from "zod";
 import { SongEditType } from "./event";
 import { YoutubeVideoRegex } from "./core";
-import { yt_validate } from "play-dl";
+import { isYouTubeVideo } from "../youtube";
 import { Language } from "../interaction";
 
 // Queue item (from custom.ts)
@@ -66,7 +66,7 @@ const AddSongSchema = z.object({
 		url: z
 			.string()
 			.refine(
-				(u) => YoutubeVideoRegex.test(u) && yt_validate(u) === "video",
+				(u) => YoutubeVideoRegex.test(u) && isYouTubeVideo(u),
 				"Must be a valid YouTube video URL",
 			),
 		force: z.boolean().default(false),

@@ -1,4 +1,4 @@
-import { video_info, yt_validate } from "play-dl";
+import { getYouTubeVideoInfo, searchYouTube } from "../youtube";
 import { globalApp } from "../misc";
 
 export interface Suggestion {
@@ -8,42 +8,29 @@ export interface Suggestion {
 	channel?: string;
 }
 
-const YT_WATCH = "https://www.youtube.com/watch?v=";
-
 /**
- * Related-track suggestions for a seed video, drawn from YouTube's own related
- * list, excluding anything already in `exclude` (history/queue). Ordered by
- * YouTube's relevance; capped at `limit`.
+ * Finds tracks for a seed video using YouTube search, excluding recently played
+ * URLs. This is intentionally best-effort because suggestions are optional.
  */
 export async function getSuggestions(
 	seedUrl: string,
 	exclude: string[] = [],
 	limit = 10,
 ): Promise<Suggestion[]> {
-	if (yt_validate(seedUrl) !== "video") return [];
 	try {
-		const info = await video_info(seedUrl);
+		const info = await getYouTubeVideoInfo(seedUrl);
+		const seed = info.video_details;
 		const excluded = new Set(exclude);
-		const related = info.related_videos ?? [];
-		const suggestions: Suggestion[] = [];
-		for (const id of related) {
-			const url = id.startsWith("http") ? id : `${YT_WATCH}${id}`;
-			if (excluded.has(url)) continue;
-			try {
-				const detail = (await video_info(url)).video_details;
-				if (!detail?.title) continue;
-				suggestions.push({
-					url,
-					title: detail.title,
-					durationInSec: detail.durationInSec,
-					channel: detail.channel?.name ?? undefined,
-				});
-			} catch {
-				// Skip individual videos that fail to resolve.
-			}
-			if (suggestions.length >= limit) break;
-		}
-		return suggestions;
+		const results = await searchYouTube(`${seed.title} ${seed.channel.name}`);
+		return results
+			.filter(video => !excluded.has(video.url) && video.id !== seed.id)
+			.slice(0, limit)
+			.map(video => ({
+				url: video.url,
+				title: video.title,
+				durationInSec: video.durationInSec,
+				channel: video.channel.name || undefined,
+			}));
 	} catch (err) {
 		globalApp.warn(`Failed to fetch suggestions: ${err}`);
 		return [];
@@ -51,8 +38,7 @@ export async function getSuggestions(
 }
 
 /**
- * Picks a single related track to auto-append when the queue empties (radio
- * mode), avoiding recently played songs. Returns null if none is available.
+ * Picks a single suggested track to auto-append when the queue empties.
  */
 export async function pickRadioTrack(
 	seedUrl: string,
