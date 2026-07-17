@@ -3,7 +3,7 @@ import chalk from "chalk";
 import express, { type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import NodeCache from "node-cache";
-import { getYouTubeVideoInfo, searchYouTube } from "../youtube";
+import { getYouTubeVideoInfo, isYouTubeVideo, searchYouTube } from "../youtube";
 import type { CustomClient } from "../custom";
 import {
 	getPlayingGuildsForAccount,
@@ -18,15 +18,11 @@ import {
 	finishAuthentication,
 	finishRegistration,
 } from "../auth/webauthn";
-import {
-	createSession,
-	deleteSession,
-	collectGarbage,
-} from "../db/session";
+import { createSession, deleteSession, collectGarbage } from "../db/session";
 import { getSuggestions } from "../voice/suggest";
 import { load } from "../log/load";
 import { exp, globalApp, misc } from "../misc";
-import { readSetting, reloadSetting } from "../setting";
+import { readSetting, reloadSetting, writeJsonSync } from "../setting";
 import {
 	accountCanAccessGuild,
 	auth,
@@ -36,14 +32,29 @@ import {
 	parseAuthScheme,
 } from "./auth";
 import { ActionType, event } from "./event";
-import { SongEditRequestSchema, UserSettingUploadSchema } from "./schema";
+import {
+	GlobalSettingSchema,
+	SongEditRequestSchema,
+	UserSettingUploadSchema,
+} from "./schema";
 import { handleSongInterruption } from "./songEdit";
 import editAccountSetting, { getAccountSetting } from "../db/accountSetting";
 
-export const YoutubeVideoRegex =
-	/^http(?:s?):\/\/(?:www\.)?youtu(?:be\.com\/watch\?v=|\.be\/)([\w\-_]*)(&(amp;)?[\w?=]*)?$/;
-
 const setting = readSetting(`${process.cwd()}/data/setting.json`);
+const privateGlobalSettingKeys = new Set([
+	"TOKEN",
+	"TESTING_TOKEN",
+	"OAUTH_TOKEN",
+	"AUTH_TOKEN",
+]);
+
+function publicGlobalSettings(settings: object) {
+	return Object.fromEntries(
+		Object.entries(settings).filter(
+			([key]) => !privateGlobalSettingKeys.has(key),
+		),
+	);
+}
 
 /** Public projection of an account for the dashboard. */
 function publicAccount(account: {
@@ -107,12 +118,16 @@ export async function initServer(client: CustomClient) {
 
 	// ---- Authentication: passkeys, sessions, Discord linking ----
 
-	app.post("/api/auth/passkey/register/begin", jsonParser, async (req, res) => {
-		const { options, challengeId } = await beginRegistration(
-			req.body?.displayName,
-		);
-		res.json({ challengeId, options });
-	});
+	app.post(
+		"/api/auth/passkey/register/begin",
+		jsonParser,
+		async (req, res) => {
+			const { options, challengeId } = await beginRegistration(
+				req.body?.displayName,
+			);
+			res.json({ challengeId, options });
+		},
+	);
 
 	app.post(
 		"/api/auth/passkey/register/finish",
@@ -161,7 +176,9 @@ export async function initServer(client: CustomClient) {
 		async (_req, res) => {
 			const account = getRequestAccount(res);
 			if (!account) return res.sendStatus(401);
-			const { options, challengeId } = await beginAddCredential(account.id);
+			const { options, challengeId } = await beginAddCredential(
+				account.id,
+			);
 			res.json({ challengeId, options });
 		},
 	);
@@ -255,17 +272,71 @@ export async function initServer(client: CustomClient) {
 		},
 	);
 
+	// ---- Global bot configuration (admin-only) ----
+
+	app.get("/api/admin/settings", auth(Permission.Admin, false), (_req, res) =>
+		res.json(publicGlobalSettings(readSetting())),
+	);
+
+	app.post(
+		"/api/admin/settings",
+		jsonParser,
+		auth(Permission.Admin, false),
+		(req, res) => {
+			const patchResult = GlobalSettingSchema.partial().safeParse(
+				req.body,
+			);
+			if (!patchResult.success) return res.sendStatus(400);
+
+			// Only accept fields described by settingSchema.json. The current
+			// configuration is preserved so undocumented legacy values survive edits.
+			const patch = Object.fromEntries(
+				Object.keys(GlobalSettingSchema.shape)
+					.filter(
+						(key) =>
+							key in patchResult.data &&
+							!privateGlobalSettingKeys.has(key),
+					)
+					.map((key) => [
+						key,
+						patchResult.data[key as keyof typeof patchResult.data],
+					]),
+			);
+			const nextResult = GlobalSettingSchema.safeParse({
+				...readSetting(),
+				...patch,
+			});
+			if (!nextResult.success) return res.sendStatus(400);
+
+			try {
+				writeJsonSync(
+					`${process.cwd()}/data/setting.json`,
+					nextResult.data,
+				);
+				reloadSetting();
+				return res.json(publicGlobalSettings(nextResult.data));
+			} catch (error) {
+				exp.error(`Failed to save global settings: ${error}`);
+				return res.sendStatus(500);
+			}
+		},
+	);
+
 	app.post(
 		"/api/action",
 		jsonParser,
 		auth(Permission.Admin, false),
 		basicCheckBuilder(["action"]),
 		(req, res) => {
-			const formatter = misc.prefixFormatter(chalk.bgGrey(`(IP: ${req.ip})`));
+			const formatter = misc.prefixFormatter(
+				chalk.bgGrey(`(IP: ${req.ip})`),
+			);
 			exp.log(formatter("Received action request"));
 			switch (req.body.action as ActionType) {
 				case ActionType.Exit:
-					globalApp.important(formatter("Received exit request, exiting..."));
+					globalApp.important(
+						formatter("Received exit request, exiting..."),
+					);
 					res.sendStatus(200);
 					return process.exit(0);
 				case ActionType.ReloadCommands:
@@ -312,14 +383,17 @@ export async function initServer(client: CustomClient) {
 		auth(Permission.User),
 		basicCheckBuilder(["url"]),
 		async (req, res) => {
-			if (!req.body.url || !YoutubeVideoRegex.test(req.body.url)) {
+			if (!req.body.url || !isYouTubeVideo(req.body.url)) {
 				return res.sendStatus(400);
 			}
 			try {
 				if (videoCache.has(req.body.url)) {
-					return res.send(JSON.stringify(videoCache.get(req.body.url)));
+					return res.send(
+						JSON.stringify(videoCache.get(req.body.url)),
+					);
 				}
-				const video = (await getYouTubeVideoInfo(req.body.url)).video_details;
+				const video = (await getYouTubeVideoInfo(req.body.url))
+					.video_details;
 				if (!video) return res.sendStatus(404);
 				videoCache.set(req.body.url, video);
 				return res.send(JSON.stringify(video));
@@ -337,7 +411,11 @@ export async function initServer(client: CustomClient) {
 			const account = getRequestAccount(res);
 			if (
 				!account ||
-				!(await accountCanAccessGuild(client, account, req.params.guildId))
+				!(await accountCanAccessGuild(
+					client,
+					account,
+					req.params.guildId,
+				))
 			) {
 				return res.sendStatus(403);
 			}
@@ -361,51 +439,69 @@ export async function initServer(client: CustomClient) {
 		},
 	);
 
-	app.get("/api/playingGuildIds", auth(Permission.User), async (_req, res) => {
-		const account = getRequestAccount(res);
-		if (!account) return res.sendStatus(401);
-		if (hasPermission(account, Permission.Admin)) {
-			const content = await Promise.all(
-				Array.from(client.player.keys()).map(async id => ({
-					id,
-					name: (await client.guilds.fetch(id)).name ?? null,
-				})),
-			);
-			return res.json({ content });
-		}
-		if (account.type === "anonymous") {
-			const content = await Promise.all(
-				account.guildScope
-					.filter(id => client.player.has(id))
-					.map(async id => ({
+	app.get(
+		"/api/playingGuildIds",
+		auth(Permission.User),
+		async (_req, res) => {
+			const account = getRequestAccount(res);
+			if (!account) return res.sendStatus(401);
+			if (hasPermission(account, Permission.Admin)) {
+				const content = await Promise.all(
+					Array.from(client.player.keys()).map(async (id) => ({
 						id,
 						name: (await client.guilds.fetch(id)).name ?? null,
 					})),
-			);
-			return res.json({ content });
-		}
-		return res.json({ content: await getPlayingGuildsForAccount(account.id) });
-	});
+				);
+				return res.json({ content });
+			}
+			if (account.type === "anonymous") {
+				const content = await Promise.all(
+					account.guildScope
+						.filter((id) => client.player.has(id))
+						.map(async (id) => ({
+							id,
+							name: (await client.guilds.fetch(id)).name ?? null,
+						})),
+				);
+				return res.json({ content });
+			}
+			return res.json({
+				content: await getPlayingGuildsForAccount(account.id),
+			});
+		},
+	);
 
-	app.get("/api/guildIds/all", auth(Permission.Admin, false), async (_req, res) => {
-		const content = (await client.guilds.fetch()).map(v => ({
-			id: v.id,
-			name: v.name,
-		}));
-		res.json({ content });
-	});
+	app.get(
+		"/api/guildIds/all",
+		auth(Permission.Admin, false),
+		async (_req, res) => {
+			const content = (await client.guilds.fetch()).map((v) => ({
+				id: v.id,
+				name: v.name,
+			}));
+			res.json({ content });
+		},
+	);
 
-	app.get("/api/song/get/:guildId", auth(Permission.User), async (req, res) => {
-		const account = getRequestAccount(res);
-		if (
-			!account ||
-			!(await accountCanAccessGuild(client, account, req.params.guildId))
-		) {
-			return res.sendStatus(403);
-		}
-		const data = client.player.get(req.params.guildId)?.getData();
-		return res.send(JSON.stringify(data ?? null));
-	});
+	app.get(
+		"/api/song/get/:guildId",
+		auth(Permission.User),
+		async (req, res) => {
+			const account = getRequestAccount(res);
+			if (
+				!account ||
+				!(await accountCanAccessGuild(
+					client,
+					account,
+					req.params.guildId,
+				))
+			) {
+				return res.sendStatus(403);
+			}
+			const data = client.player.get(req.params.guildId)?.getData();
+			return res.send(JSON.stringify(data ?? null));
+		},
+	);
 
 	// ---- Per-account settings ----
 
@@ -436,7 +532,9 @@ export async function initServer(client: CustomClient) {
 		jsonParser,
 		auth(Permission.HasSettings, false),
 		async (req, res) => {
-			const { success, data } = UserSettingUploadSchema.safeParse(req.body);
+			const { success, data } = UserSettingUploadSchema.safeParse(
+				req.body,
+			);
 			const account = getRequestAccount(res);
 			if (!success || !account) return res.sendStatus(400);
 			await editAccountSetting(account.id, {
@@ -446,7 +544,7 @@ export async function initServer(client: CustomClient) {
 				autoSuggest: data.autoSuggest,
 			})
 				.then(() => res.sendStatus(200))
-				.catch(err => {
+				.catch((err) => {
 					exp.error(`Failed to edit account setting: ${err}`);
 					res.sendStatus(500);
 				});

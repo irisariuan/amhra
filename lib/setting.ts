@@ -16,12 +16,16 @@ export function reloadSetting(
 	reloadLanguage = true,
 	file = `${process.cwd()}/data/setting.json`,
 ) {
-	setting = JSON.parse(readFileSync(file, "utf8"));
+	const nextSetting = JSON.parse(readFileSync(file, "utf8")) as Setting;
+	// Modules commonly retain the object returned by readSetting(). Update that
+	// object instead of replacing it so a runtime reload reaches those modules.
+	if (setting) Object.assign(setting, nextSetting);
+	else setting = nextSetting;
 	if (reloadLanguage) reloadLanguages();
 	return setting;
 }
 
-export function writeJsonSync(file: string, data: Setting) {
+export function writeJsonSync(file: string, data: object) {
 	return writeFileSync(file, JSON.stringify(data, null, 4));
 }
 
@@ -55,4 +59,6 @@ export interface Setting {
 
 	VOLUME_MODIFIER: number;
 	BANNED_IDS: string[];
+	MESSAGE_LOGGING?: boolean;
+	VOICE_LOGGING?: boolean;
 }

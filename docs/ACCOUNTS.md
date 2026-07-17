@@ -48,7 +48,9 @@ The old shared admin password is gone — admin is now a per-account flag, grant
 ### Player & data (auth via Session or Anon)
 `/api/song/get/:guildId`, `/api/song/edit`, `/api/live`, `/api/search`, `/api/getVideoDetail`,
 `/api/suggestions/:guildId`, `/api/playingGuildIds`, `/api/setting` (GET/POST).
-Admin-only (`Session`, admin bit): `/api/log`, `/api/action`, `/api/guildIds/all`.
+Admin-only (`Session`, admin bit): `/api/log`, `/api/action`, `/api/admin/settings` (GET/POST), `/api/guildIds/all`.
+
+`/api/admin/settings` exposes and updates the non-secret global `data/setting.json` configuration. Bot, OAuth, and API tokens remain server-only and are preserved when other settings are updated.
 
 Guild access is enforced by `accountCanAccessGuild`: admins → any guild; anonymous → their
 scope; Discord-linked web accounts → guilds they are a member of.
