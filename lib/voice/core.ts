@@ -1,46 +1,44 @@
 import {
-	createAudioResource,
-	AudioPlayerStatus,
-	joinVoiceChannel,
-	getVoiceConnection,
-	StreamType,
-	type CreateAudioPlayerOptions,
-	type VoiceConnection,
-	type DiscordGatewayAdapterCreator,
-	VoiceConnectionStatus,
-	entersState,
+    AudioPlayerStatus,
+    createAudioResource,
+    entersState,
+    getVoiceConnection,
+    joinVoiceChannel,
+    StreamType,
+    VoiceConnectionStatus,
+    type CreateAudioPlayerOptions,
+    type DiscordGatewayAdapterCreator,
+    type VoiceConnection,
 } from "@discordjs/voice";
-import {
-	extractID,
-	type InfoData,
-	stream,
-	video_info,
-	yt_validate,
-} from "play-dl";
 import ytdl from "@distube/ytdl-core";
-import { CustomAudioPlayer, type Resource, type CustomClient } from "../custom";
-import { dcb, globalApp, misc } from "../misc";
-import { event } from "../server/event";
-import NodeCache from "node-cache";
-import { readSetting } from "../setting";
-import dotenv from "dotenv";
-import fs from "node:fs";
 import {
-	ChannelType,
-	Guild,
-	type APIInteractionGuildMember,
-	type CacheType,
-	type Channel,
-	type CommandInteraction,
-	type GuildMember,
-	type VoiceBasedChannel,
-	type VoiceChannel,
+    Guild,
+    type APIInteractionGuildMember,
+    type CacheType,
+    type Channel,
+    type CommandInteraction,
+    type GuildMember,
+    type VoiceBasedChannel,
+    type VoiceChannel,
 } from "discord.js";
-import { clipAudio, createYtDlpStream } from "./stream";
+import "dotenv/config";
+import NodeCache from "node-cache";
+import fs from "node:fs";
 import type { Readable } from "node:stream";
-import { getSegments, SegmentCategory, sendSkipMessage } from "./segment";
+import {
+    extractID,
+    stream,
+    video_info,
+    yt_validate,
+    type InfoData,
+} from "play-dl";
+import { CustomAudioPlayer, type CustomClient, type Resource } from "../custom";
 import { Language } from "../interaction";
-dotenv.config();
+import { dcb, globalApp } from "../misc";
+import { event } from "../server/event";
+import { readSetting } from "../setting";
+import { getSegments, SegmentCategory, sendSkipMessage } from "./segment";
+import { clipAudio, createYtDlpStream } from "./stream";
 
 const videoInfoCache = new NodeCache();
 const setting = readSetting();
