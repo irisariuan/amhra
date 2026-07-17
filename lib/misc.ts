@@ -48,13 +48,6 @@ export const dcb = {
 		event.emit("log", removeAnsi(args.join()), "dcblog");
 		addLogLine(removeAnsi(args.join()), "main");
 	},
-	messageLog(...args: unknown[]) {
-		baseLog(
-			`${chalk.blue("[DISCORD] ") + chalk.bgCyanBright.grey("[MESSAGE]")} ${args.join()}`,
-		);
-		event.emit("log", removeAnsi(args.join()), "dcbmsg");
-		addLogLine(removeAnsi(args.join()), "message");
-	},
 };
 
 export const globalApp = {

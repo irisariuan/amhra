@@ -1,37 +1,115 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// Amhra account system.
+// Two account types share one table:
+//   - anonymous: launched by the Discord /dashboard command, scoped to a guild,
+//     short-lived, authenticated by a bearer-less token.
+//   - web: registered from the dashboard with a passkey (WebAuthn), kept signed
+//     in via server sessions, optionally linked to a Discord identity.
+// See docs/ACCOUNTS.md for the full contract.
 
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider = "postgresql"
-    url      = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
-model User {
-    id                    String       @id
-    createdAt             DateTime     @default(now())
-    updatedAt             DateTime     @updatedAt
-    permission            Int          @default(0)
-    token                 String
-    tokenType             String
-    refreshToken          String       @unique
-    accessToken           String       @unique
-    refreshTokenExpiresAt Int
-    userSetting           UserSetting?
+enum AccountType {
+  anonymous
+  web
 }
 
-model UserSetting {
-    createdAt        DateTime @default(now())
-    updatedAt        DateTime @updatedAt
-    userId           String   @id @unique
-    language         String   @default("en")
-    autoSkipNonMusic Boolean  @default(false)
-    loop             Boolean  @default(false)
-    user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+model Account {
+  id          String      @id @default(cuid())
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  type        AccountType
+  displayName String?
+
+  /// Permission bitfield. User = 1, Admin = 2, HasSettings = 4.
+  permission Int @default(1)
+
+  // Web account: one or more passkeys.
+  credentials Credential[]
+
+  // Anonymous account: guild scope + expiry, authenticated by a hashed token.
+  guildScope String[]  @default([])
+  tokenHash  String?   @unique
+  expiresAt  DateTime?
+
+  sessions Session[]
+  discord  DiscordIdentity?
+  setting  AccountSetting?
+
+  @@index([type])
+}
+
+/// A WebAuthn passkey belonging to a web account.
+model Credential {
+  id         String   @id // credential ID, base64url
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId  String
+  publicKey  Bytes
+  counter    BigInt   @default(0)
+  transports String[] @default([])
+  deviceType String?
+  backedUp   Boolean  @default(false)
+  nickname   String?
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+
+  @@index([accountId])
+}
+
+/// An authenticated browser session. The raw token is never stored; only its
+/// SHA-256 hash is kept so a database leak cannot be replayed as a login.
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  account    Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId  String
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  expiresAt  DateTime
+  userAgent  String?
+
+  @@index([accountId])
+}
+
+/// Discord OAuth identity linked to a web account.
+model DiscordIdentity {
+  discordId            String   @id
+  account              Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId            String   @unique
+  username             String?
+  token                String
+  tokenType            String
+  refreshToken         String
+  accessTokenExpiresAt BigInt // epoch ms; BigInt to avoid int4 overflow
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+/// Transient WebAuthn challenge, consumed once during a register/login ceremony.
+model WebAuthnChallenge {
+  id        String   @id @default(cuid())
+  challenge String
+  kind      String // "registration" | "authentication"
+  accountId String? // pending account during registration
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
+model AccountSetting {
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  account          Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  accountId        String   @id @unique
+  language         String   @default("en")
+  autoSkipNonMusic Boolean  @default(false)
+  loop             Boolean  @default(false)
+  autoSuggest      Boolean  @default(false)
 }

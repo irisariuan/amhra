@@ -17,6 +17,7 @@ export enum SongEditType {
 	Unmute = "unmute",
 	Loop = "loop",
 	SkipSegment = "skipSegment",
+	AutoSuggest = "autoSuggest",
 }
 
 export type ExpressEventDetail = {

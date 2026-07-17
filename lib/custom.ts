@@ -3,7 +3,6 @@ import { AudioPlayer, type CreateAudioPlayerOptions } from "@discordjs/voice";
 import { Channel, Client, Message, type ClientOptions } from "discord.js";
 import { type YouTubeChannel, type YouTubeVideo } from "play-dl";
 import { SearchCache } from "./cache";
-import { misc } from "./misc";
 import { readSetting } from "./setting";
 import { createResource, Stream } from "./voice/core";
 import { Segment, sendSkipMessage } from "./voice/segment";
@@ -44,12 +43,8 @@ export interface SongDataPacket {
 	pausedTimestamp: number;
 	isMuting: boolean;
 	loop: boolean;
+	autoSuggest: boolean;
 	skipToTimestamp: number | null;
-}
-
-export interface TokenReturn {
-	token: string;
-	guilds: string[];
 }
 
 export class CustomClient extends Client {
@@ -58,13 +53,11 @@ export class CustomClient extends Client {
 	 */
 	player: Map<string, CustomAudioPlayer>;
 	cache: SearchCache;
-	private tokenMap: Map<string, string[]>;
 
 	constructor(clientOpt: ClientOptions) {
 		super(clientOpt);
 		this.player = new Map();
 		this.cache = new SearchCache();
-		this.tokenMap = new Map();
 	}
 	clearPlayers() {
 		for (const player of this.player.values()) {
@@ -72,71 +65,6 @@ export class CustomClient extends Client {
 			player.cleanStop();
 		}
 		this.player.clear();
-		this.tokenMap.clear();
-	}
-
-	/**
-	 * @private Should not be called by users, use `CustomClient.createToken` instead
-	 */
-	newToken(guildIds: string[]) {
-		const token = misc.generateToken(36);
-		this.tokenMap.set(token, guildIds);
-		return { token, guildIds };
-	}
-	createToken(guildIds: string[]): string | null {
-		const existingToken = this.getToken(guildIds);
-		if (existingToken) return existingToken.token;
-		const { token } = this.newToken(guildIds);
-		return token;
-	}
-	appendGuildsByToken(token: string, guildIds: string[]): void {
-		const existingToken = this.tokenMap.get(token);
-		if (existingToken) {
-			this.tokenMap.set(
-				token,
-				Array.from(new Set([...existingToken, ...guildIds])),
-			);
-		}
-	}
-	appendGuilds(guildId: string, guilds: string[]): void {
-		const existingToken = this.getToken(guildId);
-		if (!existingToken) return;
-		this.appendGuildsByToken(existingToken.token, guilds);
-	}
-	getToken(guildIds: string): TokenReturn | null;
-	getToken(guildIds: string[]): TokenReturn | null;
-	getToken(guildId: string | string[]): TokenReturn | null {
-		const entries = this.tokenMap.entries();
-		if (Array.isArray(guildId)) {
-			const entry = entries.find(
-				([_, guildIds]) =>
-					guildIds.every((id) => guildId.includes(id)) &&
-					guildIds.length === guildId.length,
-			);
-			if (entry) return { guilds: entry[1], token: entry[0] };
-		} else {
-			const entry = entries.find(([_, guildIds]) =>
-				guildIds.includes(guildId),
-			);
-			if (entry) return { guilds: entry[1], token: entry[0] };
-		}
-		return null;
-	}
-	deleteTokenByGuilds(guilds: string[]) {
-		let token = this.getToken(guilds);
-		while (token) {
-			if (token) {
-				this.tokenMap.delete(token.token);
-			}
-			token = this.getToken(guilds);
-		}
-	}
-	deleteToken(token: string): boolean {
-		if (this.tokenMap.has(token)) {
-			this.tokenMap.delete(token);
-			return true;
-		}
-		return false;
 	}
 }
 
@@ -149,6 +77,7 @@ export interface AudioPlayerSetting {
 	autoSkipSegment: boolean;
 	looping: boolean;
 	volumeNormalization: boolean;
+	autoSuggest: boolean;
 }
 
 export class CustomAudioPlayer extends AudioPlayer {
@@ -408,6 +337,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 			useYoutubeDl: setting.USE_YOUTUBE_DL,
 			canSeek: setting.SEEK,
 			loop: this.customSetting.looping ?? false,
+			autoSuggest: this.customSetting.autoSuggest ?? false,
 			skipToTimestamp: this.currentSegment()?.segment[1] ?? null,
 		};
 	}

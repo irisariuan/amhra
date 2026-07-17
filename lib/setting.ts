@@ -25,13 +25,7 @@ export function writeJsonSync(file: string, data: Setting) {
 	return writeFileSync(file, JSON.stringify(data, null, 4));
 }
 
-export type LogFile =
-	| "errim"
-	| "error"
-	| "errwn"
-	| "express"
-	| "main"
-	| "message";
+export type LogFile = "errim" | "error" | "errwn" | "express" | "main";
 
 export interface Setting {
 	TOKEN: string;
@@ -61,6 +55,4 @@ export interface Setting {
 
 	VOLUME_MODIFIER: number;
 	BANNED_IDS: string[];
-	MESSAGE_LOGGING: boolean;
-	VOICE_LOGGING: boolean;
 }

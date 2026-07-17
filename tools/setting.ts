@@ -30,8 +30,6 @@ import { writeJsonSync } from "../lib/setting";
 		USE_COOKIES: false,
 		BANNED_IDS: [],
 		MAX_CACHE_IN_GB: 1,
-		MESSAGE_LOGGING: false,
-		VOICE_LOGGING: false,
 	};
 
 	const token = await input({ message: "Bot Token" });
@@ -134,14 +132,6 @@ import { writeJsonSync } from "../lib/setting";
 	setting.USE_YOUTUBE_DL = await confirm({
 		message: "Would you like to use youtube-dl?",
 		default: true,
-	});
-	setting.MESSAGE_LOGGING = await confirm({
-		message: "Would you like to log messages?",
-		default: false,
-	});
-	setting.VOICE_LOGGING = await confirm({
-		message: "Would you like to log voice states?",
-		default: false,
 	});
 	setting.SEEK = await confirm({
 		message: "Would you like to enable audio seeking?",

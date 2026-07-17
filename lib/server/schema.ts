@@ -110,6 +110,15 @@ const LoopSchema = z.object({
 	}),
 });
 
+// AutoSuggest (radio mode): expects boolean
+const AutoSuggestSchema = z.object({
+	action: z.literal(SongEditType.AutoSuggest),
+	guildId: z.string(),
+	detail: z.object({
+		autoSuggest: z.boolean(),
+	}),
+});
+
 // Discriminated union on action
 export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	PauseSchema,
@@ -125,6 +134,7 @@ export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	SetVolumeSchema,
 	SetQueueSchema,
 	LoopSchema,
+	AutoSuggestSchema,
 	SkipSegmentSchema,
 ]);
 
@@ -135,4 +145,5 @@ export const UserSettingUploadSchema = z.object({
 	loop: z.boolean().optional(),
 	language: z.enum(Language).optional(),
 	autoSkip: z.boolean().optional(),
+	autoSuggest: z.boolean().optional(),
 })

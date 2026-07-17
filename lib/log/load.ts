@@ -4,13 +4,12 @@ import { globalApp } from '../misc'
 
 export enum TypeRef {
     main = 'dcblog',
-    message = 'dcbmsg',
     express = 'explog',
     error = 'error',
     errwn = 'warn',
     errim = 'important'
 }
-export type LogType = 'dcblog' | 'dcbmsg' | 'explog' | 'experr' | 'error' | 'errim' | 'errwn'
+export type LogType = 'dcblog' | 'explog' | 'experr' | 'error' | 'errim' | 'errwn'
 export interface Log {
     time: number
     type: LogType

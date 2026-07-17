@@ -1,64 +1,84 @@
 import bodyParser from "body-parser";
 import chalk from "chalk";
-import type { TextChannel } from "discord.js";
 import express, { type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import NodeCache from "node-cache";
 import { search, video_info } from "play-dl";
-import youtubeSuggest from "youtube-suggest";
-import { type Guild, getUserGuilds, register } from "../auth/core";
 import type { CustomClient } from "../custom";
-import { getUser } from "../db/core";
+import {
+	getPlayingGuildsForAccount,
+	resolveDiscordLogin,
+	unlinkDiscord,
+} from "../auth/discord";
+import { Permission, hasPermission } from "../db/account";
+import {
+	beginAddCredential,
+	beginAuthentication,
+	beginRegistration,
+	finishAuthentication,
+	finishRegistration,
+} from "../auth/webauthn";
+import {
+	createSession,
+	deleteSession,
+	collectGarbage,
+} from "../db/session";
+import { getSuggestions } from "../voice/suggest";
 import { load } from "../log/load";
 import { exp, globalApp, misc } from "../misc";
 import { readSetting, reloadSetting } from "../setting";
 import {
+	accountCanAccessGuild,
 	auth,
 	basicCheckBuilder,
-	checkTokenWithGuild,
 	checkGuildMiddleware,
+	getRequestAccount,
+	parseAuthScheme,
 } from "./auth";
 import { ActionType, event } from "./event";
 import { SongEditRequestSchema, UserSettingUploadSchema } from "./schema";
 import { handleSongInterruption } from "./songEdit";
-import editUserSetting, { getUserSetting } from "../db/userSetting";
-import { Permission } from "./perm";
+import editAccountSetting, { getAccountSetting } from "../db/accountSetting";
 
 export const YoutubeVideoRegex =
 	/^http(?:s?):\/\/(?:www\.)?youtu(?:be\.com\/watch\?v=|\.be\/)([\w\-_]*)(&(amp;)?[\w?=]*)?$/;
-export interface Message {
-	message: {
-		content: string;
-		id: string;
-	};
-	author: {
-		id: string;
-		tag: string;
-	};
-	timestamp: {
-		createdAt: number;
-		editedAt?: number;
+
+const setting = readSetting(`${process.cwd()}/data/setting.json`);
+
+/** Public projection of an account for the dashboard. */
+function publicAccount(account: {
+	id: string;
+	type: string;
+	displayName: string | null;
+	permission: number;
+}) {
+	return {
+		id: account.id,
+		type: account.type,
+		displayName: account.displayName,
+		permission: account.permission,
+		isAdmin: (account.permission & Permission.Admin) === Permission.Admin,
 	};
 }
-const setting = readSetting(`${process.cwd()}/data/setting.json`);
 
 export async function initServer(client: CustomClient) {
 	const app = express();
 	const jsonParser = bodyParser.json();
 
 	const logQueue = await load(...(setting.PRELOAD ?? []));
-	// TTL set to 5 days
 	const videoCache = new NodeCache({ stdTTL: 60 * 60 * 24 * 5 });
-	const userGuildCache = new NodeCache({ stdTTL: 60 * 60 * 3 });
+
+	// Periodically prune expired sessions, challenges, and anonymous accounts.
+	setInterval(() => collectGarbage().catch(() => {}), 1000 * 60 * 30);
 
 	app.use((req, res, next) => {
-		const formatter = misc.prefixFormatter(
-			`${chalk.bgGrey(`(IP: ${req.ip})`)}`,
-		);
-
 		event.emitPage(req.path);
 		if (setting?.DETAIL_LOGGING) {
-			exp.log(formatter(`Requested page ${req.path}`));
+			exp.log(
+				misc.prefixFormatter(chalk.bgGrey(`(IP: ${req.ip})`))(
+					`Requested page ${req.path}`,
+				),
+			);
 		}
 		next();
 	});
@@ -78,45 +98,140 @@ export async function initServer(client: CustomClient) {
 	}
 
 	event.on("log", (msg, type) => {
-		if (type.startsWith("exp") && !setting.DETAIL_LOGGING) {
-			return;
-		}
+		if (type.startsWith("exp") && !setting.DETAIL_LOGGING) return;
 		if (setting.QUEUE_SIZE > 0 && logQueue.length >= setting.QUEUE_SIZE) {
 			logQueue.splice(0, logQueue.length - setting.QUEUE_SIZE);
 		}
 		logQueue.push({ message: msg, type, time: Date.now() });
 	});
 
+	// ---- Authentication: passkeys, sessions, Discord linking ----
+
+	app.post("/api/auth/passkey/register/begin", jsonParser, async (req, res) => {
+		const { options, challengeId } = await beginRegistration(
+			req.body?.displayName,
+		);
+		res.json({ challengeId, options });
+	});
+
 	app.post(
-		"/api/register",
+		"/api/auth/passkey/register/finish",
 		jsonParser,
-		basicCheckBuilder(["code"]),
+		basicCheckBuilder(["challengeId", "response"]),
 		async (req, res) => {
-			if (!req.body.code) {
-				return res.sendStatus(400);
-			}
-			const result = await register(req.body.code);
-			if (!result) {
-				return res.sendStatus(400);
-			}
-			return res.send(JSON.stringify({ token: result.accessToken }));
+			const result = await finishRegistration(
+				req.body.challengeId,
+				req.body.response,
+			);
+			if (!result) return res.sendStatus(400);
+			const { token } = await createSession(
+				result.accountId,
+				req.headers["user-agent"],
+			);
+			res.json({ token });
 		},
 	);
 
-	app.get("/api/new", auth(Permission.User), (req, res) => {
-		if (req.headers["origin-ip"]) {
-			exp.log(
-				`New IP fetched (Origin IP found): ${req.headers["origin-ip"]} (${req.ip})`,
+	app.post("/api/auth/passkey/login/begin", async (_req, res) => {
+		const { options, challengeId } = await beginAuthentication();
+		res.json({ challengeId, options });
+	});
+
+	app.post(
+		"/api/auth/passkey/login/finish",
+		jsonParser,
+		basicCheckBuilder(["challengeId", "response"]),
+		async (req, res) => {
+			const result = await finishAuthentication(
+				req.body.challengeId,
+				req.body.response,
 			);
-		} else {
-			exp.log(`New IP fetched: ${req.ip}`);
-		}
+			if (!result) return res.sendStatus(401);
+			const { token } = await createSession(
+				result.accountId,
+				req.headers["user-agent"],
+			);
+			res.json({ token });
+		},
+	);
+
+	app.post(
+		"/api/auth/passkey/add/begin",
+		auth(Permission.User, false),
+		async (_req, res) => {
+			const account = getRequestAccount(res);
+			if (!account) return res.sendStatus(401);
+			const { options, challengeId } = await beginAddCredential(account.id);
+			res.json({ challengeId, options });
+		},
+	);
+
+	app.post(
+		"/api/auth/passkey/add/finish",
+		jsonParser,
+		auth(Permission.User, false),
+		basicCheckBuilder(["challengeId", "response"]),
+		async (req, res) => {
+			const result = await finishRegistration(
+				req.body.challengeId,
+				req.body.response,
+			);
+			return res.sendStatus(result ? 200 : 400);
+		},
+	);
+
+	app.get("/api/auth/session", auth(Permission.User), (_req, res) => {
+		const account = getRequestAccount(res);
+		if (!account) return res.sendStatus(401);
+		res.json({ account: publicAccount(account) });
+	});
+
+	app.post("/api/auth/logout", async (req, res) => {
+		const parsed = parseAuthScheme(req.headers.authorization);
+		if (parsed?.scheme === "session") await deleteSession(parsed.token);
 		res.sendStatus(200);
 	});
 
-	app.get("/api/log", auth(3), (req, res) => {
+	// Discord OAuth: log in via linked identity, or link to the current account.
+	app.post(
+		"/api/auth/discord/callback",
+		jsonParser,
+		basicCheckBuilder(["code"]),
+		async (req, res) => {
+			let linkTo: string | undefined;
+			const parsed = parseAuthScheme(req.headers.authorization);
+			if (parsed?.scheme === "session") {
+				const account = getRequestAccount(res);
+				linkTo = account?.id;
+			}
+			const account = await resolveDiscordLogin(req.body.code, linkTo);
+			if (!account) return res.sendStatus(400);
+			const { token } = await createSession(
+				account.id,
+				req.headers["user-agent"],
+			);
+			res.json({ token, account: publicAccount(account) });
+		},
+	);
+
+	app.post(
+		"/api/auth/discord/unlink",
+		auth(Permission.User, false),
+		async (_req, res) => {
+			const account = getRequestAccount(res);
+			if (!account) return res.sendStatus(401);
+			await unlinkDiscord(account.id);
+			res.sendStatus(200);
+		},
+	);
+
+	// ---- Logs (admin) ----
+
+	app.get("/api/log", auth(Permission.Admin, false), (_req, res) => {
 		res.send(JSON.stringify({ content: logQueue }));
 	});
+
+	// ---- Player control ----
 
 	app.post(
 		"/api/song/edit",
@@ -125,18 +240,13 @@ export async function initServer(client: CustomClient) {
 		basicCheckBuilder(["action", "guildId"]),
 		checkGuildMiddleware(client),
 		async (req: Request, res: Response) => {
-			const formatter = misc.prefixFormatter(
-				chalk.bgGrey(`(Guild ID: ${req.body.guildId}, IP: ${req.ip})`),
-			);
-			const cLog = (...data: (string | number)[]) => {
-				exp.log(formatter(data.join()));
-			};
-			const cError = (...data: (string | number)[]) => {
-				exp.error(formatter(data.join()));
-			};
 			const parsed = SongEditRequestSchema.safeParse(req.body);
 			if (!parsed.success) {
-				cError("Request body error", parsed.error.message);
+				exp.error(
+					misc.prefixFormatter(
+						chalk.bgGrey(`(Guild ID: ${req.body.guildId})`),
+					)(`Request body error ${parsed.error.message}`),
+				);
 				return res.sendStatus(400);
 			}
 			return res.sendStatus(
@@ -148,55 +258,27 @@ export async function initServer(client: CustomClient) {
 	app.post(
 		"/api/action",
 		jsonParser,
-		auth(Permission.Admin),
+		auth(Permission.Admin, false),
 		basicCheckBuilder(["action"]),
 		(req, res) => {
-			const formatter = misc.prefixFormatter(
-				`${chalk.bgGrey(`(IP: ${req.ip})`)}`,
-			);
-
+			const formatter = misc.prefixFormatter(chalk.bgGrey(`(IP: ${req.ip})`));
 			exp.log(formatter("Received action request"));
-			if (!req.body.action) {
-				return res.sendStatus(400);
-			}
 			switch (req.body.action as ActionType) {
-				case ActionType.Exit: {
-					globalApp.important(
-						formatter("Received exit request, exiting..."),
-					);
-					process.exit(0);
-					break;
-				}
-				case ActionType.AddAuth: {
-					globalApp.important(
-						formatter("Creating server-based dashboard"),
-					);
-					if (!req.body.guildId) {
-						globalApp.warn(
-							"Failed to create server-based dashboard, missing guild ID",
-						);
-						return res.sendStatus(400);
-					}
-					const { token } = client.newToken(req.body.guildId);
-					exp.log("Successfully created server-based dashboard");
-					res.send(
-						JSON.stringify({ token, guildId: req.body.guildId }),
-					);
-					break;
-				}
-				case ActionType.ReloadCommands: {
+				case ActionType.Exit:
+					globalApp.important(formatter("Received exit request, exiting..."));
+					res.sendStatus(200);
+					return process.exit(0);
+				case ActionType.ReloadCommands:
 					globalApp.important(formatter("Reloading commands..."));
 					event.emitReloadCommands();
-					break;
-				}
-				case ActionType.ReloadSetting: {
+					return res.sendStatus(200);
+				case ActionType.ReloadSetting:
 					globalApp.important(formatter("Reloading settings..."));
 					reloadSetting();
-					break;
-				}
-				default: {
+					return res.sendStatus(200);
+				default:
 					exp.log(`Action not recognized (${req.body.action})`);
-				}
+					return res.sendStatus(400);
 			}
 		},
 	);
@@ -207,9 +289,6 @@ export async function initServer(client: CustomClient) {
 		auth(Permission.User),
 		basicCheckBuilder(["query"]),
 		async (req, res) => {
-			if (!req.body.query) {
-				return res.sendStatus(400);
-			}
 			exp.log(`Queried ${req.body.query}`);
 			const fetched = await search(req.body.query, { limit: 1 }).catch(
 				() => null,
@@ -219,16 +298,11 @@ export async function initServer(client: CustomClient) {
 				return res.sendStatus(500);
 			}
 			const searched = fetched[0];
-			exp.log(
-				`Returned searched URL: ${searched.url}, title: ${searched.title} and durationInSec: ${searched.durationInSec}`,
-			);
-			return res.send(
-				JSON.stringify({
-					url: searched.url,
-					title: searched.title,
-					durationInSec: searched.durationInSec,
-				}),
-			);
+			return res.json({
+				url: searched.url,
+				title: searched.title,
+				durationInSec: searched.durationInSec,
+			});
 		},
 	);
 
@@ -243,15 +317,11 @@ export async function initServer(client: CustomClient) {
 			}
 			try {
 				if (videoCache.has(req.body.url)) {
-					return res.send(
-						JSON.stringify(videoCache.get(req.body.url)),
-					);
+					return res.send(JSON.stringify(videoCache.get(req.body.url)));
 				}
 				const video = (await video_info(req.body.url)).video_details;
+				if (!video) return res.sendStatus(404);
 				videoCache.set(req.body.url, video);
-				if (!video) {
-					return res.sendStatus(404);
-				}
 				return res.send(JSON.stringify(video.toJSON()));
 			} catch {
 				res.sendStatus(500);
@@ -259,167 +329,105 @@ export async function initServer(client: CustomClient) {
 		},
 	);
 
-	app.post(
-		"/api/videoSuggestion",
-		jsonParser,
+	// Song suggestions for a guild's current/recent tracks (dashboard panel).
+	app.get(
+		"/api/suggestions/:guildId",
 		auth(Permission.User),
-		basicCheckBuilder(["query"]),
 		async (req, res) => {
-			const query = req.body.query ?? null;
-			if (!query) {
-				return res.sendStatus(400);
+			const account = getRequestAccount(res);
+			if (
+				!account ||
+				!(await accountCanAccessGuild(client, account, req.params.guildId))
+			) {
+				return res.sendStatus(403);
 			}
-			const suggestion = await youtubeSuggest(query, { locale: "zh" });
-			return res.send(JSON.stringify({ content: suggestion }));
+			const player = client.player.get(req.params.guildId);
+			const seed =
+				player?.nowPlaying?.url ?? player?.history.at(-1) ?? null;
+			if (!seed) return res.json({ content: [] });
+			const content = await getSuggestions(seed, player?.history ?? []);
+			return res.json({ content });
 		},
 	);
 
 	app.post(
 		"/api/live",
 		jsonParser,
+		auth(Permission.User),
 		basicCheckBuilder(["guildId"]),
 		checkGuildMiddleware(client),
-		async (req, res) => {
-			exp.log("Live!");
+		async (_req, res) => {
 			return res.sendStatus(200);
 		},
 	);
 
-	app.get("/api/playingGuildIds", auth(Permission.User), async (req, res) => {
-		const content = await Promise.all(
-			Array.from(client.player.keys()).map(async (v) => {
-				return {
-					id: v,
-					name: (await client.guilds.fetch(v)).name ?? null,
-				};
-			}),
-		);
-		if (req.headers.authorization?.startsWith("Bearer")) {
-			const user = await getUser(
-				misc.removeBearer(req.headers.authorization),
+	app.get("/api/playingGuildIds", auth(Permission.User), async (_req, res) => {
+		const account = getRequestAccount(res);
+		if (!account) return res.sendStatus(401);
+		if (hasPermission(account, Permission.Admin)) {
+			const content = await Promise.all(
+				Array.from(client.player.keys()).map(async id => ({
+					id,
+					name: (await client.guilds.fetch(id)).name ?? null,
+				})),
 			);
-			if (!user) {
-				return res.sendStatus(401);
-			}
-			let rawGuilds: Guild[];
-			if (userGuildCache.has(user.id)) {
-				rawGuilds = userGuildCache.get(user.id) as Guild[];
-			} else {
-				rawGuilds =
-					(await getUserGuilds(
-						misc.removeBearer(req.headers.authorization),
-					)) ?? [];
-				userGuildCache.set(user.id, rawGuilds);
-			}
-			const guilds = rawGuilds.map((v) => v.id);
-			client.appendGuildsByToken(
-				misc.removeBearer(req.headers.authorization),
-				guilds,
-			);
-			if (!guilds) {
-				return res.sendStatus(401);
-			}
-			return res.send(
-				JSON.stringify({
-					content: content.filter((v) => guilds.includes(v.id)),
-				}),
-			);
+			return res.json({ content });
 		}
-		exp.log("Sent guild IDs");
-		res.send(JSON.stringify({ content }));
-	});
-
-	app.get("/api/guildIds", auth(Permission.User), async (req, res) => {
-		if (!req.headers.authorization) return res.sendStatus(401);
-		const guilds = await getUserGuilds(
-			misc.removeBearer(req.headers.authorization),
-		);
-		res.send(JSON.stringify({ content: guilds }));
-	});
-
-	app.get("/api/guildIds/all", auth(Permission.Admin), async (req, res) => {
-		const content = (await client.guilds.fetch()).map((v) => {
-			return { id: v.id, name: v.name };
-		});
-		exp.log("Sent guild IDs");
-		res.send(JSON.stringify({ content }));
-	});
-
-	app.get(
-		"/api/messages/:guildId",
-		auth(Permission.Admin),
-		async (req, res) => {
-			if (!(await client.guilds.fetch()).has(req.params.guildId)) {
-				exp.error("Guild not found");
-				return res.sendStatus(404);
-			}
-
-			const guild = await client.guilds.fetch(req.params.guildId);
-			const channels = await guild.channels.fetch();
-			const data = channels.map(async (v) => {
-				if (!v) return [];
-				const message =
-					(await (v as TextChannel).messages?.fetch({
-						cache: true,
-					})) ?? [];
-
-				const messages: Message[] = message.map((v) => {
-					return {
-						message: { content: v.content, id: v.id },
-						author: { id: v.author.id, tag: v.author.tag },
-						timestamp: {
-							createdAt: v.createdTimestamp,
-							editedAt: v.editedTimestamp ?? undefined,
-						},
-					};
-				});
-
-				return { channel: { id: v.id, name: v.name }, messages };
-			});
-			return res.send(
-				JSON.stringify({ content: await Promise.all(data) }),
+		if (account.type === "anonymous") {
+			const content = await Promise.all(
+				account.guildScope
+					.filter(id => client.player.has(id))
+					.map(async id => ({
+						id,
+						name: (await client.guilds.fetch(id)).name ?? null,
+					})),
 			);
-		},
-	);
+			return res.json({ content });
+		}
+		return res.json({ content: await getPlayingGuildsForAccount(account.id) });
+	});
 
-	app.get("/api/song/get/:guildId", auth(Permission.User), (req, res) => {
+	app.get("/api/guildIds/all", auth(Permission.Admin, false), async (_req, res) => {
+		const content = (await client.guilds.fetch()).map(v => ({
+			id: v.id,
+			name: v.name,
+		}));
+		res.json({ content });
+	});
+
+	app.get("/api/song/get/:guildId", auth(Permission.User), async (req, res) => {
+		const account = getRequestAccount(res);
 		if (
-			!checkTokenWithGuild(
-				client,
-				req.headers.authorization ?? "",
-				req.params.guildId,
-			)
+			!account ||
+			!(await accountCanAccessGuild(client, account, req.params.guildId))
 		) {
-			return res.sendStatus(401);
+			return res.sendStatus(403);
 		}
 		const data = client.player.get(req.params.guildId)?.getData();
 		return res.send(JSON.stringify(data ?? null));
 	});
 
+	// ---- Per-account settings ----
+
 	app.get(
 		"/api/setting",
 		auth(Permission.HasSettings, false),
-		async (req, res) => {
-			if (!req.headers.authorization) {
-				return res.sendStatus(401);
-			}
-			const user = await getUser(req.headers.authorization);
-			if (!user) {
-				exp.error("User not found");
-				return res.sendStatus(401);
-			}
-			const setting = await getUserSetting(user.id);
-			if (!setting) {
-				return res.sendStatus(400);
-			}
-			return res.send(
-				JSON.stringify({
-					userId: user.id,
-					autoSkip: setting.autoSkipNonMusic,
-					loop: setting.loop,
-					language: setting.language,
-				}),
-			);
+		async (_req, res) => {
+			const account = getRequestAccount(res);
+			if (!account) return res.sendStatus(401);
+			const s = (await getAccountSetting(account.id)) ?? {
+				autoSkipNonMusic: false,
+				loop: false,
+				autoSuggest: false,
+				language: "en" as const,
+			};
+			return res.json({
+				accountId: account.id,
+				autoSkip: s.autoSkipNonMusic,
+				loop: s.loop,
+				autoSuggest: s.autoSuggest,
+				language: s.language,
+			});
 		},
 	);
 
@@ -428,29 +436,19 @@ export async function initServer(client: CustomClient) {
 		jsonParser,
 		auth(Permission.HasSettings, false),
 		async (req, res) => {
-			const { success, data } = UserSettingUploadSchema.safeParse(
-				req.body,
-			);
-			if (!success || !req.headers.authorization) {
-				exp.error(`User setting upload schema error: ${data}`);
-				return res.sendStatus(400);
-			}
-			const user = await getUser(req.headers.authorization);
-			if (!user) {
-				exp.error("User not found");
-				return res.sendStatus(401);
-			}
-			await editUserSetting(user.id, {
+			const { success, data } = UserSettingUploadSchema.safeParse(req.body);
+			const account = getRequestAccount(res);
+			if (!success || !account) return res.sendStatus(400);
+			await editAccountSetting(account.id, {
 				autoSkipSegment: data.autoSkip,
 				language: data.language,
 				looping: data.loop,
+				autoSuggest: data.autoSuggest,
 			})
-				.catch((err) => {
-					exp.error(`Failed to edit user setting: ${err}`);
+				.then(() => res.sendStatus(200))
+				.catch(err => {
+					exp.error(`Failed to edit account setting: ${err}`);
 					res.sendStatus(500);
-				})
-				.then(() => {
-					res.sendStatus(200);
 				});
 		},
 	);

@@ -39,6 +39,7 @@ import { event } from "../server/event";
 import { readSetting } from "../setting";
 import { getSegments, SegmentCategory, sendSkipMessage } from "./segment";
 import { clipAudio, createYtDlpStream } from "./stream";
+import { pickRadioTrack } from "./suggest";
 
 const videoInfoCache = new NodeCache();
 const setting = readSetting();
@@ -95,6 +96,22 @@ function createAudioPlayer(
 	});
 	//continue to play song after ending one
 	player.on(AudioPlayerStatus.Idle, async () => {
+		// Radio mode: when the queue empties, auto-append a related track so
+		// playback continues, unless the account disabled it.
+		if (
+			player.queue.length === 0 &&
+			player.customSetting.autoSuggest &&
+			player.nowPlaying
+		) {
+			const next = await pickRadioTrack(
+				player.nowPlaying.url,
+				player.history,
+			).catch(() => null);
+			if (next) {
+				player.addToQueue(next);
+				dcb.log("Radio mode queued a suggested track");
+			}
+		}
 		if (player.queue.length === 0) {
 			player.newVoiceStateTimeout(
 				timeoutDetection,
@@ -183,7 +200,6 @@ export function destroyAudioPlayer(
 	if (client.player.has(guildId)) {
 		// reset player to the init status
 		client.player.get(guildId)?.resetAll();
-		client.deleteTokenByGuilds([guildId]);
 		client.player.delete(guildId);
 		return true;
 	}

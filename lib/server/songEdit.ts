@@ -146,6 +146,13 @@ export async function handleSongInterruption(
 			}
 			break;
 		}
+		case SongEditType.AutoSuggest: {
+			player.customSetting.autoSuggest = data.detail.autoSuggest;
+			dcb.log(
+				`${data.detail.autoSuggest ? "Enabled" : "Disabled"} radio mode from dashboard`,
+			);
+			break;
+		}
 		case SongEditType.SkipSegment: {
 			const result = await player.skipCurrentSegment();
 			if (result.success) {

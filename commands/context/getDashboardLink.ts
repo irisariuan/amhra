@@ -8,14 +8,17 @@ import {
 } from "discord.js";
 import { createLink } from "../../lib/dashboard";
 import { languageText } from "../../lib/language";
+import { ensureAnonymousAccount } from "../../lib/db/account";
 
 export default {
 	data: new ContextMenuCommandBuilder()
 		.setName("dashboard")
 		.setType(ApplicationCommandType.User),
-	async execute({ interaction, client, language }) {
+	async execute({ interaction, language }) {
 		if (!interaction.guildId) return;
-		const token = client.createToken([interaction.guildId]);
+		const { token } = await ensureAnonymousAccount(interaction.guildId).catch(
+			() => ({ token: null }),
+		);
 		if (!token) {
 			return interaction.reply({
 				content: languageText("error", language),
