@@ -47,7 +47,11 @@ import {
 	peekWebm,
 } from "./stream";
 import { VolumeOpusStream, type VolumeControl } from "./volume";
-import { OpusStream } from "./opusStream";
+import {
+	OpusStream,
+	replayWindowPackets,
+	streamWindowPackets,
+} from "./opusStream";
 import { WebmOpusDemuxer } from "./webm";
 import { pickRadioTrack } from "./suggest";
 
@@ -294,6 +298,8 @@ export async function createResource(
 		const demuxer = new WebmOpusDemuxer();
 		stream.pipe(demuxer);
 		const opus = new OpusStream(demuxer, {
+			playedWindow: replayWindowPackets(setting.MAX_REPLAY_BUFFER_IN_SEC),
+			aheadWindow: streamWindowPackets(setting.MAX_STREAM_BUFFER_IN_MB),
 			// follow=true so a livestream keeps reading as the file grows
 			openCache: id ? () => openCacheStream(id, true) : undefined,
 		});

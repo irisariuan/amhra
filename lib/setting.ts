@@ -56,6 +56,10 @@ export interface Setting {
 	PREFIX: string;
 	USE_COOKIES: boolean;
 	MAX_CACHE_IN_GB: number;
+	/** Seconds of already-played audio kept in memory for instant backward seek */
+	MAX_REPLAY_BUFFER_IN_SEC?: number;
+	/** Memory budget for not-yet-played audio; past it the cache file is re-read */
+	MAX_STREAM_BUFFER_IN_MB?: number;
 
 	VOLUME_MODIFIER: number;
 	BANNED_IDS: string[];

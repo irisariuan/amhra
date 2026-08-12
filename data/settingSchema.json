@@ -104,6 +104,16 @@
 			"type": "number",
 			"description": "Maximum video cache in GB, only be used when USE_YOUTUBE_DL is set to TRUE"
 		},
+		"MAX_REPLAY_BUFFER_IN_SEC": {
+			"type": "number",
+			"minimum": 0,
+			"description": "Seconds of already-played audio kept in memory for instant backward seek; beyond this the cache file is re-read. Default 30"
+		},
+		"MAX_STREAM_BUFFER_IN_MB": {
+			"type": "number",
+			"exclusiveMinimum": 0,
+			"description": "Memory budget per stream for not-yet-played audio; past it packets are dropped and re-read from the cache file. Bounds livestreams. Default 34 (~30min of audio)"
+		},
 		"MESSAGE_LOGGING": {
 			"type": "boolean",
 			"description": "Enable message logging"

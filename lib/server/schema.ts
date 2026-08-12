@@ -178,6 +178,8 @@ export const GlobalSettingSchema = z
 		USE_COOKIES: z.boolean().optional(),
 		BANNED_IDS: z.array(z.string()).optional(),
 		MAX_CACHE_IN_GB: z.number().optional(),
+		MAX_REPLAY_BUFFER_IN_SEC: z.number().min(0).optional(),
+		MAX_STREAM_BUFFER_IN_MB: z.number().positive().optional(),
 		MESSAGE_LOGGING: z.boolean().optional(),
 		VOICE_LOGGING: z.boolean().optional(),
 	})

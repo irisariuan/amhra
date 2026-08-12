@@ -30,6 +30,8 @@ import { writeJsonSync } from "../lib/setting";
 		USE_COOKIES: false,
 		BANNED_IDS: [],
 		MAX_CACHE_IN_GB: 1,
+		MAX_REPLAY_BUFFER_IN_SEC: 30,
+		MAX_STREAM_BUFFER_IN_MB: 34,
 	};
 
 	const token = await input({ message: "Bot Token" });

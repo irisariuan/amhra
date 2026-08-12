@@ -23,10 +23,39 @@ const DEFAULT_PLAYED_WINDOW = 1500; // 30s
  * in its entirety. Past this point incoming packets are dropped and the cache
  * file serves as the backing store instead.
  */
-const DEFAULT_AHEAD_WINDOW = 90_000; // 30min, ~54MB of Opus
+const DEFAULT_AHEAD_WINDOW = 90_000; // 30min, ~34MB at NOMINAL_PACKET_BYTES
 
 /** Leading evicted slots tolerated before the array is compacted */
 const COMPACT_THRESHOLD = 512;
+
+/**
+ * Assumed size of one packet when turning a memory budget into a packet count.
+ * YouTube's bestaudio runs around 130-160kbps, so 400 bytes per 20ms frame
+ * overestimates slightly and therefore keeps the window under its budget.
+ */
+const NOMINAL_PACKET_BYTES = 400;
+
+/**
+ * Convert a duration of already-played audio into a packet count.
+ * Returns undefined for unset or nonsensical values so the default applies.
+ */
+export function replayWindowPackets(seconds: number | undefined) {
+	if (seconds === undefined || !Number.isFinite(seconds) || seconds < 0) {
+		return undefined;
+	}
+	return Math.round((seconds * 1000) / PACKET_MS);
+}
+
+/** Convert a memory budget for not-yet-played audio into a packet count */
+export function streamWindowPackets(megabytes: number | undefined) {
+	if (megabytes === undefined || !Number.isFinite(megabytes) || megabytes <= 0) {
+		return undefined;
+	}
+	return Math.max(
+		1,
+		Math.round((megabytes * 1024 * 1024) / NOMINAL_PACKET_BYTES),
+	);
+}
 
 /**
  * A stream whose playback position can be moved without rebuilding it. Only the
