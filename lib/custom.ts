@@ -6,6 +6,7 @@ import { SearchCache } from "./cache";
 import { readSetting } from "./setting";
 import { createResource, Stream } from "./voice/core";
 import type { VolumeControl } from "./voice/volume";
+import { isSeekable } from "./voice/opusStream";
 import { Segment, sendSkipMessage } from "./voice/segment";
 import { prefetch } from "./voice/stream";
 import { Language } from "./interaction";
@@ -303,6 +304,25 @@ export class CustomAudioPlayer extends AudioPlayer {
 		}
 	}
 
+	/**
+	 * Move playback within the current song without rebuilding the resource.
+	 *
+	 * Returns false when the playing stream cannot be seeked in place (the
+	 * ffmpeg fallback path), leaving the caller to recreate the resource.
+	 */
+	seekTo(seconds: number) {
+		if (!this.nowPlaying || !this.isPlaying) return false;
+		const stream = this.nowPlaying.volume;
+		if (!isSeekable(stream)) return false;
+		stream.relocate(seconds * 1000);
+		this.startFrom = seconds * 1000;
+		this.pauseCounter = 0;
+		this.updateStartTime();
+		this.clearSongTimeouts();
+		this.updateSongTimeouts();
+		return true;
+	}
+
 	updateStartTime() {
 		this.startTime = Date.now();
 	}
@@ -478,6 +498,10 @@ export class CustomAudioPlayer extends AudioPlayer {
 			this.stop();
 			return { success: true, skipped: true, skipTo };
 		}
+		// An in-place jump keeps the same resource, so playback never restarts
+		if (this.seekTo(skipTo.segment[1])) {
+			return { success: true, skipped: false, skipTo };
+		}
 		const resource = await createResource(
 			this.nowPlaying.url,
 			skipTo.segment[1],
@@ -496,6 +520,10 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	getCurrentSongPosition() {
 		if (!this.isPlaying) return null;
+		// The stream's anchor is the real position once it can be seeked in
+		// place: the wall clock has no idea a relocate happened
+		const stream = this.nowPlaying?.volume;
+		if (isSeekable(stream)) return stream.positionMs;
 		if (this.isPaused)
 			return (
 				this.pauseTimestamp -

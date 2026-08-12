@@ -46,15 +46,18 @@ export async function handleSongInterruption(
 				return 400;
 			}
 
-			const res = await createResource(
-				player.nowPlaying.url,
-				data.detail.sec,
-			);
-			if (!res) {
-				globalApp.err("Failed to create resource");
-				return 500;
+			// Prefer moving the live stream's anchor over rebuilding it
+			if (!player.seekTo(data.detail.sec)) {
+				const res = await createResource(
+					player.nowPlaying.url,
+					data.detail.sec,
+				);
+				if (!res) {
+					globalApp.err("Failed to create resource");
+					return 500;
+				}
+				player.playResource(res, true);
 			}
-			player.playResource(res, true);
 			await sendSkipMessage(player);
 			dcb.log("Relocated the video");
 			break;

@@ -1,7 +1,8 @@
 import type { Readable } from "node:stream";
 import { Readable as ReadableStream } from "node:stream";
 import { globalApp } from "../misc";
-import { createOpusEngine, type OpusEngine, type VolumeControl } from "./volume";
+import { type VolumeControl } from "./volume";
+import { createOpusEngine, type OpusEngine } from "./opus";
 import { WebmOpusDemuxer } from "./webm";
 
 /** Every Opus packet YouTube muxes is one 20ms frame */
@@ -26,6 +27,25 @@ const DEFAULT_AHEAD_WINDOW = 90_000; // 30min, ~54MB of Opus
 
 /** Leading evicted slots tolerated before the array is compacted */
 const COMPACT_THRESHOLD = 512;
+
+/**
+ * A stream whose playback position can be moved without rebuilding it. Only the
+ * WebM path can do this; the ffmpeg fallback still has to be recreated.
+ */
+export interface SeekableStream extends VolumeControl {
+	relocate(ms: number): void;
+	readonly positionMs: number;
+}
+
+export function isSeekable(
+	stream: VolumeControl | undefined | null,
+): stream is SeekableStream {
+	return (
+		!!stream &&
+		typeof (stream as SeekableStream).relocate === "function" &&
+		typeof (stream as SeekableStream).positionMs === "number"
+	);
+}
 
 export interface OpusStreamOptions {
 	/** Initial linear gain, 1 = untouched */
@@ -187,7 +207,9 @@ export class OpusStream extends ReadableStream implements VolumeControl {
 		if (index < this.base + this.evicted) return "evicted" as const;
 		if (index >= this.appended) {
 			// Dropped by the ahead cap rather than simply not demuxed yet
-			return this.droppedAhead ? ("evicted" as const) : ("pending" as const);
+			return this.droppedAhead
+				? ("evicted" as const)
+				: ("pending" as const);
 		}
 		return this.packets[index - this.base] as Buffer;
 	}

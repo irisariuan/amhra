@@ -5,13 +5,13 @@ import {
 	existsSync,
 	writeFileSync,
 } from "node:fs";
-import { rename, unlink } from "node:fs/promises";
+import { open, rename, unlink, type FileHandle } from "node:fs/promises";
 import { PassThrough, Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { getYouTubeVideoId } from "../youtube";
 import { dcb, globalApp } from "../misc";
 import { updateLastUsed, reviewCaches } from "./cache";
-import { CHANNELS, SAMPLE_RATE } from "./volume";
+import { CHANNELS, SAMPLE_RATE } from "./opus";
 
 if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
 	writeFileSync(`${process.cwd()}/data/lastUsed.record`, "");
@@ -172,12 +172,93 @@ const EBML_MAGIC = 0x1a45dfa3;
  * backwards into a partial file is safe, because anything already played has
  * by definition already been written.
  */
-export function openCacheStream(id: string): Readable | null {
-	for (const name of [`${id}.music`, `${id}.temp.music`]) {
-		const path = `${process.cwd()}/cache/${name}`;
-		if (existsSync(path)) return createReadStream(path);
+export function openCacheStream(id: string, follow = false): Readable | null {
+	const done = `${process.cwd()}/cache/${id}.music`;
+	// A finished download is a plain file; nothing can be appended to it
+	if (existsSync(done)) return createReadStream(done);
+
+	const partial = `${process.cwd()}/cache/${id}.temp.music`;
+	if (!existsSync(partial)) return null;
+	if (!follow) return createReadStream(partial);
+	return new TailFileStream(partial);
+}
+
+/** How often a tailed file is re-checked for new bytes */
+const TAIL_POLL_MS = 100;
+/** Give up on a partial file that stops growing for this long */
+const TAIL_IDLE_MS = 30_000;
+
+/**
+ * Reads a file that is still being written, blocking at the end instead of
+ * reporting EOF.
+ *
+ * This is what makes a livestream work: the download never finishes, so the
+ * cache file is the only complete record of it and playback has to follow the
+ * writer rather than race it to the end.
+ *
+ * The descriptor is opened once and kept, so the `.temp.music` to `.music`
+ * rename at the end of a download does not interrupt reading. Whether more is
+ * coming is decided from the descriptor's own size, never from the path, so a
+ * write landing between a read and the rename cannot be lost.
+ */
+class TailFileStream extends Readable {
+	private handle: FileHandle | null = null;
+	private offset = 0;
+	private idle = 0;
+	private busy = false;
+
+	constructor(private readonly path: string) {
+		super();
 	}
-	return null;
+
+	async _read(size: number) {
+		// _read can fire again while the previous await chain is still running
+		if (this.busy) return;
+		this.busy = true;
+		try {
+			if (!this.handle) this.handle = await open(this.path, "r");
+			const buffer = Buffer.allocUnsafe(Math.max(size, 64 * 1024));
+			for (;;) {
+				if (this.destroyed) return;
+				const { size: current } = await this.handle.stat();
+				if (this.offset < current) {
+					const { bytesRead } = await this.handle.read(
+						buffer,
+						0,
+						Math.min(buffer.length, current - this.offset),
+						this.offset,
+					);
+					if (bytesRead > 0) {
+						this.offset += bytesRead;
+						this.idle = 0;
+						this.push(Buffer.from(buffer.subarray(0, bytesRead)));
+						return;
+					}
+				}
+				// Drained to the current end. The writer renames the file away
+				// once it is done, so a missing path means no more is coming.
+				if (!existsSync(this.path)) return void this.push(null);
+				await new Promise((r) => setTimeout(r, TAIL_POLL_MS));
+				this.idle += TAIL_POLL_MS;
+				if (this.idle >= TAIL_IDLE_MS) {
+					globalApp.warn(
+						`Tailed cache file stopped growing, ending: ${this.path}`,
+					);
+					return void this.push(null);
+				}
+			}
+		} catch (error) {
+			this.destroy(error as Error);
+		} finally {
+			this.busy = false;
+		}
+	}
+
+	_destroy(error: Error | null, callback: (error: Error | null) => void) {
+		this.handle?.close().catch(() => {});
+		this.handle = null;
+		callback(error);
+	}
 }
 
 /**

@@ -1,80 +1,9 @@
 import { Readable } from "node:stream";
-import { globalApp } from "../misc";
-
-export const SAMPLE_RATE = 48_000;
-export const CHANNELS = 2;
-/** Samples per channel in one Opus frame (20ms at 48kHz) */
-export const FRAME_SIZE = 960;
-/** Bytes of signed 16-bit little-endian PCM in one Opus frame */
-export const FRAME_BYTES = FRAME_SIZE * CHANNELS * 2;
+import { createOpusEngine, FRAME_BYTES, OpusEngine } from "./opus";
 
 export interface VolumeControl {
 	setVolume(volume: number): void;
 	readonly volume: number;
-}
-
-export interface OpusEngine {
-	encode(pcm: Buffer): Buffer;
-	decode(packet: Buffer): Buffer;
-	destroy(): void;
-}
-
-let engineName: string | null = null;
-
-/**
- * Pick whatever Opus binding is installed. Native first, pure JS as fallback.
- *
- * Encoder and decoder are separate instances: the two directions each carry
- * their own state, and sharing one object between them is not something either
- * binding promises to support.
- */
-export function createOpusEngine(): OpusEngine {
-	try {
-		const { OpusEncoder } = require("@discordjs/opus");
-		const encoder = new OpusEncoder(SAMPLE_RATE, CHANNELS);
-		const decoder = new OpusEncoder(SAMPLE_RATE, CHANNELS);
-		if (engineName !== "@discordjs/opus") {
-			engineName = "@discordjs/opus";
-			globalApp.important("Opus engine: @discordjs/opus");
-		}
-		return {
-			encode: (pcm: Buffer) => encoder.encode(pcm),
-			decode: (packet: Buffer) => decoder.decode(packet),
-			destroy: () => {},
-		};
-	} catch (error) {
-		if (engineName !== "opusscript") {
-			globalApp.warn(
-				`@discordjs/opus unavailable (${
-					(error as Error).message
-				}), falling back to opusscript`,
-			);
-		}
-	}
-	const OpusScript = require("opusscript");
-	const encoder = new OpusScript(
-		SAMPLE_RATE,
-		CHANNELS,
-		OpusScript.Application.AUDIO,
-	);
-	const decoder = new OpusScript(
-		SAMPLE_RATE,
-		CHANNELS,
-		OpusScript.Application.AUDIO,
-	);
-	if (engineName !== "opusscript") {
-		engineName = "opusscript";
-		globalApp.important("Opus engine: opusscript");
-	}
-	return {
-		encode: (pcm: Buffer) => encoder.encode(pcm, FRAME_SIZE),
-		// opusscript hands back a Uint8Array view, not a Buffer
-		decode: (packet: Buffer) => Buffer.from(decoder.decode(packet)),
-		destroy: () => {
-			encoder.delete?.();
-			decoder.delete?.();
-		},
-	};
 }
 
 export interface VolumeOpusStreamOptions {

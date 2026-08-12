@@ -101,12 +101,18 @@ export default {
 			return await interaction.reply({
 				content: languageText("position_overflow", language),
 			});
-		const resource = await createResource(player.nowPlaying.url, position);
-		if (!resource)
-			return await interaction.reply({
-				content: languageText("fail_resource", language),
-			});
-		player.playResource(resource, true);
+		// Moving the anchor of the live stream avoids rebuilding the resource,
+		// so playback jumps rather than stopping and starting again
+		let resource = player.nowPlaying;
+		if (!player.seekTo(position)) {
+			const rebuilt = await createResource(player.nowPlaying.url, position);
+			if (!rebuilt)
+				return await interaction.reply({
+					content: languageText("fail_resource", language),
+				});
+			player.playResource(rebuilt, true);
+			resource = rebuilt;
+		}
 		await interaction.reply({
 			content: languageText("relocate", language, {
 				pos: timeFormat(position),

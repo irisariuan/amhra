@@ -294,7 +294,8 @@ export async function createResource(
 		const demuxer = new WebmOpusDemuxer();
 		stream.pipe(demuxer);
 		const opus = new OpusStream(demuxer, {
-			openCache: id ? () => openCacheStream(id) : undefined,
+			// follow=true so a livestream keeps reading as the file grows
+			openCache: id ? () => openCacheStream(id, true) : undefined,
 		});
 		// Seeking is an anchor move, so no second ffmpeg pass and no re-read
 		if (seek && seek > 0) opus.relocate(seek * 1000);
