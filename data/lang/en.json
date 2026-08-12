@@ -9,24 +9,18 @@
 	"NOT_PLAYING": "I am not playing any song",
 	"NOT_PLAYING_NON_MUSIC": "I am not playing any non-music part",
 	"JOINED_VOICE": "Joined voice channel",
-
 	"DISCONNECTED": "Disconnected!",
 	"STOP": "Stopped the music!",
 	"SUPER_RESET": "Super reset done!",
-
 	"RESUME": "Resumed!",
 	"FAILED_RESUME": "Fail to resume the song!",
-
 	"PAUSE": "Paused!",
 	"FAILED_PAUSE": "Fail to pause the song!",
-
 	"RESET_PLAYER": "I've reset the player!",
 	"PLAYER_NOT_FOUND": "Player not found",
-
 	"EMPTY_PLAYLIST": "The playlist is empty!",
 	"SEGMENT_SKIP_MESSAGE_NEXT": "Found non-music content, want to skip to next song?\nType `/skip` or press the button to skip",
 	"SEGMENT_SKIP_MESSAGE": "Found non-music content, want to skip to `{pos}`?\nType `/relocate {posNum}` or press the button to skip",
-
 	"SKIP_VOTE": "Skip {skipAmount} song? (require {requiredAmount} vote)",
 	"SKIP_VOTE_PROGRESS": "Skip {skipAmount} song? ({votes}/{requiredAmount} vote)",
 	"SKIP_VOTE_NOT_IN_VOICE": "You have to be in my voice channel to vote",
@@ -34,44 +28,35 @@
 	"SKIP_VOTE_SUCCESS": "Skip vote passed, skipped the song",
 	"SKIP_VOTE_FAIL": "Skip vote failed, not enough votes",
 	"SKIP_VOTE_FAIL_SONG_CHANGED": "The song has changed, skip vote failed",
-
 	"PLAYING_DISPLAY": "Playing {title} ({url})",
 	"ADD_TO_QUEUE": "Added {input} ({url}) to queue",
 	"PLAYLIST_ADD_TO_QUEUE": "Added playlist {input} ({url}) to queue",
 	"ADD_TO_QUEUE_NEXT": "Added {input} ({url}) to queue to play next",
 	"PLAYLIST_ADD_TO_QUEUE_NEXT": "Added playlist {input} ({url}) to queue to play next",
-
 	"REMOVE_QUEUE_DETAIL": "Removed {title} ({removed})",
 	"REMOVE_QUEUE": "Removed {removed}",
-
 	"RELOCATE": "Relocated the song to {pos}",
 	"SET_VOLUME": "Set volume to {volume}%",
 	"CURRENT_VERSION": "Current version is **{version}**",
-
 	"SKIP_SONG": "Skipped {amount} song(s)",
 	"SEGMENT_SKIP": "Skipped to {pos}",
 	"SEGMENT_SKIP_NEXT": "Skipped to next song",
-
 	"PAGE": "Page {page}/{maxPage}",
-
 	"TOGGLE_LOOP_TRUE": "Loop mode is now enabled",
 	"TOGGLE_LOOP_FALSE": "Loop mode is now disabled",
 	"LOOP_ALREADY_TRUE": "Loop mode is already enabled",
 	"LOOP_ALREADY_FALSE": "Loop mode is already disabled",
 	"SET_LOOP_TRUE": "Loop mode is now enabled",
 	"SET_LOOP_FALSE": "Loop mode is now disabled",
-
 	"TOGGLE_AUTO_SKIP_TRUE": "Auto-skip non-music mode is now enabled",
 	"TOGGLE_AUTO_SKIP_FALSE": "Auto-skip non-music mode is now disabled",
 	"AUTO_SKIP_ALREADY_TRUE": "Auto-skip non-music mode is already enabled",
 	"AUTO_SKIP_ALREADY_FALSE": "Auto-skip non-music mode is already disabled",
 	"SET_AUTO_SKIP_TRUE": "Auto-skip non-music mode is now enabled",
 	"SET_AUTO_SKIP_FALSE": "Auto-skip non-music mode is now disabled",
-
 	"SKIP_CANCEL_TIMEOUT": "Timed out, skipping cancelled",
 	"SKIP_CANCEL_NO_NON_MUSIC": "Not playing any non-music part now, skipping cancelled",
 	"SKIP_CANCEL_SONG_CHANGED": "The song has changed, skipping cancelled",
-
 	"NO_SONG_FOUND": "No song found",
 	"INVALID_POSITION_FORMAT": "Invalid position format. Use seconds or (HH:)MM:SS format",
 	"POSITION_OVERFLOW": "The specified position exceeds the song duration",
@@ -79,7 +64,6 @@
 	"FAIL_RESOURCE": "Failed to create resource",
 	"FAIL_SKIP_SEGMENT": "Failed to skip the current non-music part",
 	"COMMAND_NOT_IMPLEMENTED": "This command is not implemented yet",
-
 	"DASHBOARD_LABEL": "Dashboard",
 	"NOW_PLAYING_LABEL": "Now Playing",
 	"PREVIOUS_PAGE_LABEL": "Previous Page",
@@ -209,5 +193,9 @@
 				}
 			}
 		}
-	}
+	},
+	"SEARCH_PICK": "Not the right song? Pick another result below.",
+	"SEARCH_PICK_PLACEHOLDER": "Switch to another search result",
+	"SEARCH_PICK_SWITCHED": "Switched to {title} ({url})",
+	"SEARCH_PICK_GONE": "That song is no longer playing or in the queue"
 }

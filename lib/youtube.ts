@@ -1,5 +1,6 @@
 import ytdl from "@distube/ytdl-core";
 import ytSearch from "yt-search";
+import { globalApp } from "./misc";
 
 export interface YouTubeChannel {
 	name: string;
@@ -91,8 +92,22 @@ export function isYouTubeUrl(url: string): boolean {
 }
 
 export async function searchYouTube(query: string): Promise<YouTubeVideo[]> {
-	const result = await ytSearch(query);
-	return result.videos.map(normalizeVideo);
+	try {
+		const result = await ytSearch(query);
+		// A malformed entry should cost one row, not the whole search
+		return result.videos
+			.filter((video) => video && typeof video.title === "string")
+			.map(normalizeVideo);
+	} catch (error) {
+		// yt-search throws while parsing some result pages, where a non-string
+		// title reaches .trim() inside its own parser and so cannot be guarded
+		// against beforehand. The dashboard searches on every keystroke, so one
+		// bad page must not take the request down with it.
+		globalApp.err(
+			`YouTube search failed for "${query}": ${(error as Error).message}`,
+		);
+		return [];
+	}
 }
 
 export async function getYouTubePlaylist(

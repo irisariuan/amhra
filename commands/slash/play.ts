@@ -5,6 +5,7 @@ import {
 	getYouTubePlaylist,
 	searchYouTube,
 	type YouTubePlaylist,
+	type YouTubeVideo,
 } from "../../lib/youtube";
 import { languageText } from "../../lib/language";
 import { dcb, globalApp, misc } from "../../lib/misc";
@@ -18,6 +19,7 @@ import {
 	isVideo,
 } from "../../lib/voice/core";
 import { sendInteractionSkipMessage } from "../../lib/voice/segment";
+import { sendSearchAlternatives } from "../../lib/voice/searchPick";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -104,6 +106,12 @@ export default {
 		// find if there is cache, cache is saved in YoutubeVideo form
 		// resultUrl could be a video or playlist
 		let resultUrl: string;
+		// Set only when the input was a free-text search, so the user can be
+		// offered the other hits once something is already playing
+		let alternatives: {
+			results: YouTubeVideo[];
+			chosenUrl: string;
+		} | null = null;
 		if (isVideo(input)) {
 			resultUrl = input;
 			player.addToQueue(resultUrl, false, next ? 0 : undefined);
@@ -131,6 +139,9 @@ export default {
 
 			// searching on YouTube
 		} else {
+			// Kept so the user can switch to another hit afterwards; a cache hit
+			// only remembers the best match, so there is nothing to offer then
+			let searchResults: YouTubeVideo[] = [];
 			const cached = client.cache.get(input);
 			if (cached?.isVideo()) {
 				resultUrl = cached.value.url;
@@ -143,8 +154,10 @@ export default {
 				}
 				client.cache.set(input, query[0], "video");
 				resultUrl = query[0].url;
+				searchResults = query;
 			}
 			player.addToQueue(resultUrl, false, next ? 0 : undefined);
+			alternatives = { results: searchResults, chosenUrl: resultUrl };
 		}
 
 		// start playing if the player is not playing
@@ -172,6 +185,14 @@ export default {
 						url: videoUrl,
 					}),
 				});
+				// Before the segment handling below, which returns early
+				if (alternatives) {
+					await sendSearchAlternatives({
+						interaction,
+						player,
+						...alternatives,
+					});
+				}
 				if (!data.segments) return;
 				if (player.currentSegment()) {
 					if (player.customSetting.autoSkipSegment) {
@@ -196,7 +217,7 @@ export default {
 		const baseText = isPlaylist(input)
 			? "playlist_add_to_queue"
 			: "add_to_queue";
-		return await interaction.editReply({
+		const reply = await interaction.editReply({
 			content: languageText(
 				next ? `${baseText}_next` : baseText,
 				language,
@@ -206,5 +227,13 @@ export default {
 				},
 			),
 		});
+		if (alternatives) {
+			await sendSearchAlternatives({
+				interaction,
+				player,
+				...alternatives,
+			});
+		}
+		return reply;
 	},
 } as Command<SlashCommandBuilder>;

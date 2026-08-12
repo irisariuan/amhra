@@ -9,41 +9,31 @@
 	"NOT_PLAYING": "現在沒有播放任何歌曲",
 	"NOT_PLAYING_NON_MUSIC": "現在沒有播放任何非音樂內容",
 	"JOINED_VOICE": "已加入語音頻道",
-
 	"DISCONNECTED": "已斷線！",
 	"STOP": "已停止音樂！",
 	"SUPER_RESET": "超級重置完成！",
-
 	"RESUME": "已恢復！",
 	"FAILED_RESUME": "恢復歌曲失敗！",
-
 	"PAUSE": "已暫停！",
 	"FAILED_PAUSE": "暫停歌曲失敗！",
-
 	"RESET_PLAYER": "我已重置播放器！",
 	"PLAYER_NOT_FOUND": "找不到播放器",
-
 	"EMPTY_PLAYLIST": "播放清單是空的！",
 	"SEGMENT_SKIP_MESSAGE_NEXT": "發現非音樂內容，想要跳到下一首歌曲嗎？\n輸入 `/skip` 或點擊按鈕來跳過",
 	"SEGMENT_SKIP_MESSAGE": "發現非音樂內容，想要跳到 `{pos}` 嗎？\n輸入 `/relocate {posNum}` 或點擊按鈕來跳過",
-
 	"PLAYING_DISPLAY": "正在播放 {title} ({url})",
 	"ADD_TO_QUEUE": "已將 {input} ({url}) 加入播放清單",
 	"PLAYLIST_ADD_TO_QUEUE": "已將播放清單 {input} ({url}) 加入播放清單",
 	"ADD_TO_QUEUE_NEXT": "已將 {input} ({url}) 新增至播放佇列，將於下一首播放",
 	"PLAYLIST_ADD_TO_QUEUE_NEXT": "已將播放清單 {input} ({url}) 新增至播放佇列，將於下一首播放",
-
 	"REMOVE_QUEUE_DETAIL": "已移除 {title} ({removed})",
 	"REMOVE_QUEUE": "已移除 {removed}",
-
 	"RELOCATE": "已將歌曲重新定位到 {pos}",
 	"SET_VOLUME": "已將音量設定為 {volume}%",
 	"CURRENT_VERSION": "目前版本為 **{version}**",
-
 	"SKIP_SONG": "已跳過 {amount} 首歌曲",
 	"SEGMENT_SKIP": "已跳到 {pos}",
 	"SEGMENT_SKIP_NEXT": "已跳到下一首歌曲",
-
 	"SKIP_VOTE": "要跳過 {skipAmount}首歌嗎？ (需要 {requiredAmount} 票)",
 	"SKIP_VOTE_PROGRESS": "要跳過 {skipAmount}首歌嗎？ ({votes}/{requiredAmount} 票)",
 	"SKIP_VOTE_NOT_IN_VOICE": "必須和我在同一個語音頻道才能投票",
@@ -51,27 +41,22 @@
 	"SKIP_VOTE_SUCCESS": "跳過投票通過，已跳過歌曲",
 	"SKIP_VOTE_FAIL": "跳過投票失敗，票數不足",
 	"SKIP_VOTE_FAIL_SONG_CHANGED": "歌曲已變更，跳過投票失敗",
-
 	"PAGE": "頁面 {page}/{maxPage}",
-
 	"TOGGLE_LOOP_TRUE": "循環模式現在已啟用",
 	"TOGGLE_LOOP_FALSE": "循環模式現在已停用",
 	"LOOP_ALREADY_TRUE": "循環模式已啟用",
 	"LOOP_ALREADY_FALSE": "循環模式已停用",
 	"SET_LOOP_TRUE": "循環模式現在已啟用",
 	"SET_LOOP_FALSE": "循環模式現在已停用",
-
 	"TOGGLE_AUTO_SKIP_TRUE": "已啟用自動跳過非音樂模式",
 	"TOGGLE_AUTO_SKIP_FALSE": "已停用自動跳過非音樂模式",
 	"AUTO_SKIP_ALREADY_TRUE": "自動跳過非音樂模式已啟用",
 	"AUTO_SKIP_ALREADY_FALSE": "自動跳過非音樂模式已停用",
 	"SET_AUTO_SKIP_TRUE": "已啟用自動跳過非音樂模式",
 	"SET_AUTO_SKIP_FALSE": "已停用自動跳過非音樂模式",
-
 	"SKIP_CANCEL_TIMEOUT": "已逾時，跳過已取消",
 	"SKIP_CANCEL_NO_NON_MUSIC": "現在沒有播放任何非音樂內容，跳過已取消",
 	"SKIP_CANCEL_SONG_CHANGED": "歌曲已變更，跳過已取消",
-
 	"NO_SONG_FOUND": "找不到歌曲",
 	"INVALID_POSITION_FORMAT": "無效的位置格式。請使用秒數或 (HH:)MM:SS 格式",
 	"POSITION_OVERFLOW": "指定的位置超過歌曲長度",
@@ -79,7 +64,6 @@
 	"FAIL_RESOURCE": "建立資源失敗",
 	"FAIL_SKIP_SEGMENT": "跳過目前的非音樂部分失敗",
 	"COMMAND_NOT_IMPLEMENTED": "此指令尚未實裝",
-
 	"DASHBOARD_LABEL": "儀表板",
 	"NOW_PLAYING_LABEL": "正在播放",
 	"PREVIOUS_PAGE_LABEL": "上一頁",
@@ -243,5 +227,9 @@
 				}
 			}
 		}
-	}
+	},
+	"SEARCH_PICK": "不是想要的歌嗎？可以從下面選擇其他搜尋結果。",
+	"SEARCH_PICK_PLACEHOLDER": "切換到其他搜尋結果",
+	"SEARCH_PICK_SWITCHED": "已切換至 {title} ({url})",
+	"SEARCH_PICK_GONE": "該歌曲已不在播放中，也不在佇列裡"
 }

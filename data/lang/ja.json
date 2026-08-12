@@ -9,24 +9,18 @@
 	"NOT_PLAYING": "何も曲を再生していません",
 	"NOT_PLAYING_NON_MUSIC": "音楽以外のコンテンツは再生していません",
 	"JOINED_VOICE": "ボイスチャンネルに参加しました",
-
 	"DISCONNECTED": "切断されました！",
 	"STOP": "音楽を停止しました！",
 	"SUPER_RESET": "スーパーリセット完了！",
-
 	"RESUME": "再開しました！",
 	"FAILED_RESUME": "曲の再開に失敗しました！",
-
 	"PAUSE": "一時停止しました！",
 	"FAILED_PAUSE": "曲の一時停止に失敗しました！",
-
 	"RESET_PLAYER": "プレイヤーをリセットしました！",
 	"PLAYER_NOT_FOUND": "プレイヤーが見つかりません",
-
 	"EMPTY_PLAYLIST": "プレイリストは空です！",
 	"SEGMENT_SKIP_MESSAGE_NEXT": "音楽以外のコンテンツが見つかりました。次の曲にスキップしますか？\n`/skip`と入力するか、ボタンを押してスキップしてください",
 	"SEGMENT_SKIP_MESSAGE": "音楽以外のコンテンツが見つかりました。`{pos}`にスキップしますか？\n`/relocate {posNum}`と入力するか、ボタンを押してスキップしてください",
-
 	"SKIP_VOTE": "{skipAmount}曲をスキップしますか？ (最低{requiredAmount}票が必要です)",
 	"SKIP_VOTE_PROGRESS": "{skipAmount}曲をスキップしますか？ ({votes}/{requiredAmount}票)",
 	"SKIP_VOTE_NOT_IN_VOICE": "投票するには私と同じボイスチャンネルにいる必要があります",
@@ -34,44 +28,35 @@
 	"SKIP_VOTE_SUCCESS": "スキップ投票が可決され、曲をスキップしました",
 	"SKIP_VOTE_FAIL": "スキップ投票が失敗しました。票数が足りません",
 	"SKIP_VOTE_FAIL_SONG_CHANGED": "曲が変更されたため、スキップ投票が失敗しました",
-
 	"PLAYING_DISPLAY": "{title} ({url}) を再生中",
 	"ADD_TO_QUEUE": "{input} ({url}) をキューに追加しました",
 	"PLAYLIST_ADD_TO_QUEUE": "プレイリスト{input} ({url}) をキューに追加しました",
 	"ADD_TO_QUEUE_NEXT": "{input} ({url}) を再生キューに追加しました (次に再生)",
 	"PLAYLIST_ADD_TO_QUEUE_NEXT": "プレイリスト {input} ({url}) を再生キューに追加しました (次に再生)",
-
 	"REMOVE_QUEUE_DETAIL": "{title} ({removed}) を削除しました",
 	"REMOVE_QUEUE": "{removed} を削除しました",
-
 	"RELOCATE": "曲を{pos}に移動しました",
 	"SET_VOLUME": "音量を{volume}%に設定しました",
 	"CURRENT_VERSION": "現在のバージョンは**{version}**です",
-
 	"SKIP_SONG": "{amount}曲スキップしました",
 	"SEGMENT_SKIP": "{pos}にスキップしました",
 	"SEGMENT_SKIP_NEXT": "次の曲にスキップしました",
-
 	"PAGE": "{page}/{maxPage}ページ",
-
 	"TOGGLE_LOOP_TRUE": "ループモードが有効になりました",
 	"TOGGLE_LOOP_FALSE": "ループモードが無効になりました",
 	"LOOP_ALREADY_TRUE": "ループモードはすでに有効です",
 	"LOOP_ALREADY_FALSE": "ループモードはすでに無効です",
 	"SET_LOOP_TRUE": "ループモードが有効になりました",
 	"SET_LOOP_FALSE": "ループモードが無効になりました",
-
 	"TOGGLE_AUTO_SKIP_TRUE": "自動スキップ（音楽以外のモード）が有効になりました",
 	"TOGGLE_AUTO_SKIP_FALSE": "自動スキップ（音楽以外のモード）が無効になりました",
 	"AUTO_SKIP_ALREADY_TRUE": "自動スキップ（音楽以外のモード）はすでに有効です",
 	"AUTO_SKIP_ALREADY_FALSE": "自動スキップ（音楽以外のモード）はすでに無効です",
 	"SET_AUTO_SKIP_TRUE": "自動スキップ（音楽以外のモード）が有効になりました",
 	"SET_AUTO_SKIP_FALSE": "自動スキップ（音楽以外のモード）が無効になりました",
-
 	"SKIP_CANCEL_TIMEOUT": "タイムアウトしました。スキップをキャンセルします",
 	"SKIP_CANCEL_NO_NON_MUSIC": "現在、音楽以外のコンテンツを再生していないため、スキップをキャンセルします",
 	"SKIP_CANCEL_SONG_CHANGED": "曲が変更されたため、スキップをキャンセルします",
-
 	"NO_SONG_FOUND": "曲が見つかりませんでした",
 	"INVALID_POSITION_FORMAT": "無効な位置形式です。秒数または(HH:)MM:SS形式を使用してください",
 	"POSITION_OVERFLOW": "指定された位置が曲の長さを超えています",
@@ -79,7 +64,6 @@
 	"FAIL_RESOURCE": "リソースの作成に失敗しました",
 	"FAIL_SKIP_SEGMENT": "現在の音楽以外の部分をスキップできませんでした",
 	"COMMAND_NOT_IMPLEMENTED": "このコマンドはまだ実装されていません",
-
 	"DASHBOARD_LABEL": "ダッシュボード",
 	"NOW_PLAYING_LABEL": "再生中",
 	"PREVIOUS_PAGE_LABEL": "前のページ",
@@ -243,5 +227,9 @@
 				}
 			}
 		}
-	}
+	},
+	"SEARCH_PICK": "違う曲でしたか？下から別の検索結果を選べます。",
+	"SEARCH_PICK_PLACEHOLDER": "別の検索結果に切り替える",
+	"SEARCH_PICK_SWITCHED": "{title} ({url}) に切り替えました",
+	"SEARCH_PICK_GONE": "その曲は再生中でもキュー内でもありません"
 }

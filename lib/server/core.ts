@@ -424,11 +424,25 @@ export async function initServer(client: CustomClient) {
 				exp.error(`Search failed for query: ${req.body.query}`);
 				return res.sendStatus(500);
 			}
+			// `results` backs the dashboard's live search. The flat top-level
+			// fields describe the best match and predate it, so they stay for
+			// callers that only ever wanted one answer.
+			const limit = Math.min(
+				Math.max(Math.trunc(Number(req.body.limit)) || 5, 1),
+				10,
+			);
 			const searched = fetched[0];
 			return res.json({
 				url: searched.url,
 				title: searched.title,
 				durationInSec: searched.durationInSec,
+				results: fetched.slice(0, limit).map((video) => ({
+					url: video.url,
+					title: video.title,
+					durationInSec: video.durationInSec,
+					channel: video.channel.name,
+					thumbnail: video.thumbnails[0]?.url ?? null,
+				})),
 			});
 		},
 	);
