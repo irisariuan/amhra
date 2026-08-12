@@ -39,8 +39,16 @@ import { dcb, globalApp } from "../misc";
 import { event } from "../server/event";
 import { readSetting } from "../setting";
 import { getSegments, SegmentCategory, sendSkipMessage } from "./segment";
-import { clipAudio, createYtDlpStream, decodeToPcm } from "./stream";
-import { VolumeOpusStream } from "./volume";
+import {
+	clipAudio,
+	createYtDlpStream,
+	decodeToPcm,
+	openCacheStream,
+	peekWebm,
+} from "./stream";
+import { VolumeOpusStream, type VolumeControl } from "./volume";
+import { OpusStream } from "./opusStream";
+import { WebmOpusDemuxer } from "./webm";
 import { pickRadioTrack } from "./suggest";
 
 const videoInfoCache = new NodeCache();
@@ -272,12 +280,36 @@ export async function createResource(
 	const detail = (await getVideoInfo(url))?.video_details;
 	if (!detail || (detail.id && setting.BANNED_IDS.includes(detail.id)))
 		return null;
-	const source = await createStream(url, seek, skipCache);
-	const { stream: pcm, kill } = decodeToPcm(source.stream);
-	// Gain is applied by our own encoder instead of inlineVolume so that a
-	// volume change is not stuck behind the buffered, already-scaled audio of
-	// the built-in pipeline
-	const volume = new VolumeOpusStream(pcm, { onClose: kill });
+	// WebM/Opus goes through our own demuxer, which skips ffmpeg entirely: the
+	// packets in the container are already the 20ms Opus frames Discord wants.
+	// Anything else (rare, but yt-dlp does occasionally hand back AAC) keeps
+	// the ffmpeg decode path.
+	const id = getYouTubeVideoId(url);
+	// Seek is applied per branch below, so the source is always unclipped here
+	const raw = await createStream(url, undefined, skipCache);
+	const { isWebm, stream } = await peekWebm(raw.stream);
+
+	let volume: VolumeControl & Readable;
+	if (isWebm) {
+		const demuxer = new WebmOpusDemuxer();
+		stream.pipe(demuxer);
+		const opus = new OpusStream(demuxer, {
+			openCache: id ? () => openCacheStream(id) : undefined,
+		});
+		// Seeking is an anchor move, so no second ffmpeg pass and no re-read
+		if (seek && seek > 0) opus.relocate(seek * 1000);
+		volume = opus;
+	} else {
+		globalApp.warn(`Not WebM, falling back to ffmpeg decode: ${url}`);
+		const seeked =
+			seek && seek > 0 ? clipAudio(stream, seek).copied : stream;
+		const { stream: pcm, kill } = decodeToPcm(seeked);
+		// Gain is applied by our own encoder instead of inlineVolume so that a
+		// volume change is not stuck behind the buffered, already-scaled audio
+		// of the built-in pipeline
+		volume = new VolumeOpusStream(pcm, { onClose: kill });
+	}
+
 	const res = createAudioResource(volume, {
 		inputType: StreamType.Opus,
 		inlineVolume: false,
@@ -293,7 +325,7 @@ export async function createResource(
 	return {
 		resource: res,
 		volume,
-		stream: source,
+		stream: raw,
 		channel: detail.channel,
 		title: detail.title,
 		details: detail,

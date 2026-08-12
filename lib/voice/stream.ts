@@ -161,6 +161,65 @@ export async function prefetch(url: string, force = false) {
 	};
 }
 
+/** First element of any Matroska/WebM file */
+const EBML_MAGIC = 0x1a45dfa3;
+
+/**
+ * Open the on-disk copy of a track, whichever name it currently has.
+ *
+ * Resolved on every call rather than cached: a download completing renames
+ * `.temp.music` to `.music`, so a path captured earlier can vanish. Seeking
+ * backwards into a partial file is safe, because anything already played has
+ * by definition already been written.
+ */
+export function openCacheStream(id: string): Readable | null {
+	for (const name of [`${id}.music`, `${id}.temp.music`]) {
+		const path = `${process.cwd()}/cache/${name}`;
+		if (existsSync(path)) return createReadStream(path);
+	}
+	return null;
+}
+
+/**
+ * Look at the first chunk to decide whether the source is WebM, then hand back
+ * a stream that still starts at byte zero.
+ *
+ * yt-dlp's `bestaudio` is WebM/Opus for effectively every YouTube video, but
+ * not quite all of them, so the ffmpeg path stays as a fallback.
+ */
+export async function peekWebm(
+	source: Readable,
+): Promise<{ isWebm: boolean; stream: Readable }> {
+	const head = await new Promise<Buffer | null>((resolve) => {
+		const cleanup = () => {
+			source.off("data", onData);
+			source.off("end", onEnd);
+			source.off("error", onEnd);
+			source.pause();
+		};
+		const onData = (chunk: Buffer) => {
+			cleanup();
+			resolve(chunk);
+		};
+		const onEnd = () => {
+			cleanup();
+			resolve(null);
+		};
+		source.once("data", onData);
+		source.once("end", onEnd);
+		source.once("error", onEnd);
+	});
+
+	const isWebm =
+		!!head && head.length >= 4 && head.readUInt32BE(0) === EBML_MAGIC;
+
+	// Put the consumed chunk back in front of the rest
+	const stream = new PassThrough();
+	if (head) stream.write(head);
+	source.pipe(stream);
+	return { isWebm, stream };
+}
+
 function copyStreamSafe(
 	tag: string,
 	rawStream: Readable,

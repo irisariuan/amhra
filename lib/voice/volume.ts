@@ -13,8 +13,9 @@ export interface VolumeControl {
 	readonly volume: number;
 }
 
-interface OpusEngine {
+export interface OpusEngine {
 	encode(pcm: Buffer): Buffer;
+	decode(packet: Buffer): Buffer;
 	destroy(): void;
 }
 
@@ -22,17 +23,23 @@ let engineName: string | null = null;
 
 /**
  * Pick whatever Opus binding is installed. Native first, pure JS as fallback.
+ *
+ * Encoder and decoder are separate instances: the two directions each carry
+ * their own state, and sharing one object between them is not something either
+ * binding promises to support.
  */
-function createOpusEngine(): OpusEngine {
+export function createOpusEngine(): OpusEngine {
 	try {
 		const { OpusEncoder } = require("@discordjs/opus");
 		const encoder = new OpusEncoder(SAMPLE_RATE, CHANNELS);
+		const decoder = new OpusEncoder(SAMPLE_RATE, CHANNELS);
 		if (engineName !== "@discordjs/opus") {
 			engineName = "@discordjs/opus";
 			globalApp.important("Opus engine: @discordjs/opus");
 		}
 		return {
 			encode: (pcm: Buffer) => encoder.encode(pcm),
+			decode: (packet: Buffer) => decoder.decode(packet),
 			destroy: () => {},
 		};
 	} catch (error) {
@@ -50,13 +57,23 @@ function createOpusEngine(): OpusEngine {
 		CHANNELS,
 		OpusScript.Application.AUDIO,
 	);
+	const decoder = new OpusScript(
+		SAMPLE_RATE,
+		CHANNELS,
+		OpusScript.Application.AUDIO,
+	);
 	if (engineName !== "opusscript") {
 		engineName = "opusscript";
 		globalApp.important("Opus engine: opusscript");
 	}
 	return {
 		encode: (pcm: Buffer) => encoder.encode(pcm, FRAME_SIZE),
-		destroy: () => encoder.delete?.(),
+		// opusscript hands back a Uint8Array view, not a Buffer
+		decode: (packet: Buffer) => Buffer.from(decoder.decode(packet)),
+		destroy: () => {
+			encoder.delete?.();
+			decoder.delete?.();
+		},
 	};
 }
 
