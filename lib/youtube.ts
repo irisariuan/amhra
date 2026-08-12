@@ -119,7 +119,11 @@ export async function getYouTubeVideoInfo(
 	url: string,
 	agent?: ytdl.Agent,
 ): Promise<YouTubeVideoInfo> {
-	const info = await ytdl.getInfo(url, { agent });
+	// getBasicInfo only reads videoDetails. getInfo additionally deciphers the
+	// stream formats, which breaks ("Failed to find any playable formats")
+	// whenever YouTube ships a player script ytdl-core cannot parse - and the
+	// formats are unused here anyway
+	const info = await ytdl.getBasicInfo(url, { agent });
 	const details = info.videoDetails;
 	const channelId = details.author?.id ?? details.channelId;
 	return {

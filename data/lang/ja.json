@@ -24,10 +24,13 @@
 	"PLAYER_NOT_FOUND": "プレイヤーが見つかりません",
 
 	"EMPTY_PLAYLIST": "プレイリストは空です！",
-	"SEGMENT_SKIP_MESSAGE_NEXT": "音楽以外のコンテンツが見つかりました。次の曲にスキップしますか？\n`/skip`と入力するか、リアクションでスキップしてください",
-	"SEGMENT_SKIP_MESSAGE": "音楽以外のコンテンツが見つかりました。`{pos}`にスキップしますか？\n`/relocate {posNum}`と入力するか、リアクションでスキップしてください",
+	"SEGMENT_SKIP_MESSAGE_NEXT": "音楽以外のコンテンツが見つかりました。次の曲にスキップしますか？\n`/skip`と入力するか、ボタンを押してスキップしてください",
+	"SEGMENT_SKIP_MESSAGE": "音楽以外のコンテンツが見つかりました。`{pos}`にスキップしますか？\n`/relocate {posNum}`と入力するか、ボタンを押してスキップしてください",
 
 	"SKIP_VOTE": "{skipAmount}曲をスキップしますか？ (最低{requiredAmount}票が必要です)",
+	"SKIP_VOTE_PROGRESS": "{skipAmount}曲をスキップしますか？ ({votes}/{requiredAmount}票)",
+	"SKIP_VOTE_NOT_IN_VOICE": "投票するには私と同じボイスチャンネルにいる必要があります",
+	"SKIP_VOTE_ALREADY": "すでに投票しています",
 	"SKIP_VOTE_SUCCESS": "スキップ投票が可決され、曲をスキップしました",
 	"SKIP_VOTE_FAIL": "スキップ投票が失敗しました。票数が足りません",
 	"SKIP_VOTE_FAIL_SONG_CHANGED": "曲が変更されたため、スキップ投票が失敗しました",

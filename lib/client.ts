@@ -12,14 +12,9 @@ import { dcb, globalApp, misc } from "./misc";
 import { languageText, parseLocale } from "./language";
 
 export const client = new CustomClient({
-	// GuildMessageReactions is required for the skip-segment confirmation
-	// (awaitReactions on the bot's own message); message/voice logging intents
-	// were removed.
-	intents: [
-		GatewayIntentBits.GuildVoiceStates,
-		GatewayIntentBits.Guilds,
-		GatewayIntentBits.GuildMessageReactions,
-	],
+	// Every confirmation goes through message components, so no reaction or
+	// message content intent is needed.
+	intents: [GatewayIntentBits.GuildVoiceStates, GatewayIntentBits.Guilds],
 });
 
 // import commands

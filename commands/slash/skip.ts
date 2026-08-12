@@ -1,4 +1,11 @@
-import { SlashCommandBuilder } from "discord.js";
+import {
+	ActionRowBuilder,
+	ButtonBuilder,
+	ButtonStyle,
+	ComponentType,
+	MessageFlags,
+	SlashCommandBuilder,
+} from "discord.js";
 import {
 	getAudioPlayer,
 	getBotVoiceChannel,
@@ -7,6 +14,8 @@ import {
 import { type Command } from "../../lib/interaction";
 import { languageText } from "../../lib/language";
 import { globalApp } from "../../lib/misc";
+
+const VOTE_BUTTON_ID = "skip_vote";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -69,57 +78,91 @@ export default {
 			botVoiceChannel.members.size > 2
 		) {
 			const requiredAmount = Math.ceil(botVoiceChannel.members.size / 2);
+			const skipAmount = Math.min(player.queue.length + 1, amount);
 			const playCount = player.playCounter;
+			const voteRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+				new ButtonBuilder()
+					.setCustomId(VOTE_BUTTON_ID)
+					.setLabel(languageText("skip_label", language))
+					.setStyle(ButtonStyle.Primary),
+			);
 			await interaction.editReply({
 				content: languageText("skip_vote", language, {
 					requiredAmount,
-					skipAmount: Math.min(player.queue.length + 1, amount),
+					skipAmount,
 				}),
+				components: [voteRow],
 			});
 			if (!message.resource?.message) throw new Error("No message found");
-			await message.resource?.message?.react("✅");
+			const voters = new Set<string>();
 			try {
 				const collector =
-					message.resource.message.createReactionCollector({
-						filter: (reaction, user) => {
-							return !!(
-								reaction.emoji.name === "✅" &&
-								!user.bot &&
-								botVoiceChannel.members.find(
-									(member) => member.id === user.id,
-								)
-							);
-						},
+					message.resource.message.createMessageComponentCollector({
+						componentType: ComponentType.Button,
 						time: 15 * 1000,
 					});
 				await new Promise<void>((resolve, reject) => {
-					collector.on("collect", (reaction) => {
+					collector.on("collect", async (button) => {
+						if (button.customId !== VOTE_BUTTON_ID) return;
 						if (
-							reaction.users.cache.filter((user) =>
-								botVoiceChannel.members.find(
-									(member) =>
-										member.id === user.id && !user.bot,
+							button.user.bot ||
+							!botVoiceChannel.members.has(button.user.id)
+						) {
+							return await button.reply({
+								content: languageText(
+									"skip_vote_not_in_voice",
+									language,
 								),
-							).size >= requiredAmount
-						)
-							resolve();
+								flags: MessageFlags.Ephemeral,
+							});
+						}
+						if (voters.has(button.user.id)) {
+							return await button.reply({
+								content: languageText(
+									"skip_vote_already",
+									language,
+								),
+								flags: MessageFlags.Ephemeral,
+							});
+						}
+						voters.add(button.user.id);
+						if (voters.size >= requiredAmount) {
+							collector.stop("passed");
+							await button.update({ components: [] });
+							return resolve();
+						}
+						await button.update({
+							content: languageText("skip_vote_progress", language, {
+								requiredAmount,
+								skipAmount,
+								votes: voters.size,
+							}),
+							components: [voteRow],
+						});
 					});
-					collector.on("end", () => reject());
+					collector.on("end", (_collected, reason) => {
+						if (reason !== "passed") reject();
+					});
 				});
 				if (playCount !== player.playCounter) {
 					globalApp.warn(
 						"Play count changed during vote, aborting skip",
 					);
-					throw "";
+					return await interaction.editReply({
+						content: languageText(
+							"skip_vote_fail_song_changed",
+							language,
+						),
+						components: [],
+					});
 				}
-				await message.resource?.message?.reactions.removeAll();
 				await interaction.followUp(
 					languageText("skip_vote_success", language),
 				);
 			} catch {
-				await message.resource?.message?.reactions.removeAll();
-				return await message.resource?.message?.edit({
+				return await interaction.editReply({
 					content: languageText("skip_vote_fail", language),
+					components: [],
 				});
 			}
 		}

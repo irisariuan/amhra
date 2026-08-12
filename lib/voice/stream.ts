@@ -11,6 +11,7 @@ import { pipeline } from "node:stream/promises";
 import { getYouTubeVideoId } from "../youtube";
 import { dcb, globalApp } from "../misc";
 import { updateLastUsed, reviewCaches } from "./cache";
+import { CHANNELS, SAMPLE_RATE } from "./volume";
 
 if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
 	writeFileSync(`${process.cwd()}/data/lastUsed.record`, "");
@@ -187,6 +188,57 @@ function copyStreamSafe(
 		passThrough.destroy(err);
 	});
 	return passThrough;
+}
+
+/**
+ * Decode any container/codec ffmpeg understands into raw signed 16-bit
+ * little-endian PCM at the Discord sample rate.
+ *
+ * The returned stream is left in paused mode on purpose: whoever consumes it
+ * pulls one Opus frame at a time, which keeps the un-adjusted audio in
+ * ffmpeg's output buffer instead of downstream of the volume stage.
+ */
+export function decodeToPcm(source: Readable) {
+	const args = [
+		"-loglevel",
+		"error",
+		"-i",
+		"pipe:0",
+		"-vn",
+		"-f",
+		"s16le",
+		"-ar",
+		SAMPLE_RATE.toString(),
+		"-ac",
+		CHANNELS.toString(),
+		"pipe:1",
+	];
+
+	const proc = spawn("ffmpeg", args, { stdio: ["pipe", "pipe", "pipe"] });
+
+	const decoder = new TextDecoder();
+	proc.stderr.on("data", (buf) =>
+		globalApp.err(`FFmpeg decode: ${decoder.decode(buf).trim()}`),
+	);
+	proc.on("error", (err) =>
+		globalApp.err(`FFmpeg decode process error: ${err.message}`),
+	);
+
+	const kill = () => {
+		if (proc.exitCode === null && !proc.killed) proc.kill("SIGKILL");
+	};
+	proc.stdout.on("close", kill);
+
+	source.on("error", (err: NodeJS.ErrnoException) => {
+		globalApp.err(`Decode source error: ${err.message}`);
+		kill();
+	});
+	// Skip pipeline(): a killed ffmpeg makes stdin throw EPIPE, which is
+	// expected whenever playback is stopped early
+	source.pipe(proc.stdin);
+	proc.stdin.on("error", () => source.destroy());
+
+	return { stream: proc.stdout, proc, kill };
 }
 
 export function clipAudio(source: Readable, start: number, end?: number) {

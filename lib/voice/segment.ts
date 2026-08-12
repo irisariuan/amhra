@@ -8,10 +8,12 @@ import {
 	ButtonBuilder,
 	ButtonStyle,
 	ChatInputCommandInteraction,
+	ComponentType,
 } from "discord.js";
 import { Language } from "../interaction";
 
 export const cancelThreshold = 2; // in seconds, set to <=0 to disable
+export const SKIP_BUTTON_ID = "skip";
 
 export enum SegmentCategory {
 	Sponsor = "sponsor",
@@ -155,13 +157,14 @@ export async function sendInteractionSkipMessage(
 						languageText("skip_label", player.currentLanguage),
 					)
 					.setStyle(ButtonStyle.Primary)
-					.setCustomId("skip"),
+					.setCustomId(SKIP_BUTTON_ID),
 			),
 		],
 	});
 	player.activeSkipMessage = response;
 	try {
 		const confirmation = await response.awaitMessageComponent({
+			componentType: ComponentType.Button,
 			time: Math.min(10 * 1000, skipTo.segment[1] * 1000),
 		});
 		if (player.playCounter !== count) {
@@ -174,7 +177,7 @@ export async function sendInteractionSkipMessage(
 			});
 			return true;
 		}
-		if (confirmation.customId === "skip") {
+		if (confirmation.customId === SKIP_BUTTON_ID) {
 			const result = await player.skipCurrentSegment();
 			if (!result.success) {
 				await confirmation.update({
@@ -201,7 +204,6 @@ export async function sendInteractionSkipMessage(
 			return false;
 		}
 		if (response.editable) {
-			await response.reactions.removeAll().catch(() => {});
 			await response
 				.edit({
 					content: languageText(
@@ -223,7 +225,7 @@ export async function sendInteractionSkipMessage(
  * Default is true, which means it will delete the previous skip message if it exists
  *
  * @description Sends a skip message to the channel if the current segment is not music
- * and waits for a reaction to skip to the next segment or to the end of the song
+ * and waits for the skip button to skip to the next segment or to the end of the song
  * @returns Whether the skip message was sent or not
  */
 export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
@@ -269,18 +271,21 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 					pos: timeFormat(skipTo),
 					posNum: Math.round(skipTo),
 				}),
+		components: [
+			new ActionRowBuilder<ButtonBuilder>().addComponents(
+				new ButtonBuilder()
+					.setLabel(languageText("skip_label", player.currentLanguage))
+					.setStyle(ButtonStyle.Primary)
+					.setCustomId(SKIP_BUTTON_ID),
+			),
+		],
 	});
-	dcb.log("Sent skip message, waiting for reaction");
+	dcb.log("Sent skip message, waiting for button");
 	player.activeSkipMessage = response;
-	await response.react("✅");
 	try {
-		await response.awaitReactions({
-			filter: (reaction) =>
-				reaction.emoji.name === "✅" &&
-				reaction.users.cache.filter((u) => !u.bot).size > 0,
+		const confirmation = await response.awaitMessageComponent({
+			componentType: ComponentType.Button,
 			time: Math.min(10 * 1000, skipTo * 1000),
-			max: 1,
-			errors: ["time"],
 		});
 		if (response.id !== player.activeSkipMessage?.id) {
 			if (response.deletable) {
@@ -291,14 +296,8 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 		}
 		player.activeSkipMessage = null;
 		dcb.log("Skipping non-music part");
-		for (const reaction of response.reactions.cache.values()) {
-			if (reaction.emoji.name === "✅") {
-				// no await to speed up
-				reaction.remove();
-			}
-		}
 		if (!player.currentSegment()) {
-			await response.edit({
+			await confirmation.update({
 				content: languageText(
 					"skip_cancel_no_non_music",
 					player.currentLanguage,
@@ -308,7 +307,7 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 			return true;
 		}
 		if (player.playCounter !== count) {
-			response.edit({
+			await confirmation.update({
 				content: languageText(
 					"skip_cancel_song_changed",
 					player.currentLanguage,
@@ -319,20 +318,24 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 		}
 		if (isSkippingSong) {
 			player.stop();
-			await response.edit({
+			await confirmation.update({
 				content: languageText(
 					"segment_skip_next",
 					player.currentLanguage,
 				),
+				components: [],
 			});
 			return true;
 		}
 		const result = await player.skipCurrentSegment();
 		if (!result.success) {
-			await response.edit(misc.errorMessageObj(player.currentLanguage));
+			await confirmation.update({
+				...misc.errorMessageObj(player.currentLanguage),
+				components: [],
+			});
 			return true;
 		}
-		await response.edit({
+		await confirmation.update({
 			content: languageText(
 				result.skipped ? "segment_skip_next" : "segment_skip",
 				player.currentLanguage,
@@ -351,7 +354,6 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 			return true;
 		}
 		if (response.editable) {
-			await response.reactions.removeAll().catch(() => {});
 			await response
 				.edit({
 					content: languageText(

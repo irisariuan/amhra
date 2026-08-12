@@ -167,11 +167,7 @@ export async function handleSongInterruption(
 						),
 						components: [],
 					});
-					for (const reaction of player.activeSkipMessage.reactions.cache.values()) {
-						if (reaction.emoji.name === "✅") {
-							await reaction.remove();
-						}
-					}
+					player.activeSkipMessage = null;
 				}
 				dcb.log("Skipped segment from dashboard");
 			} else {

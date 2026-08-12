@@ -24,8 +24,8 @@
 	"PLAYER_NOT_FOUND": "找不到播放器",
 
 	"EMPTY_PLAYLIST": "播放清單是空的！",
-	"SEGMENT_SKIP_MESSAGE_NEXT": "發現非音樂內容，想要跳到下一首歌曲嗎？\n輸入 `/skip` 或點擊反應來跳過",
-	"SEGMENT_SKIP_MESSAGE": "發現非音樂內容，想要跳到 `{pos}` 嗎？\n輸入 `/relocate {posNum}` 或點擊反應來跳過",
+	"SEGMENT_SKIP_MESSAGE_NEXT": "發現非音樂內容，想要跳到下一首歌曲嗎？\n輸入 `/skip` 或點擊按鈕來跳過",
+	"SEGMENT_SKIP_MESSAGE": "發現非音樂內容，想要跳到 `{pos}` 嗎？\n輸入 `/relocate {posNum}` 或點擊按鈕來跳過",
 
 	"PLAYING_DISPLAY": "正在播放 {title} ({url})",
 	"ADD_TO_QUEUE": "已將 {input} ({url}) 加入播放清單",
@@ -45,6 +45,9 @@
 	"SEGMENT_SKIP_NEXT": "已跳到下一首歌曲",
 
 	"SKIP_VOTE": "要跳過 {skipAmount}首歌嗎？ (需要 {requiredAmount} 票)",
+	"SKIP_VOTE_PROGRESS": "要跳過 {skipAmount}首歌嗎？ ({votes}/{requiredAmount} 票)",
+	"SKIP_VOTE_NOT_IN_VOICE": "必須和我在同一個語音頻道才能投票",
+	"SKIP_VOTE_ALREADY": "你已經投過票了",
 	"SKIP_VOTE_SUCCESS": "跳過投票通過，已跳過歌曲",
 	"SKIP_VOTE_FAIL": "跳過投票失敗，票數不足",
 	"SKIP_VOTE_FAIL_SONG_CHANGED": "歌曲已變更，跳過投票失敗",

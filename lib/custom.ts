@@ -5,6 +5,7 @@ import { type YouTubeChannel, type YouTubeVideo } from "./youtube";
 import { SearchCache } from "./cache";
 import { readSetting } from "./setting";
 import { createResource, Stream } from "./voice/core";
+import type { VolumeControl } from "./voice/volume";
 import { Segment, sendSkipMessage } from "./voice/segment";
 import { prefetch } from "./voice/stream";
 import { Language } from "./interaction";
@@ -13,6 +14,7 @@ const setting = readSetting();
 
 export interface Resource {
 	resource: AudioResource<unknown>;
+	volume: VolumeControl;
 	channel: YouTubeChannel;
 	title: string;
 	details: YouTubeVideo;
@@ -178,7 +180,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	mute() {
 		this.isMuting = true;
-		this.nowPlaying?.resource.volume?.setVolume(0);
+		this.nowPlaying?.volume.setVolume(0);
 	}
 
 	unmute() {
@@ -274,7 +276,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 			!this.nowPlaying
 		)
 			this.playCounter++;
-		resource.resource.volume?.setVolume(
+		resource.volume.setVolume(
 			(this.isMuting ? 0 : this.volume) * (setting.VOLUME_MODIFIER ?? 1),
 		);
 		this.nowPlaying = resource;
@@ -294,8 +296,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	setVolume(volume: number) {
 		this.volume = volume;
-		if (this.isPlaying && this.nowPlaying?.resource && !this.isMuting) {
-			this.nowPlaying.resource.volume?.setVolume(
+		if (this.isPlaying && this.nowPlaying && !this.isMuting) {
+			this.nowPlaying.volume.setVolume(
 				volume * (setting.VOLUME_MODIFIER ?? 1),
 			);
 		}

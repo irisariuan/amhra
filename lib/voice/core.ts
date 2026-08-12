@@ -39,7 +39,8 @@ import { dcb, globalApp } from "../misc";
 import { event } from "../server/event";
 import { readSetting } from "../setting";
 import { getSegments, SegmentCategory, sendSkipMessage } from "./segment";
-import { clipAudio, createYtDlpStream } from "./stream";
+import { clipAudio, createYtDlpStream, decodeToPcm } from "./stream";
+import { VolumeOpusStream } from "./volume";
 import { pickRadioTrack } from "./suggest";
 
 const videoInfoCache = new NodeCache();
@@ -272,9 +273,14 @@ export async function createResource(
 	if (!detail || (detail.id && setting.BANNED_IDS.includes(detail.id)))
 		return null;
 	const source = await createStream(url, seek, skipCache);
-	const res = createAudioResource(source.stream, {
-		inputType: source.type as StreamType,
-		inlineVolume: true,
+	const { stream: pcm, kill } = decodeToPcm(source.stream);
+	// Gain is applied by our own encoder instead of inlineVolume so that a
+	// volume change is not stuck behind the buffered, already-scaled audio of
+	// the built-in pipeline
+	const volume = new VolumeOpusStream(pcm, { onClose: kill });
+	const res = createAudioResource(volume, {
+		inputType: StreamType.Opus,
+		inlineVolume: false,
 	});
 	const segments = await getSegments(getYouTubeVideoId(url) ?? "", [
 		SegmentCategory.MusicOffTopic,
@@ -286,6 +292,7 @@ export async function createResource(
 	}
 	return {
 		resource: res,
+		volume,
 		stream: source,
 		channel: detail.channel,
 		title: detail.title,

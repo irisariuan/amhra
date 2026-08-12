@@ -24,10 +24,13 @@
 	"PLAYER_NOT_FOUND": "Player not found",
 
 	"EMPTY_PLAYLIST": "The playlist is empty!",
-	"SEGMENT_SKIP_MESSAGE_NEXT": "Found non-music content, want to skip to next song?\nType `/skip` or react to skip",
-	"SEGMENT_SKIP_MESSAGE": "Found non-music content, want to skip to `{pos}`?\nType `/relocate {posNum}` or react to skip",
+	"SEGMENT_SKIP_MESSAGE_NEXT": "Found non-music content, want to skip to next song?\nType `/skip` or press the button to skip",
+	"SEGMENT_SKIP_MESSAGE": "Found non-music content, want to skip to `{pos}`?\nType `/relocate {posNum}` or press the button to skip",
 
 	"SKIP_VOTE": "Skip {skipAmount} song? (require {requiredAmount} vote)",
+	"SKIP_VOTE_PROGRESS": "Skip {skipAmount} song? ({votes}/{requiredAmount} vote)",
+	"SKIP_VOTE_NOT_IN_VOICE": "You have to be in my voice channel to vote",
+	"SKIP_VOTE_ALREADY": "You have already voted",
 	"SKIP_VOTE_SUCCESS": "Skip vote passed, skipped the song",
 	"SKIP_VOTE_FAIL": "Skip vote failed, not enough votes",
 	"SKIP_VOTE_FAIL_SONG_CHANGED": "The song has changed, skip vote failed",
