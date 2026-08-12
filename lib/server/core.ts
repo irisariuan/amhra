@@ -1,4 +1,5 @@
 import bodyParser from "body-parser";
+import { readFileSync } from "node:fs";
 import chalk from "chalk";
 import express, { type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
@@ -54,6 +55,53 @@ function publicGlobalSettings(settings: object) {
 			([key]) => !privateGlobalSettingKeys.has(key),
 		),
 	);
+}
+
+interface JsonSchema {
+	properties?: Record<string, { description?: string }>;
+	required?: string[];
+	[key: string]: unknown;
+}
+
+let cachedSettingSchema: JsonSchema | null = null;
+
+/**
+ * The settings JSON Schema, minus the secrets, for a dashboard that builds its
+ * form from the schema rather than hardcoding a field per setting.
+ *
+ * Private keys are dropped from `required` as well as `properties`: a form
+ * generator that saw them listed as required would demand a field it was never
+ * given, and block the whole form.
+ *
+ * Read once; the file is static at runtime, unlike setting.json which
+ * reloadSetting() can refresh.
+ */
+function publicSettingSchema(): JsonSchema {
+	if (cachedSettingSchema) return cachedSettingSchema;
+	const raw = JSON.parse(
+		readFileSync(`${process.cwd()}/data/settingSchema.json`, "utf8"),
+	) as JsonSchema;
+	const properties = Object.fromEntries(
+		Object.entries(raw.properties ?? {}).filter(
+			([key]) => !privateGlobalSettingKeys.has(key),
+		),
+	);
+	const required = (raw.required ?? []).filter(
+		(key) => !privateGlobalSettingKeys.has(key),
+	);
+
+	// A field the schema describes but the API refuses to write would render as
+	// an input that silently does nothing, so warn rather than let them drift
+	const writable = new Set(Object.keys(GlobalSettingSchema.shape));
+	const undescribed = Object.keys(properties).filter((k) => !writable.has(k));
+	if (undescribed.length) {
+		globalApp.warn(
+			`settingSchema.json describes fields the API will not accept: ${undescribed.join(", ")}`,
+		);
+	}
+
+	cachedSettingSchema = { ...raw, properties, required };
+	return cachedSettingSchema;
 }
 
 /** Public projection of an account for the dashboard. */
@@ -276,6 +324,14 @@ export async function initServer(client: CustomClient) {
 
 	app.get("/api/admin/settings", auth(Permission.Admin, false), (_req, res) =>
 		res.json(publicGlobalSettings(readSetting())),
+	);
+
+	// Lets the dashboard build its settings form from the schema instead of
+	// hardcoding a field per setting, so a new setting shows up on its own
+	app.get(
+		"/api/admin/settings/schema",
+		auth(Permission.Admin, false),
+		(_req, res) => res.json(publicSettingSchema()),
 	);
 
 	app.post(
