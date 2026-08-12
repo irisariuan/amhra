@@ -16,12 +16,16 @@ import { PassThrough, Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { getYouTubeVideoId } from "../youtube";
 import { dcb, globalApp } from "../misc";
-import { updateLastUsed, reviewCaches } from "./cache";
+import { collectOrphanedTemps, updateLastUsed, reviewCaches } from "./cache";
 import { CHANNELS, SAMPLE_RATE } from "./opus";
 
 if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
 	writeFileSync(`${process.cwd()}/data/lastUsed.record`, "");
 }
+
+// Nothing can be downloading yet, so every temp file present at startup is
+// left over from a run that did not shut down cleanly
+collectOrphanedTemps().catch(() => {});
 
 interface YtDlpStream {
 	rawStream?: Readable;

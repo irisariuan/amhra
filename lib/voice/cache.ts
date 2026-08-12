@@ -6,13 +6,59 @@ import { readSetting } from "../setting";
 export async function getFolderSize() {
 	let totalSize = 0;
 	for (const filename of await readdir(`${process.cwd()}/cache`)) {
-		const { size } = await stat(`${process.cwd()}/cache/${filename}`);
+		// A file can be removed between the listing and the stat
+		const size = await stat(`${process.cwd()}/cache/${filename}`)
+			.then((info) => info.size)
+			.catch(() => 0);
 		totalSize += size;
 	}
 	return totalSize;
 }
 
+const TEMP_SUFFIX = ".temp.music";
+/** How recently a temp file must have been touched to be presumed still in use */
+const TEMP_GRACE_MS = 5 * 60 * 1000;
+
+/**
+ * Delete `.temp.music` files no download owns any more.
+ *
+ * A download writes to `<id>.temp.music` and renames it on success, so a temp
+ * file left behind is the remains of a crash or a kill. Nothing ever promotes
+ * or reads one again, but they still count towards the cache size budget, and
+ * the size review only ever looks at `<id>.music` — so without this they
+ * accumulate forever.
+ *
+ * Files belonging to a live download are protected twice: by the active id list
+ * and by their recent mtime.
+ */
+export async function collectOrphanedTemps(activeIds: string[] = []) {
+	const active = new Set(activeIds);
+	const directory = `${process.cwd()}/cache`;
+	const filenames = await readdir(directory).catch(() => [] as string[]);
+	let removed = 0;
+	let freed = 0;
+	for (const filename of filenames) {
+		if (!filename.endsWith(TEMP_SUFFIX)) continue;
+		if (active.has(filename.slice(0, -TEMP_SUFFIX.length))) continue;
+		const path = `${directory}/${filename}`;
+		const info = await stat(path).catch(() => null);
+		if (!info || Date.now() - info.mtimeMs < TEMP_GRACE_MS) continue;
+		await unlink(path).catch(() => {});
+		removed++;
+		freed += info.size;
+	}
+	if (removed) {
+		dcb.log(
+			`Removed ${removed} orphaned temp cache file(s), freeing ${freed} bytes`,
+		);
+	}
+	return removed;
+}
+
 export async function reviewCaches(streamIds: string[], forceReview = false) {
+	// Before the size check below, so the reclaimed space counts and so stray
+	// temps are collected even when the cache is nowhere near its limit
+	await collectOrphanedTemps(streamIds);
 	const maxSize = readSetting().MAX_CACHE_IN_GB * 1024 * 1024 * 1024;
 	let size = await getFolderSize();
 	if (size < maxSize && !forceReview) return;
