@@ -409,6 +409,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 			insertIndex <= this.queue.length
 		) {
 			this.queue.splice(insertIndex, 0, { repeating, url: link });
+			return;
 		}
 		this.queue.push({
 			repeating,
