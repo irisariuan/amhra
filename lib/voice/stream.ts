@@ -5,7 +5,13 @@ import {
 	existsSync,
 	writeFileSync,
 } from "node:fs";
-import { open, rename, unlink, type FileHandle } from "node:fs/promises";
+import {
+	open,
+	rename,
+	stat,
+	unlink,
+	type FileHandle,
+} from "node:fs/promises";
 import { PassThrough, Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { getYouTubeVideoId } from "../youtube";
@@ -82,7 +88,18 @@ export async function prefetch(url: string, force = false) {
 
 	dcb.log(`Downloading: ${id} (yt-dlp ${args.join(" ")})`);
 	const spawnedProcess = spawn("yt-dlp", args, {
-		stdio: ["ignore", "pipe", "inherit"],
+		stdio: ["ignore", "pipe", "pipe"],
+	});
+
+	// Captured so a failure can say why. yt-dlp runs with -q, so this is quiet
+	// unless something actually went wrong.
+	let stderr = "";
+	spawnedProcess.stderr?.on("data", (chunk: Buffer) => {
+		stderr += chunk.toString();
+	});
+	/** yt-dlp's exit code, awaited before a download is trusted */
+	const exitCode = new Promise<number | null>((resolve) => {
+		spawnedProcess.on("close", resolve);
 	});
 	const rawOutputStream = spawnedProcess.stdout;
 	const copiedStream = copyStreamSafe("prefetch", rawOutputStream);
@@ -124,17 +141,39 @@ export async function prefetch(url: string, force = false) {
 			err(error);
 		};
 		writeStream.on("close", async () => {
-			dcb.log(`Download completed: ${id}`);
 			streams.delete(id);
-			if (existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
-				await rename(
-					`${process.cwd()}/cache/${id}.temp.music`,
-					`${process.cwd()}/cache/${id}.music`,
-				);
-				await updateLastUsed([id]);
-			} else {
+			const temp = `${process.cwd()}/cache/${id}.temp.music`;
+			if (!existsSync(temp)) {
 				globalApp.warn(`Temp file not found: ${id}`);
+				await reviewCaches(streams.keys().toArray());
+				return resolve();
 			}
+
+			// stdout closing only means yt-dlp stopped writing, not that it
+			// succeeded. Without this a failed download (403, geo-block, a dead
+			// video) is renamed into the cache as a valid entry, and every later
+			// play of that id is served an empty file instead of retrying.
+			const code = await exitCode;
+			const written = await stat(temp)
+				.then((info) => info.size)
+				.catch(() => 0);
+			if (code !== 0 || written === 0) {
+				globalApp.err(
+					`Download failed for ${id} (exit ${code}, ${written} bytes)${
+						stderr.trim() ? `: ${stderr.trim().split("\n").at(-1)}` : ""
+					}`,
+				);
+				await unlink(temp).catch(() => {});
+				await updateLastUsed([], [id]);
+				await reviewCaches(streams.keys().toArray());
+				return err(
+					new Error(`yt-dlp failed for ${id} (exit ${code})`),
+				);
+			}
+
+			dcb.log(`Download completed: ${id} (${written} bytes)`);
+			await rename(temp, `${process.cwd()}/cache/${id}.music`);
+			await updateLastUsed([id]);
 			await reviewCaches(streams.keys().toArray());
 			resolve();
 		});
@@ -144,15 +183,25 @@ export async function prefetch(url: string, force = false) {
 		spawnedProcess.on("error", errorHandler);
 	});
 
+	// Nothing awaits this: callers are handed the stream, not the completion.
+	// The failure is already logged where it happens, so mark it handled rather
+	// than letting it resurface as an unhandled rejection.
+	promise.catch(() => {});
+
 	streams.set(id, {
 		rawStream: rawOutputStream,
 		promise,
 		data,
 	});
 	
-	// Wait for the first data chunk to ensure the stream is active
+	// Wait for the first data chunk to ensure the stream is active. A download
+	// that fails before writing anything never emits one, so end/error/exit have
+	// to release this too or the caller waits forever.
 	await new Promise<void>((resolve) => {
 		rawOutputStream.once("data", resolve);
+		rawOutputStream.once("end", resolve);
+		rawOutputStream.once("error", resolve);
+		spawnedProcess.once("close", resolve);
 	});
 
 	return {
