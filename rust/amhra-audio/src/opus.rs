@@ -8,6 +8,8 @@
 
 /// Discord's voice pipeline is fixed at 48kHz.
 pub const SAMPLE_RATE: u32 = 48_000;
+/// Stereo, as Discord expects.
+pub const CHANNELS: u8 = 2;
 /// Samples per channel in a 20ms frame at 48kHz — the usual YouTube framing.
 pub const FRAME_SIZE: u32 = 960;
 

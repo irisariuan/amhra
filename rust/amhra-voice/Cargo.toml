@@ -6,12 +6,14 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+amhra-audio.workspace = true
 aes-gcm = { version = "0.10", features = ["aes"] }
 chacha20poly1305 = "0.10"
 hmac = "0.12"
 sha2 = "0.10"
 futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
 openmls = "0.7"
+opus = "0.3"
 openmls_basic_credential = "0.4"
 openmls_rust_crypto = "0.4"
 openmls_traits = "0.4"

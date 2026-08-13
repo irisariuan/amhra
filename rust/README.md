@@ -5,9 +5,9 @@ independently revertable; the TypeScript bot keeps working throughout.
 
 | crate | what it owns | phase |
 | --- | --- | --- |
-| `amhra-audio` | WebM/Opus demuxing, Opus TOC parsing, the `.idx` seek index | 1 ✅ |
+| `amhra-audio` | WebM/Opus demuxing, Opus TOC parsing, `.idx` index, cache reader | 1, 3 ✅ |
 | `amhra-fetch` | InnerTube extraction, ranged download, yt-dlp fallback | 1 ✅ |
-| `amhra-voice` | voice gateway v8, UDP/RTP/AEAD ✅ · DAVE framing ⏳ | 2 |
+| `amhra-voice` | gateway v8, UDP/RTP/AEAD, DAVE ✅ · player, volume ✅ · crossfade ⏳ | 2, 3 |
 | `amhra-sidecar` | the long-lived process: RPC, per-guild playback | 4 |
 
 ## Build
@@ -161,3 +161,28 @@ cargo run --release -p amhra-voice --example play_file -- \
 with `DEV_TOKEN` in the environment. Expected once someone else is present:
 `op27 proposals` → `op28 commit_welcome` → `op30 welcome` or `op29 announce
 commit` → `dave group ready` → audible audio.
+
+## Phase 3: playback
+
+`CacheReader` memory-maps a `.music` file and demuxes it incrementally, so a
+frame handed to the player is a slice of the page cache — playback copies
+nothing. A file still downloading is picked up by `refresh`, which remaps and
+parses only the bytes that arrived since last time. Completeness is only ever
+taken from something that knows (a finalised index, or the renamed file); a
+truncated file can be named anything, and guessing here would end tracks early.
+
+`Player` holds an ACTIVE and a STANDBY track and switches between them *on the
+same tick* — the caller asks for a frame at the seam and gets one, rather than
+getting nothing and asking again 20ms later. That is what keeps the RTP clock
+and the listener's jitter buffer from ever seeing a gap. Running out of
+buffered audio is reported as starving, not as the track ending, so a download
+falling behind stalls instead of skipping the song.
+
+`Volume` is the goal-A win. Opus has no gain field a receiver will honour, so
+changing volume means decode, scale, re-encode. At volume 100 that entire path
+is skipped and the frame passes through byte-for-byte — the codec is never even
+constructed. The old pipeline paid decode + re-encode on every stream
+regardless of volume, plus an ffmpeg process per track.
+
+Still to do in this phase: the crossfade, and wiring the player into the
+example so playback runs through it rather than a flat frame loop.

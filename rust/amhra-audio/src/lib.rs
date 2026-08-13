@@ -7,9 +7,11 @@
 pub mod ebml;
 pub mod index;
 pub mod opus;
+pub mod reader;
 pub mod webm;
 
 pub use index::{Entry, Index, IndexError, IndexWriter};
+pub use reader::{CacheReader, ReaderError};
 pub use opus::{OpusHead, PacketInfo, packet_info};
 pub use webm::{DemuxError, Frame, WebmDemuxer};
 
