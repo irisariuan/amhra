@@ -152,9 +152,13 @@ fn closing_the_pipe_ends_the_process() {
 	let mut sidecar = Sidecar::start();
 	sidecar.next_event();
 
+	// ChildStdin has no default, so closing the real one means swapping in
+	// another. The placeholder is reaped rather than left as a zombie.
 	let stdin = std::mem::replace(&mut sidecar.stdin, {
 		let mut placeholder = OsCommand::new("true").stdin(Stdio::piped()).spawn().unwrap();
-		placeholder.stdin.take().unwrap()
+		let taken = placeholder.stdin.take().unwrap();
+		placeholder.wait().expect("placeholder exits");
+		taken
 	});
 	drop(stdin);
 
