@@ -26,6 +26,11 @@ const PROTOCOL_VERSION = 1;
 /** Restart backoff bounds after an unexpected exit. */
 const MIN_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 30_000;
+/**
+ * How long to let a leave settle before rejoining. The gateway has to see the
+ * old voice state go before it will treat the next op 4 as a new session.
+ */
+const VOICE_STATE_RESET_MS = 500;
 
 const sessionState = z.object({
 	guildId: z.string(),
@@ -318,14 +323,22 @@ export function joinVoiceViaSidecar(channel: VoiceBasedChannel, deaf = true) {
 		let sessionId: string | undefined;
 		let endpoint: string | undefined;
 		let token: string | undefined;
+		/**
+		 * Updates that arrive before the join payload describe the session being
+		 * torn down, whose token is already spent. Taking them would hand the
+		 * sidecar credentials that are dead on arrival.
+		 */
+		let joining = false;
+		let settled = false;
 
 		const adapter = guild.voiceAdapterCreator({
 			onVoiceStateUpdate: (state) => {
-				if (state.user_id !== userId) return;
+				if (state.user_id !== userId || !joining) return;
 				sessionId = state.session_id ?? undefined;
 				ready();
 			},
 			onVoiceServerUpdate: (server) => {
+				if (!joining) return;
 				endpoint = server.endpoint ?? undefined;
 				token = server.token;
 				ready();
@@ -335,14 +348,40 @@ export function joinVoiceViaSidecar(channel: VoiceBasedChannel, deaf = true) {
 			},
 		});
 
+		/** Op 4 with no channel: leave the guild's voice entirely. */
+		function leave() {
+			adapter.sendPayload({
+				op: 4,
+				d: {
+					guild_id: guild.id,
+					channel_id: null,
+					self_mute: false,
+					self_deaf: deaf,
+				},
+			});
+		}
+
 		const timer = setTimeout(() => {
+			settled = true;
+			// Whatever half a session is left behind would wedge every later
+			// attempt the same way, so this stands the guild back down before
+			// giving up on it.
+			leave();
 			adapter.destroy();
-			reject(new Error(`Timed out joining voice in ${guild.id}`));
+			const missing = [
+				sessionId ? null : "session id",
+				endpoint ? null : "endpoint",
+				token ? null : "token",
+			]
+				.filter(Boolean)
+				.join(", ");
+			reject(new Error(`Timed out joining voice in ${guild.id} (no ${missing})`));
 		}, 15_000);
 
 		function ready() {
 			// Both halves are needed, and they arrive in either order.
-			if (!sessionId || !endpoint || !token) return;
+			if (settled || !sessionId || !endpoint || !token) return;
+			settled = true;
 			clearTimeout(timer);
 			const client = sidecar();
 			client.send({
@@ -361,19 +400,37 @@ export function joinVoiceViaSidecar(channel: VoiceBasedChannel, deaf = true) {
 			resolve();
 		}
 
-		const sent = adapter.sendPayload({
-			op: 4,
-			d: {
-				guild_id: guild.id,
-				channel_id: channel.id,
-				self_mute: false,
-				self_deaf: deaf,
-			},
-		});
-		if (!sent) {
-			clearTimeout(timer);
-			adapter.destroy();
-			reject(new Error(`Shard for ${guild.id} is not available`));
+		function join() {
+			if (settled) return;
+			joining = true;
+			const sent = adapter.sendPayload({
+				op: 4,
+				d: {
+					guild_id: guild.id,
+					channel_id: channel.id,
+					self_mute: false,
+					self_deaf: deaf,
+				},
+			});
+			if (!sent) {
+				settled = true;
+				clearTimeout(timer);
+				adapter.destroy();
+				reject(new Error(`Shard for ${guild.id} is not available`));
+			}
+		}
+
+		// Discord only mints a voice token for a *new* session. Asking to join
+		// while the gateway still holds a voice state for this bot — a channel
+		// move, or a restart that left the old state standing — is answered
+		// with a state update and no server update, so the handshake never
+		// completes. Standing the old session down first is what makes the
+		// token arrive.
+		if (guild.members.me?.voice.channelId) {
+			leave();
+			setTimeout(join, VOICE_STATE_RESET_MS);
+		} else {
+			join();
 		}
 	});
 }
