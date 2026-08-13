@@ -55,6 +55,10 @@ export interface Setting {
 	USE_NATIVE_FETCH?: boolean;
 	/** Override the amhra-fetch binary path; defaults to the cargo build output */
 	NATIVE_FETCH_BIN?: string;
+	/** Play through the Rust voice sidecar instead of @discordjs/voice */
+	USE_RUST_VOICE?: boolean;
+	/** Override the amhra-sidecar binary path; defaults to the cargo build output */
+	NATIVE_VOICE_BIN?: string;
 	SEEK: boolean;
 	AUTO_LEAVE: number;
 	PREFIX: string;

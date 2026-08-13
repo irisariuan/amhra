@@ -85,6 +85,19 @@ impl VoiceUdp {
 		Err(UdpError::DiscoveryTimeout(DISCOVERY_ATTEMPTS))
 	}
 
+	/// Hand the socket to a thread that wants to block on it.
+	///
+	/// The handshake is async because it waits on a reply; playback is not —
+	/// it sends one packet every 20ms from a thread that does nothing else, and
+	/// a blocking `send` there is one syscall rather than a reactor round trip.
+	/// The same socket must be used, because discovery told the server which
+	/// source port to expect.
+	pub fn into_blocking(self) -> Result<std::net::UdpSocket, UdpError> {
+		let socket = self.socket.into_std()?;
+		socket.set_nonblocking(false)?;
+		Ok(socket)
+	}
+
 	pub async fn send(&self, packet: &[u8]) -> Result<(), UdpError> {
 		self.socket.send(packet).await?;
 		Ok(())

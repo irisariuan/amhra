@@ -88,6 +88,14 @@
    "type": "string",
    "description": "Path to the amhra-fetch binary; defaults to rust/target/release/amhra-fetch"
   },
+  "USE_RUST_VOICE": {
+   "type": "boolean",
+   "description": "Play through the Rust voice sidecar instead of @discordjs/voice"
+  },
+  "NATIVE_VOICE_BIN": {
+   "type": "string",
+   "description": "Path to the amhra-sidecar binary; defaults to rust/target/release/amhra-sidecar"
+  },
   "SEEK": {
    "type": "boolean",
    "description": "Enable time seeking function, should be closed when using youtube-dl"
