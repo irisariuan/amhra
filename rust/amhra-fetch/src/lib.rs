@@ -201,11 +201,17 @@ async fn native_fetch(
 	})
 }
 
-/// A cached track counts as a hit only once it has an index.
+/// Whether a cached track is already on disk, and what is known about it.
 ///
-/// Entries downloaded before indexing existed are backfilled in place; the
-/// legacy AAC ones cannot be, and are reported as a miss so the caller
-/// re-fetches them as Opus.
+/// An entry downloaded before indexing existed is backfilled in place. One that
+/// cannot be indexed at all — AAC, which yt-dlp falls back to when a video has
+/// no Opus — is still a hit, reported with no index.
+///
+/// Reporting it as a miss instead would re-download it on every single play:
+/// the fetch would succeed, produce the same un-indexable file, and be a miss
+/// again next time. The file is there; what it lacks is passthrough playback,
+/// and that is the caller's decision to make, not a reason to hit YouTube in a
+/// loop.
 async fn cache_hit(
 	video_id: &str,
 	paths: &CachePaths,
@@ -217,18 +223,18 @@ async fn cache_hit(
 		return Ok(None);
 	}
 
-	if tokio::fs::metadata(&paths.index).await.is_err()
-		&& !ytdlp::backfill_index(&paths.music, &paths.index).await?
-	{
-		return Ok(None);
+	let mut indexed = tokio::fs::metadata(&paths.index).await.is_ok();
+	if !indexed {
+		indexed = ytdlp::backfill_index(&paths.music, &paths.index).await?;
 	}
 
-	let header = amhra_audio::index::read_header(&paths.index).ok();
+	let header =
+		if indexed { amhra_audio::index::read_header(&paths.index).ok() } else { None };
 	Ok(Some(FetchResult {
 		video_id: video_id.to_owned(),
 		title: None,
 		path: paths.music.clone(),
-		index_path: Some(paths.index.clone()),
+		index_path: indexed.then(|| paths.index.clone()),
 		bytes: metadata.len(),
 		frames: 0,
 		duration_ms: header.map_or(0, |header| header.duration_ms),

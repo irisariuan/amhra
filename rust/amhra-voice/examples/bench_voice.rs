@@ -69,7 +69,7 @@ fn main() {
 		aes.seal(frame, &mut packet).expect("seal");
 		// The nonce is 32 bits, and 50 frames a second exhausts it in about
 		// two years; a benchmark reaches it in seconds.
-		if aes.sequence() % 30_000 == 0 {
+		if aes.sequence().is_multiple_of(30_000) {
 			aes = Session::with_start(EncryptionMode::AeadAes256GcmRtpSize, &KEY, 1, 0, 0)
 				.expect("session");
 		}
@@ -81,7 +81,7 @@ fn main() {
 	let chacha_us = per_frame(10, 5_000, || {
 		let frame = next();
 		chacha.seal(frame, &mut packet).expect("seal");
-		if chacha.sequence() % 30_000 == 0 {
+		if chacha.sequence().is_multiple_of(30_000) {
 			chacha =
 				Session::with_start(EncryptionMode::AeadXChaCha20Poly1305RtpSize, &KEY, 1, 0, 0)
 					.expect("session");
@@ -121,7 +121,7 @@ fn main() {
 		let scaled = full.process(frame).expect("gain");
 		full_dave.encrypt_opus(scaled, &mut e2ee).expect("dave");
 		full_session.seal(&e2ee, &mut packet).expect("seal");
-		if full_session.sequence() % 30_000 == 0 {
+		if full_session.sequence().is_multiple_of(30_000) {
 			full_session =
 				Session::with_start(EncryptionMode::AeadAes256GcmRtpSize, &KEY, 1, 0, 0)
 					.expect("session");

@@ -18,12 +18,14 @@ use crate::download::CachePaths;
 
 #[derive(Debug, thiserror::Error)]
 pub enum FallbackError {
-	#[error("yt-dlp is not installed")]
+	#[error("yt-dlp was not found; set YTDLP_PATH if it is installed somewhere unusual")]
 	NotInstalled,
 	#[error("yt-dlp exited with {code}: {stderr}")]
 	Failed { code: i32, stderr: String },
 	#[error("i/o: {0}")]
 	Io(#[from] std::io::Error),
+	#[error("cannot write to {path}: {source}")]
+	Cache { path: String, source: std::io::Error },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -35,6 +37,33 @@ pub struct FallbackSummary {
 	/// AAC, most often. The audio is cached, but there is no seek index and no
 	/// passthrough playback for it.
 	pub indexed: bool,
+}
+
+/// Where to find yt-dlp.
+///
+/// `PATH` is whatever launched the bot, which for a service manager or a
+/// desktop session is often not the shell's. An explicit override comes first,
+/// then `PATH`, then the places package managers actually put it — a fallback
+/// that cannot find its binary is not a fallback.
+fn ytdlp_command() -> String {
+	if let Ok(path) = std::env::var("YTDLP_PATH")
+		&& !path.is_empty()
+	{
+		return path;
+	}
+	const COMMON: [&str; 5] = [
+		"/opt/homebrew/bin/yt-dlp",
+		"/usr/local/bin/yt-dlp",
+		"/usr/bin/yt-dlp",
+		"/Library/Frameworks/Python.framework/Versions/Current/bin/yt-dlp",
+		"/snap/bin/yt-dlp",
+	];
+	for candidate in COMMON {
+		if std::path::Path::new(candidate).exists() {
+			return candidate.to_owned();
+		}
+	}
+	"yt-dlp".to_owned()
 }
 
 /// Download through yt-dlp into the same cache layout the native path uses.
@@ -52,7 +81,7 @@ pub async fn download(url: &str, paths: &CachePaths) -> Result<FallbackSummary, 
 		"-",
 	];
 
-	let mut child = match Command::new("yt-dlp")
+	let mut child = match Command::new(ytdlp_command())
 		.args(args)
 		.stdin(Stdio::null())
 		.stdout(Stdio::piped())
@@ -69,7 +98,17 @@ pub async fn download(url: &str, paths: &CachePaths) -> Result<FallbackSummary, 
 	let mut stdout = child.stdout.take().expect("stdout is piped");
 	let mut stderr_pipe = child.stderr.take().expect("stderr is piped");
 
-	let mut file = tokio::fs::File::create(&paths.temp_music).await?;
+	// The native path creates this; the fallback used to assume it existed and
+	// died with a bare "No such file or directory" that named nothing.
+	if let Some(parent) = paths.temp_music.parent() {
+		tokio::fs::create_dir_all(parent).await.map_err(|error| FallbackError::Cache {
+			path: parent.display().to_string(),
+			source: error,
+		})?;
+	}
+	let mut file = tokio::fs::File::create(&paths.temp_music).await.map_err(|error| {
+		FallbackError::Cache { path: paths.temp_music.display().to_string(), source: error }
+	})?;
 	let mut indexer = Some(CacheIndexer::create(&paths.temp_index).map_err(|error| {
 		std::io::Error::other(format!("index: {error}"))
 	})?);
@@ -136,7 +175,7 @@ pub async fn download(url: &str, paths: &CachePaths) -> Result<FallbackSummary, 
 
 /// Whether yt-dlp can be found at all, for a startup log line.
 pub async fn available() -> bool {
-	Command::new("yt-dlp")
+	Command::new(ytdlp_command())
 		.arg("--version")
 		.stdin(Stdio::null())
 		.stdout(Stdio::null())
