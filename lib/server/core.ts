@@ -24,7 +24,6 @@ import { getSuggestions } from "../voice/suggest";
 import { load } from "../log/load";
 import { exp, globalApp, misc } from "../misc";
 import { readSetting, reloadSetting, writeJsonSync } from "../setting";
-import { pushFadeSettings } from "../voice/sidecar";
 import {
 	accountCanAccessGuild,
 	auth,
@@ -380,9 +379,13 @@ export async function initServer(client: CustomClient) {
 					nextResult.data,
 				);
 				reloadSetting();
-				// Fades are held by the sidecar, so a saved change has to be
-				// pushed to it or it only takes effect on the next join.
-				pushFadeSettings();
+				// Fades live in the sidecar, so a saved change has to be
+				// pushed or it would only take effect on the next join. Guilds
+				// that were adjusted from the player controls keep their own
+				// values; this is the default they started from.
+				for (const player of client.player.values()) {
+					player.syncFadesWithSetting();
+				}
 				return res.json(publicGlobalSettings(nextResult.data));
 			} catch (error) {
 				exp.error(`Failed to save global settings: ${error}`);

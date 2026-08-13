@@ -111,6 +111,21 @@ export async function handleSongInterruption(
 			player.setVolume(data.detail.volume);
 			break;
 		}
+		case SongEditType.SetCrossfade: {
+			dcb.log(
+				`Setting fades from dashboard: crossfade ${data.detail.crossfadeMs ?? player.crossfadeMs}ms, skip ${data.detail.skipFadeMs ?? player.skipFadeMs}ms`,
+			);
+			player.setFades(data.detail);
+			// Accepted either way so the control keeps working, but only the
+			// sidecar can mix two tracks — on the discord.js path the value is
+			// stored and does nothing until USE_RUST_VOICE is on.
+			if (!player.native) {
+				globalApp.warn(
+					"Crossfade was set but playback is not on the Rust voice path, so it will not be heard",
+				);
+			}
+			break;
+		}
 		case SongEditType.SetQueue: {
 			dcb.log("Switching queue from dashboard");
 			if (data.detail.queue) {

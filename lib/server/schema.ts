@@ -91,6 +91,28 @@ const SetVolumeSchema = z.object({
 	}),
 });
 
+/**
+ * SetCrossfade: the live per-guild version of the CROSSFADE_IN_MS setting.
+ *
+ * Bounded the same way the global setting is — a fade longer than a short
+ * track would never finish before the next one began — and both halves are
+ * optional so a slider can move one without knowing about the other.
+ */
+const SetCrossfadeSchema = z.object({
+	action: z.literal(SongEditType.SetCrossfade),
+	guildId: z.string(),
+	detail: z
+		.object({
+			crossfadeMs: z.number().int().min(0).max(15_000).optional(),
+			skipFadeMs: z.number().int().min(0).max(5_000).optional(),
+		})
+		.refine(
+			(detail) =>
+				detail.crossfadeMs !== undefined || detail.skipFadeMs !== undefined,
+			{ message: "Give at least one of crossfadeMs or skipFadeMs" },
+		),
+});
+
 // SetQueue: requires array of queue items
 const SetQueueSchema = z.object({
 	action: z.literal(SongEditType.SetQueue),
@@ -131,6 +153,7 @@ export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	AddSongSchema,
 	RemoveSongSchema,
 	SetVolumeSchema,
+	SetCrossfadeSchema,
 	SetQueueSchema,
 	LoopSchema,
 	AutoSuggestSchema,

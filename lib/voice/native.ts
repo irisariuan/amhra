@@ -144,7 +144,9 @@ export function joinVoiceNative(channel: VoiceBasedChannel) {
  */
 function send(guildId: string, command: SidecarCommand) {
 	const connection = connections.get(guildId);
-	if (!connection) return void sidecar().send(command);
+	// With no connection the sidecar would answer every one of these with
+	// "not connected to a voice channel", which is noise rather than news.
+	if (!connection) return;
 	connection.connected.then(
 		() => sidecar().send(command),
 		() => {},
@@ -181,6 +183,14 @@ export function nativeSeek(guildId: string, positionMs: number) {
 
 export function nativeSetVolume(guildId: string, gain: number) {
 	send(guildId, { type: "setVolume", guildId, gain });
+}
+
+export function nativeSetFades(
+	guildId: string,
+	crossfadeMs: number,
+	skipFadeMs: number,
+) {
+	send(guildId, { type: "setFades", guildId, crossfadeMs, skipFadeMs });
 }
 
 /** The cache id for a URL, but only when the whole track is already on disk. */

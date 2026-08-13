@@ -5,6 +5,7 @@ import type { Guild, VoiceBasedChannel } from "discord.js";
 import { z } from "zod";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
+import { fadesFrom } from "./fades";
 
 /**
  * Client for the Rust voice sidecar.
@@ -274,32 +275,13 @@ export class Sidecar extends EventEmitter {
 }
 
 /**
- * The fade settings the sidecar should be using, from the global config.
+ * The fade lengths a fresh guild starts with, from the global config.
  *
- * Defaults match the Rust side: no crossfade, and a short fade on skip so it
- * feels immediate rather than mixed.
+ * A guild can then be adjusted away from this from the dashboard's player
+ * controls; this is only the default it begins at.
  */
 export function fadeSettings() {
-	const setting = readSetting();
-	return {
-		crossfadeMs: Math.max(0, Math.round(setting.CROSSFADE_IN_MS ?? 0)),
-		skipFadeMs: Math.max(0, Math.round(setting.SKIP_FADE_IN_MS ?? 40)),
-	};
-}
-
-/**
- * Send the current fade settings to every connected guild.
- *
- * Called after the dashboard edits them, so a change takes effect on whatever
- * is already playing rather than only on the next join.
- */
-export function pushFadeSettings() {
-	const client = shared;
-	if (!client?.running) return;
-	const fades = fadeSettings();
-	for (const guildId of client.guilds) {
-		client.send({ type: "setFades", guildId, ...fades });
-	}
+	return fadesFrom(readSetting());
 }
 
 let shared: Sidecar | null = null;

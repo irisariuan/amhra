@@ -149,15 +149,20 @@ async fn native_fetch(
 	let mut next = 0usize;
 
 	while next < extractor.profile_count() {
-		let attempt = match extractor.extract_from(video_id, next).await {
+		let attempt = match extractor.extract_from(video_id, next, &mut reasons).await {
 			Ok(found) => found,
 			Err(error) => {
-				reasons.push(error.to_string());
+				// The walk already recorded each profile's own refusal. Only the
+				// conclusion drawn from them is new, and `Unplayable` just quotes
+				// the last one back, so keep it out of the log twice.
+				let text = error.to_string();
+				if !reasons.last().is_some_and(|last| text.ends_with(last.as_str())) {
+					reasons.push(text);
+				}
 				break;
 			}
 		};
 		next = attempt.next;
-		reasons.extend(attempt.skipped);
 		let extraction = attempt.extraction;
 
 		match download::download(

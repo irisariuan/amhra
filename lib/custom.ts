@@ -23,8 +23,11 @@ import {
 	nativeSetVolume,
 	nativeSkip,
 	nativeStop,
+	nativeSetFades,
 	nativeVoiceActive,
 } from "./voice/native";
+import { fadeSettings } from "./voice/sidecar";
+import { defaultedFades, nextFades, type Fades } from "./voice/fades";
 import {
 	positionFrom,
 	shouldSendPlay,
@@ -74,6 +77,19 @@ export interface SongDataPacket {
 	history: string[];
 	useYoutubeDl: boolean;
 	canSeek: boolean;
+	/** How long the seam between two tracks is mixed over, in milliseconds. */
+	crossfadeMs: number;
+	/** The shorter fade used when a track is skipped rather than ending. */
+	skipFadeMs: number;
+	/**
+	 * Whether fades can do anything here.
+	 *
+	 * Only the sidecar mixes two tracks; on the @discordjs/voice path both
+	 * values above are accepted and ignored, so a dashboard should show the
+	 * control as unavailable rather than let someone set a fade that is
+	 * silently dropped.
+	 */
+	canCrossfade: boolean;
 	paused: boolean;
 	pausedInMs: number;
 	pausedTimestamp: number;
@@ -199,6 +215,21 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 */
 	nativePromoted: Promotion | null;
 
+	/** Milliseconds the seam between two tracks is mixed over. Zero is a cut. */
+	crossfadeMs: number;
+	/** The shorter fade for a skip, which should feel immediate, not mixed. */
+	skipFadeMs: number;
+	/**
+	 * Whether the fades above came from this guild rather than the global
+	 * setting.
+	 *
+	 * A guild that has been adjusted keeps its own values when the global
+	 * default changes, the same way a guild's volume is not reset by an edit
+	 * to VOLUME_MODIFIER. Without this, saving the settings page would quietly
+	 * undo every live adjustment.
+	 */
+	fadesOverridden: boolean;
+
 	constructor(
 		guildId: string,
 		channel: Channel | null = null,
@@ -210,6 +241,11 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.nativeArmed = null;
 		this.nativePosition = null;
 		this.nativePromoted = null;
+
+		const fades = fadeSettings();
+		this.crossfadeMs = fades.crossfadeMs;
+		this.skipFadeMs = fades.skipFadeMs;
+		this.fadesOverridden = false;
 
 		this.volume = 1;
 		this.isMuting = false;
@@ -409,6 +445,10 @@ export class CustomAudioPlayer extends AudioPlayer {
 			globalApp.err(`No cache id for ${resource.url}; nothing to play`);
 			return;
 		}
+		// Re-sent per track rather than only on join, so a reconnect, a sidecar
+		// restart, or a player created after the connection came up all end up
+		// with this guild's fades rather than the sidecar's defaults.
+		this.pushFades();
 		const promoted = this.nativePromoted;
 		this.nativePromoted = null;
 		if (shouldSendPlay(promoted, trackId, startMs, Date.now())) {
@@ -423,6 +463,53 @@ export class CustomAudioPlayer extends AudioPlayer {
 		if (this.isPlaying && this.nowPlaying && !this.isMuting) {
 			this.applyGain(volume * (setting.VOLUME_MODIFIER ?? 1));
 		}
+	}
+
+	/**
+	 * Adjust this guild's fades, live.
+	 *
+	 * Either half can be left out, so a dashboard slider can move one without
+	 * having to know the other. Takes effect on the track already playing:
+	 * the sidecar reads the values at the seam, not when the track started.
+	 */
+	setFades(change: Partial<Fades>) {
+		const next = nextFades(
+			{ crossfadeMs: this.crossfadeMs, skipFadeMs: this.skipFadeMs },
+			change,
+		);
+		this.crossfadeMs = next.crossfadeMs;
+		this.skipFadeMs = next.skipFadeMs;
+		this.fadesOverridden = true;
+		this.pushFades();
+	}
+
+	/**
+	 * Reset to the global default, unless this guild has its own values.
+	 *
+	 * Called when the settings page is saved: an untouched guild should follow
+	 * the new default, an adjusted one should keep what it was given.
+	 */
+	syncFadesWithSetting() {
+		const next = defaultedFades(
+			{ crossfadeMs: this.crossfadeMs, skipFadeMs: this.skipFadeMs },
+			this.fadesOverridden,
+			fadeSettings(),
+		);
+		if (
+			next.crossfadeMs === this.crossfadeMs &&
+			next.skipFadeMs === this.skipFadeMs
+		) {
+			return;
+		}
+		this.crossfadeMs = next.crossfadeMs;
+		this.skipFadeMs = next.skipFadeMs;
+		this.pushFades();
+	}
+
+	/** Send the current fades to the sidecar, if it is the one playing. */
+	pushFades() {
+		if (!this.native) return;
+		nativeSetFades(this.guildId, this.crossfadeMs, this.skipFadeMs);
 	}
 
 	/**
@@ -486,6 +573,9 @@ export class CustomAudioPlayer extends AudioPlayer {
 			pausedTimestamp: this.pauseTimestamp,
 			useYoutubeDl: setting.USE_YOUTUBE_DL,
 			canSeek: setting.SEEK,
+			crossfadeMs: this.crossfadeMs,
+			skipFadeMs: this.skipFadeMs,
+			canCrossfade: this.native,
 			loop: this.customSetting.looping ?? false,
 			autoSuggest: this.customSetting.autoSuggest ?? false,
 			skipToTimestamp: this.currentSegment()?.segment[1] ?? null,

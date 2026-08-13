@@ -71,13 +71,11 @@ pub struct Extraction {
 	pub user_agent: String,
 }
 
-/// One walk of the ladder: what it found, where to resume, and what it passed
-/// over on the way.
+/// One walk of the ladder: what it found and where to resume.
 #[derive(Debug, Clone)]
 pub struct Attempt {
 	pub extraction: Extraction,
 	pub next: usize,
-	pub skipped: Vec<String>,
 }
 
 pub struct Extractor {
@@ -108,16 +106,19 @@ impl Extractor {
 	/// A profile answering `UNPLAYABLE` or `LOGIN_REQUIRED` is a profile
 	/// problem, not a video problem, so the ladder keeps going. Only when every
 	/// profile agrees does that become the reported error.
+	///
+	/// Every profile passed over appends its reason to `skipped`, on the error
+	/// path as well as the success path — a walk that ends in `Unplayable`
+	/// should still be able to say what the profiles before it complained
+	/// about, or a stale ladder looks like a dead video in the logs.
 	pub async fn extract_from(
 		&self,
 		video_id: &str,
 		start: usize,
+		skipped: &mut Vec<String>,
 	) -> Result<Attempt, ExtractError> {
 		let mut tried = Vec::new();
 		let mut last_reason: Option<String> = None;
-		// Kept so a caller that ends up on the third profile can still report
-		// what was wrong with the first two.
-		let mut skipped: Vec<String> = Vec::new();
 
 		for (index, profile) in self.profiles.iter().enumerate().skip(start) {
 			tried.push(profile.name.as_str());
@@ -175,7 +176,6 @@ impl Extractor {
 					user_agent: profile.user_agent.clone(),
 				},
 				next: index + 1,
-				skipped: std::mem::take(&mut skipped),
 			});
 		}
 
@@ -195,7 +195,8 @@ impl Extractor {
 
 	/// First profile that works, for callers with no interest in retrying.
 	pub async fn extract(&self, video_id: &str) -> Result<Extraction, ExtractError> {
-		self.extract_from(video_id, 0).await.map(|attempt| attempt.extraction)
+		let mut skipped = Vec::new();
+		self.extract_from(video_id, 0, &mut skipped).await.map(|attempt| attempt.extraction)
 	}
 
 	pub fn profile_count(&self) -> usize {
@@ -274,6 +275,18 @@ mod tests {
 		// fetch pays a wasted round trip before it succeeds.
 		assert_eq!(profiles[0].name, "android_vr");
 		assert!(!profiles[0].needs_player_js);
+
+		// Every token-free profile has to precede every descrambling one, or a
+		// bot check on the first client costs a wasted player-JS round trip
+		// before the cheap backups are even tried.
+		let first_scrambled =
+			profiles.iter().position(|profile| profile.needs_player_js).unwrap_or(profiles.len());
+		assert!(profiles[first_scrambled..].iter().all(|profile| profile.needs_player_js));
+		assert!(first_scrambled >= 4, "the ladder needs backups for when android_vr is gated");
+
+		// The embedded TV client is refused outright without its embed url.
+		let embedded = profiles.iter().find(|profile| profile.name == "tv_embedded").unwrap();
+		assert!(embedded.context.pointer("/thirdParty/embedUrl").is_some());
 	}
 
 	#[test]

@@ -28,8 +28,13 @@ pub enum DownloadError {
 	Io(#[from] std::io::Error),
 	#[error("indexing: {0}")]
 	Index(#[from] amhra_audio::Error),
-	#[error("server refused range request for chunk at {offset} (status {status})")]
+	#[error("server ignored the range request for chunk at {offset} (status {status})")]
 	NoRangeSupport { offset: u64, status: u16 },
+	/// The media host rejected the URL outright. Distinct from a range problem:
+	/// the URL itself is expired, IP-bound, or failed a bot check, so the fix is
+	/// a different client profile, not a different request shape.
+	#[error("media host refused the URL at offset {offset} (status {status})")]
+	Forbidden { offset: u64, status: u16 },
 	#[error("chunk at {offset} failed after {attempts} attempts: {source}")]
 	ChunkFailed { offset: u64, attempts: u32, source: reqwest::Error },
 	#[error("download produced no bytes")]
@@ -179,19 +184,28 @@ async fn run(
 	})
 }
 
+/// Name a non-206 response for what it actually is.
+fn classify(offset: u64, status: reqwest::StatusCode) -> DownloadError {
+	if status.is_client_error() {
+		DownloadError::Forbidden { offset, status: status.as_u16() }
+	} else {
+		DownloadError::NoRangeSupport { offset, status: status.as_u16() }
+	}
+}
+
 /// Ask for the first byte and read the total out of `Content-Range`.
 async fn probe_length(
 	client: &reqwest::Client,
 	url: &str,
 	user_agent: &str,
 ) -> Result<u64, DownloadError> {
-	let response = client
-		.get(url)
-		.header("Range", "bytes=0-0")
-		.header("User-Agent", user_agent)
-		.send()
-		.await?
-		.error_for_status()?;
+	let response =
+		client.get(url).header("Range", "bytes=0-0").header("User-Agent", user_agent).send().await?;
+	// A refused probe is the same refused URL the chunk path reports, and it
+	// should read that way in the log rather than as a bare HTTP status.
+	if response.status().is_client_error() {
+		return Err(classify(0, response.status()));
+	}
 	let total = response
 		.headers()
 		.get(reqwest::header::CONTENT_RANGE)
@@ -247,8 +261,10 @@ async fn fetch_range(
 		if status != reqwest::StatusCode::PARTIAL_CONTENT {
 			// A 200 here means the server ignored the range and is about to
 			// stream the whole file at throttled speed. Refuse rather than
-			// silently write the wrong bytes at the wrong offset.
-			return Err(DownloadError::NoRangeSupport { offset: start, status: status.as_u16() });
+			// silently write the wrong bytes at the wrong offset. Anything in
+			// the 4xx range is a rejected URL instead, which no retry or range
+			// tweak recovers from — only the next profile can.
+			return Err(classify(start, status));
 		}
 
 		match response.bytes().await {
@@ -293,6 +309,17 @@ mod tests {
 		assert_eq!(covered, total);
 		// No overlaps: an overlap would corrupt the file with duplicated bytes.
 		assert!(ranges.windows(2).all(|pair| pair[0].1 + 1 == pair[1].0));
+	}
+
+	#[test]
+	fn a_rejected_url_is_not_reported_as_a_range_problem() {
+		let forbidden = classify(0, reqwest::StatusCode::FORBIDDEN);
+		assert!(matches!(forbidden, DownloadError::Forbidden { status: 403, .. }));
+		assert!(forbidden.to_string().contains("refused the URL"));
+
+		// A 200 really is the range being ignored, and must keep saying so.
+		let ignored = classify(4096, reqwest::StatusCode::OK);
+		assert!(matches!(ignored, DownloadError::NoRangeSupport { offset: 4096, status: 200 }));
 	}
 
 	#[test]
