@@ -1,0 +1,20 @@
+# ARMv8 hardware AES for the `aes` crate.
+#
+# On x86_64 the crate detects AES-NI at runtime and needs nothing here. On
+# aarch64 the intrinsics are behind an opt-in cfg, and without it the build gets
+# a software implementation — measured at 2.9µs per voice packet against 0.8µs
+# with the intrinsics, and 2.2µs against 0.5µs for DAVE frame encryption. Both
+# are paid fifty times a second per guild.
+#
+# This file lives at the repository root rather than in rust/ because cargo
+# searches upward from the working directory, and the build is driven from here
+# with --manifest-path.
+
+[target.aarch64-apple-darwin]
+rustflags = ["--cfg", "aes_armv8"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["--cfg", "aes_armv8", "-C", "target-feature=+aes"]
+
+[target.aarch64-unknown-linux-musl]
+rustflags = ["--cfg", "aes_armv8", "-C", "target-feature=+aes"]
