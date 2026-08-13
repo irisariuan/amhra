@@ -7,7 +7,7 @@ independently revertable; the TypeScript bot keeps working throughout.
 | --- | --- | --- |
 | `amhra-audio` | WebM/Opus demuxing, Opus TOC parsing, `.idx` index, cache reader | 1, 3 ✅ |
 | `amhra-fetch` | InnerTube extraction, ranged download, yt-dlp fallback | 1 ✅ |
-| `amhra-voice` | gateway v8, UDP/RTP/AEAD, DAVE ✅ · player, volume ✅ · crossfade ⏳ | 2, 3 |
+| `amhra-voice` | gateway v8, UDP/RTP/AEAD, DAVE, player, volume, crossfade | 2, 3 ✅ |
 | `amhra-sidecar` | the long-lived process: RPC, per-guild playback | 4 |
 
 ## Build
@@ -184,5 +184,22 @@ is skipped and the frame passes through byte-for-byte — the codec is never eve
 constructed. The old pipeline paid decode + re-encode on every stream
 regardless of volume, plus an ffmpeg process per track.
 
-Still to do in this phase: the crossfade, and wiring the player into the
-example so playback runs through it rather than a flat frame loop.
+`Crossfader` mixes the tail of one track into the head of the next with
+equal-power gains — linear ones sum to an audible dip in the middle. The fade is
+the one moment both tracks must exist as PCM at once, so it is the one moment
+the codec cost is unavoidable; it is paid per *track change*, not per frame. A
+three second fade is 150 frames of work. `crossfade_ms = 0` keeps the hard cut
+and stays entirely on the passthrough path. Skips use their own, much shorter
+fade, because a skip should feel immediate rather than mixed.
+
+Verified live end to end:
+
+```bash
+cargo run --release -p amhra-voice --example play_file -- \
+  --guild <GUILD> --channel <CHANNEL> \
+  --file cache/<a>.music --next cache/<b>.music \
+  --seek 205000 --crossfade 3000 --seconds 20
+```
+
+which seeks near the end of the first track, blends into the second, and
+reports `Started(second)` before `Finished(first)` — the overlap, in the log.

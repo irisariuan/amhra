@@ -17,6 +17,8 @@
 
 use amhra_audio::{CacheReader, packet_info};
 
+use crate::dsp::Crossfader;
+
 /// How often a standby track is refreshed while it waits, in ticks. Once a
 /// second is enough to keep its buffer warm without stat-ing on every frame.
 const STANDBY_REFRESH_TICKS: u32 = 50;
@@ -54,6 +56,29 @@ impl std::fmt::Debug for Slot {
 	}
 }
 
+/// How long a track change takes, and how long a skip does.
+#[derive(Debug, Clone, Copy)]
+pub struct FadeSettings {
+	/// Overlap at a natural end-of-track. Zero is a hard cut.
+	pub crossfade_ms: u16,
+	/// Overlap when the listener skips. Deliberately much shorter: a skip
+	/// should feel immediate, not like waiting out a mix.
+	pub skip_fade_ms: u16,
+}
+
+impl Default for FadeSettings {
+	fn default() -> Self {
+		Self { crossfade_ms: 0, skip_fade_ms: 40 }
+	}
+}
+
+/// A fade in progress.
+#[derive(Debug, Clone, Copy)]
+struct Fade {
+	elapsed_ms: u32,
+	total_ms: u32,
+}
+
 #[derive(Debug, Default)]
 pub struct Player {
 	active: Option<Slot>,
@@ -63,11 +88,32 @@ pub struct Player {
 	/// True once the current track reported starving, so the event is not
 	/// repeated fifty times a second.
 	starving: bool,
+	fades: FadeSettings,
+	fade: Option<Fade>,
+	/// Built on the first fade and kept afterwards, since a queue that fades
+	/// once will fade again.
+	fader: Option<Crossfader>,
+	/// Frames copied out of the two readers so the mixer can borrow neither.
+	scratch_a: Vec<u8>,
+	scratch_b: Vec<u8>,
 }
 
 impl Player {
 	pub fn new() -> Self {
 		Self::default()
+	}
+
+	pub fn with_fades(fades: FadeSettings) -> Self {
+		Self { fades, ..Self::default() }
+	}
+
+	pub fn set_fades(&mut self, fades: FadeSettings) {
+		self.fades = fades;
+	}
+
+	/// Whether a fade is running right now.
+	pub fn is_fading(&self) -> bool {
+		self.fade.is_some()
 	}
 
 	/// Start a track now, replacing whatever was playing.
@@ -90,6 +136,12 @@ impl Player {
 
 	/// Drop the current track and move to the standby one immediately.
 	pub fn skip(&mut self) {
+		// A skip with a fade keeps both tracks for a moment; without one it is
+		// the old behaviour of dropping straight to the next.
+		if self.fades.skip_fade_ms > 0 && self.standby.is_some() && self.active.is_some() {
+			self.fade = Some(Fade { elapsed_ms: 0, total_ms: self.fades.skip_fade_ms as u32 });
+			return;
+		}
 		if let Some(finished) = self.active.take() {
 			self.events.push(Event::Finished(finished.id));
 		}
@@ -141,6 +193,19 @@ impl Player {
 			self.promote();
 		}
 
+		// A fade needs a frame from each track at once, which no borrow of a
+		// single slot can give, so it is mixed into the fader's own buffer and
+		// only borrowed from there once every slot borrow has ended.
+		if self.fade.is_none() && self.should_start_crossfade() {
+			self.fade = Some(Fade { elapsed_ms: 0, total_ms: self.fades.crossfade_ms as u32 });
+		}
+		if self.fade.is_some()
+			&& let Some(samples) = self.mix_fade_frame()
+		{
+			let bytes = self.fader.as_ref().expect("mixed above").output();
+			return Tick::Frame { bytes, samples };
+		}
+
 		// Resolved before borrowing the reader for the frame, because the
 		// answer decides whether the frame even comes from this slot.
 		match self.step() {
@@ -158,6 +223,110 @@ impl Player {
 			Step::Starve => Tick::Starving,
 			Step::Idle => Tick::Idle,
 		}
+	}
+
+	/// Whether the active track is close enough to its end to start mixing.
+	///
+	/// Needs a known duration: without one there is no way to know the end is
+	/// coming, and a fade that starts too late is worse than none. A track
+	/// whose length the container never declared simply hard-cuts.
+	fn should_start_crossfade(&self) -> bool {
+		if self.fades.crossfade_ms == 0 || self.standby.is_none() {
+			return false;
+		}
+		let Some(slot) = self.active.as_ref() else { return false };
+		// Only a finished download can be faded out of: a track still
+		// arriving might yet turn out to be longer than it looks.
+		if !slot.reader.is_complete() {
+			return false;
+		}
+		let Some(duration) = slot.reader.duration_ms() else { return false };
+		duration.saturating_sub(slot.reader.position_ms()) <= self.fades.crossfade_ms as u32
+	}
+
+	/// Mix one frame into the fader's buffer, returning its sample count.
+	///
+	/// `None` means the fade is over — either it ran its length or a side ran
+	/// dry — and the caller should fall through to normal playback.
+	fn mix_fade_frame(&mut self) -> Option<u32> {
+		let fade = self.fade?;
+
+		// Both frames are copied out before mixing: the mixer lives on `self`,
+		// and it cannot borrow it while two readers on `self` are also
+		// borrowed. This is the only place in playback that copies, and it
+		// happens for the length of a seam.
+		let outgoing = {
+			let slot = self.active.as_mut()?;
+			match slot.reader.next_frame() {
+				Some((bytes, _)) => {
+					self.scratch_a.clear();
+					self.scratch_a.extend_from_slice(bytes);
+					true
+				}
+				None => false,
+			}
+		};
+		let incoming = {
+			let slot = self.standby.as_mut()?;
+			match slot.reader.next_frame() {
+				Some((bytes, _)) => {
+					self.scratch_b.clear();
+					self.scratch_b.extend_from_slice(bytes);
+					true
+				}
+				None => false,
+			}
+		};
+
+		// Either side running dry ends the fade early rather than stalling it:
+		// the listener hears a shorter blend, not a gap.
+		if !outgoing || !incoming || fade.elapsed_ms >= fade.total_ms {
+			self.finish_fade();
+			return None;
+		}
+
+		if self.fader.is_none() {
+			match Crossfader::new() {
+				Ok(fader) => self.fader = Some(fader),
+				// Without a mixer the honest outcome is a hard cut.
+				Err(_) => {
+					self.finish_fade();
+					return None;
+				}
+			}
+		}
+
+		let progress = fade.elapsed_ms as f32 / fade.total_ms.max(1) as f32;
+		self.fade = Some(Fade { elapsed_ms: fade.elapsed_ms + 20, ..fade });
+
+		// The incoming track is audible from here, so it counts as started.
+		if let Some(slot) = self.standby.as_mut()
+			&& !slot.started
+		{
+			slot.started = true;
+			let id = slot.id.clone();
+			self.events.push(Event::Started(id));
+		}
+
+		let Self { fader, scratch_a, scratch_b, .. } = self;
+		let fader = fader.as_mut().expect("built above");
+		match fader.mix(scratch_a, scratch_b, progress) {
+			Ok(bytes) => Some(packet_info(bytes).map_or(960, |info| info.samples())),
+			Err(_) => {
+				self.finish_fade();
+				None
+			}
+		}
+	}
+
+	/// End a fade: the outgoing track is done and the incoming one takes over
+	/// from wherever the mix left it.
+	fn finish_fade(&mut self) {
+		self.fade = None;
+		if let Some(finished) = self.active.take() {
+			self.events.push(Event::Finished(finished.id));
+		}
+		self.promote();
 	}
 
 	/// Decide what this tick can do, moving between slots as needed.
@@ -385,11 +554,13 @@ mod tests {
 	}
 
 	#[test]
-	fn skip_moves_to_the_next_track_immediately() {
+	fn skip_without_a_fade_lands_on_the_next_track_at_once() {
 		let (first, first_path) = reader("skip-a", 100, 0x55);
 		let (second, second_path) = reader("skip-b", 5, 0x66);
 
-		let mut player = Player::new();
+		// With the fade disabled the next track's own bytes appear untouched;
+		// the blended case is covered by a_skip_fade_blends_instead_of_cutting.
+		let mut player = Player::with_fades(FadeSettings { crossfade_ms: 0, skip_fade_ms: 0 });
 		player.play("a", first);
 		player.set_next("b", second);
 		player.tick();
@@ -417,6 +588,79 @@ mod tests {
 		assert_eq!(player.position_ms(), 1_000);
 		assert!(matches!(player.tick(), Tick::Frame { .. }));
 		std::fs::remove_file(&path).ok();
+	}
+
+	/// A file with a declared duration, which crossfading requires.
+	fn faded_player(crossfade_ms: u16) -> Player {
+		Player::with_fades(FadeSettings { crossfade_ms, skip_fade_ms: 40 })
+	}
+
+	#[test]
+	fn zero_crossfade_keeps_the_hard_cut() {
+		let (first, first_path) = reader("nofade-a", 3, 0x11);
+		let (second, second_path) = reader("nofade-b", 3, 0x22);
+		let mut player = faded_player(0);
+		player.play("a", first);
+		player.set_next("b", second);
+
+		let mut markers = Vec::new();
+		for _ in 0..6 {
+			if let Tick::Frame { bytes, .. } = player.tick() {
+				markers.push(bytes[1]);
+			}
+		}
+		// Untouched frames on both sides: nothing was decoded or re-encoded.
+		assert_eq!(markers, vec![0x11, 0x11, 0x11, 0x22, 0x22, 0x22]);
+		assert!(!player.is_fading());
+		std::fs::remove_file(&first_path).ok();
+		std::fs::remove_file(&second_path).ok();
+	}
+
+	#[test]
+	fn a_skip_fade_blends_instead_of_cutting() {
+		let (first, first_path) = reader("skipfade-a", 100, 0x33);
+		let (second, second_path) = reader("skipfade-b", 100, 0x44);
+		let mut player = faded_player(0);
+		player.play("a", first);
+		player.set_next("b", second);
+		player.tick();
+
+		player.skip();
+		assert!(player.is_fading(), "a skip with a fade configured should blend");
+
+		// Two frames of 20ms covers the default 40ms skip fade, and every tick
+		// through it must still produce audio.
+		let mut frames = 0;
+		for _ in 0..4 {
+			if matches!(player.tick(), Tick::Frame { .. }) {
+				frames += 1;
+			}
+		}
+		assert_eq!(frames, 4, "a fade must not drop ticks");
+		assert!(!player.is_fading(), "the fade should have ended");
+		assert_eq!(player.current_id(), Some("b"));
+		std::fs::remove_file(&first_path).ok();
+		std::fs::remove_file(&second_path).ok();
+	}
+
+	#[test]
+	fn a_fade_ends_early_rather_than_stalling_when_a_side_runs_dry() {
+		// The incoming track has only one frame, far less than the fade needs.
+		let (first, first_path) = reader("dry-a", 50, 0x55);
+		let (second, second_path) = reader("dry-b", 1, 0x66);
+		let mut player = faded_player(0);
+		player.play("a", first);
+		player.set_next("b", second);
+		player.tick();
+		player.skip();
+
+		for _ in 0..6 {
+			player.tick();
+		}
+		// It resolved rather than sitting in a half-mixed state forever.
+		assert!(!player.is_fading());
+		std::fs::remove_file(&first_path).ok();
+		std::fs::remove_file(&second_path).ok();
 	}
 
 	#[test]

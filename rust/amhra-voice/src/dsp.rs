@@ -161,6 +161,84 @@ impl Volume {
 	}
 }
 
+/// Mixes the tail of one track into the head of the next.
+///
+/// Only alive at a seam. A crossfade is the one moment both tracks must exist
+/// as PCM at once, so it is also the one moment the codec cost is unavoidable —
+/// but it is paid per *track change*, not per frame: a three second fade is 150
+/// frames of work, against the 3000 frames an hour of playback would need if
+/// the pipeline decoded everything.
+///
+/// Equal-power rather than linear: two uncorrelated signals summed at 0.5 each
+/// are audibly quieter in the middle, which is heard as a dip rather than a
+/// blend.
+pub struct Crossfader {
+	decoder_a: opus::Decoder,
+	decoder_b: opus::Decoder,
+	encoder: opus::Encoder,
+	pcm_a: Vec<i16>,
+	pcm_b: Vec<i16>,
+	out: Vec<u8>,
+	written: usize,
+}
+
+impl std::fmt::Debug for Crossfader {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Crossfader").finish_non_exhaustive()
+	}
+}
+
+impl Crossfader {
+	pub fn new() -> Result<Self, DspError> {
+		let mut encoder =
+			opus::Encoder::new(SAMPLE_RATE, opus::Channels::Stereo, opus::Application::Audio)?;
+		encoder.set_bitrate(opus::Bitrate::Bits(128_000))?;
+		Ok(Self {
+			decoder_a: opus::Decoder::new(SAMPLE_RATE, opus::Channels::Stereo)?,
+			decoder_b: opus::Decoder::new(SAMPLE_RATE, opus::Channels::Stereo)?,
+			encoder,
+			pcm_a: vec![0; MAX_SAMPLES],
+			pcm_b: vec![0; MAX_SAMPLES],
+			out: vec![0; 4000],
+			written: 0,
+		})
+	}
+
+	/// Mix one frame of each track. `progress` runs 0.0 (all outgoing) to 1.0
+	/// (all incoming).
+	/// The bytes produced by the last `mix`.
+	///
+	/// Separate from `mix` so a caller holding other borrows can finish with
+	/// them before taking this one.
+	pub fn output(&self) -> &[u8] {
+		&self.out[..self.written]
+	}
+
+	pub fn mix(
+		&mut self,
+		outgoing: &[u8],
+		incoming: &[u8],
+		progress: f32,
+	) -> Result<&[u8], DspError> {
+		let progress = progress.clamp(0.0, 1.0);
+		let samples_a = self.decoder_a.decode(outgoing, &mut self.pcm_a, false)?;
+		let samples_b = self.decoder_b.decode(incoming, &mut self.pcm_b, false)?;
+		let filled = (samples_a.min(samples_b)) * CHANNELS as usize;
+
+		let angle = progress * std::f32::consts::FRAC_PI_2;
+		let (gain_a, gain_b) = (angle.cos(), angle.sin());
+
+		for index in 0..filled {
+			let mixed =
+				self.pcm_a[index] as f32 * gain_a + self.pcm_b[index] as f32 * gain_b;
+			self.pcm_a[index] = mixed.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+		}
+
+		self.written = self.encoder.encode(&self.pcm_a[..filled], &mut self.out)?;
+		Ok(&self.out[..self.written])
+	}
+}
+
 /// Scale a block of PCM, sliding the gain from `from` to `to` across it.
 ///
 /// Pulled out because this is the part with an exact right answer: a lossy
@@ -291,6 +369,45 @@ mod tests {
 		}
 		// Not exactly zero: the encoder emits its own low-level noise floor.
 		assert!(peak < 200, "expected near-silence, got a peak of {peak}");
+	}
+
+	#[test]
+	fn a_crossfade_starts_on_the_old_track_and_ends_on_the_new() {
+		let quiet = tone_packet(4_000);
+		let loud = tone_packet(24_000);
+		let mut fader = Crossfader::new().unwrap();
+
+		// At the start the outgoing track dominates, at the end the incoming
+		// one does. Peaks are compared rather than exact values because the
+		// mixing happens either side of a lossy codec.
+		let start = decode_peak(fader.mix(&loud, &quiet, 0.0).unwrap());
+		for _ in 0..5 {
+			fader.mix(&loud, &quiet, 0.5).unwrap();
+		}
+		let end = decode_peak(fader.mix(&loud, &quiet, 1.0).unwrap());
+		assert!(start > end, "the fade ran the wrong way: {start} then {end}");
+	}
+
+	#[test]
+	fn the_middle_of_a_fade_does_not_dip() {
+		// The reason for equal-power gains: linear ones sum to a hole in the
+		// middle. Both halves of a fade should stay within reach of the source.
+		let tone = tone_packet(16_000);
+		let mut fader = Crossfader::new().unwrap();
+		let mut peaks = Vec::new();
+		for step in 0..=4 {
+			let mut peak = 0;
+			for _ in 0..4 {
+				peak = decode_peak(fader.mix(&tone, &tone, step as f32 / 4.0).unwrap());
+			}
+			peaks.push(peak);
+		}
+		let lowest = *peaks.iter().min().unwrap();
+		let highest = *peaks.iter().max().unwrap();
+		assert!(
+			lowest as f32 > highest as f32 * 0.5,
+			"the fade dipped: {peaks:?}"
+		);
 	}
 
 	#[test]

@@ -19,8 +19,10 @@
 
 use std::time::{Duration, Instant};
 
-use amhra_audio::{WebmDemuxer, packet_info};
+use amhra_audio::CacheReader;
 use amhra_voice::dave::driver::{Action, Driver};
+use amhra_voice::dsp::Volume;
+use amhra_voice::player::{FadeSettings, Player, Tick};
 use amhra_voice::gateway::{ConnectionInfo, Event};
 use amhra_voice::wire::EncryptionMode;
 use amhra_voice::{Session, VoiceUdp};
@@ -42,6 +44,13 @@ struct Args {
 	file: String,
 	/// Stop after this many seconds. Absent plays the whole track.
 	seconds: Option<u64>,
+	/// Optional second track, to exercise the gapless seam.
+	next: Option<String>,
+	/// Linear gain. 1.0 keeps the passthrough path.
+	volume: f32,
+	crossfade_ms: u16,
+	/// Start this far into the first track, to reach a seam quickly.
+	seek_ms: u32,
 	/// Filled in from the main gateway's READY.
 	user_id: String,
 }
@@ -49,6 +58,10 @@ struct Args {
 fn args() -> Args {
 	let (mut token, mut guild, mut channel, mut file) = (None, None, None, None);
 	let mut seconds = None;
+	let mut next = None;
+	let mut volume = 1.0f32;
+	let mut crossfade_ms = 0u16;
+	let mut seek_ms = 0u32;
 	let mut argv = std::env::args().skip(1);
 	while let Some(arg) = argv.next() {
 		let mut value = || argv.next().expect("option needs a value");
@@ -58,6 +71,12 @@ fn args() -> Args {
 			"--channel" => channel = Some(value()),
 			"--file" => file = Some(value()),
 			"--seconds" => seconds = Some(value().parse().expect("--seconds takes a number")),
+			"--next" => next = Some(value()),
+			"--volume" => volume = value().parse().expect("--volume takes a number"),
+			"--seek" => seek_ms = value().parse().expect("--seek takes milliseconds"),
+			"--crossfade" => {
+				crossfade_ms = value().parse().expect("--crossfade takes milliseconds")
+			}
 			other => panic!("unknown option {other}"),
 		}
 	}
@@ -74,25 +93,22 @@ fn args() -> Args {
 		channel: channel.expect("--channel"),
 		file: file.expect("--file"),
 		seconds,
+		next,
+		volume,
+		crossfade_ms,
+		seek_ms,
 		user_id: String::new(),
 	}
 }
 
-/// Read every Opus packet out of a `.music` file.
-///
-/// The whole file is demuxed up front here — a few milliseconds, and it keeps
-/// the example about the voice protocol rather than about streaming. The real
-/// player follows a file still being written and seeks through the `.idx`.
-fn load_frames(path: &str) -> (Vec<u8>, Vec<(usize, usize, u32)>) {
-	let bytes = std::fs::read(path).expect("read cache file");
-	let mut demuxer = WebmDemuxer::new();
-	let mut frames = Vec::new();
-	demuxer
-		.feed(&bytes, &mut |frame| {
-			frames.push((frame.offset as usize, frame.len as usize, frame.duration_us));
-		})
-		.expect("file is WebM/Opus");
-	(bytes, frames)
+/// Open a cache file for playback.
+fn open(path: &str) -> CacheReader {
+	let mut reader =
+		CacheReader::open_path(std::path::Path::new(path), None).expect("readable cache file");
+	// The example is given finished files; a live one would learn this from
+	// the index or the rename.
+	reader.mark_complete();
+	reader
 }
 
 /// Learn endpoint, token, session id and user id from the main gateway.
@@ -212,8 +228,8 @@ async fn main() {
 	amhra_voice::gateway::install_default_crypto_provider();
 
 	let mut args = args();
-	let (audio, frames) = load_frames(&args.file);
-	println!("{} frames loaded from {}", frames.len(), args.file);
+	let first = open(&args.file);
+	println!("{} frames in {}", first.frame_count(), args.file);
 
 	let info = negotiate(&args).await;
 	args.user_id = info.user_id.clone();
@@ -333,33 +349,61 @@ async fn main() {
 	// clients conventionally lead with silence.
 	let mut packet = Vec::with_capacity(1400);
 	for _ in 0..5 {
-		session.seal(&amhra_voice::SILENCE_FRAME, &mut packet).expect("seal silence");
+		let framed = encrypt(&amhra_voice::SILENCE_FRAME, &mut dave);
+		session.seal(&framed, &mut packet).expect("seal silence");
 		udp.send(&packet).await.expect("send silence");
 		session.advance(960);
 		tokio::time::sleep(Duration::from_millis(20)).await;
 	}
 
-	println!("playing…");
+	let mut player = Player::with_fades(FadeSettings {
+		crossfade_ms: args.crossfade_ms,
+		skip_fade_ms: 40,
+	});
+	player.play("first", first);
+	if args.seek_ms > 0 {
+		let landed = player.seek(args.seek_ms).unwrap_or(0);
+		println!("seeked to {landed}ms");
+	}
+	if let Some(path) = args.next.as_deref() {
+		player.set_next("second", open(path));
+		println!("queued {path}");
+	}
+
+	let mut volume = Volume::new();
+	volume.set_gain(args.volume);
+	println!(
+		"playing (volume {:.2}, {})",
+		args.volume,
+		if volume.is_passthrough() { "passthrough" } else { "re-encoding" }
+	);
+
 	// Absolute scheduling: sleeping 20ms per frame accumulates every scheduling
-	// overshoot into drift, so each frame is timed against the start instead.
+	// overshoot into drift, so each tick is timed against the start instead.
 	let started = Instant::now();
 	let mut elapsed_us = 0u64;
-	for (index, (offset, len, duration_us)) in frames.iter().enumerate() {
-		let opus = &audio[*offset..*offset + *len];
-		let framed = encrypt(opus, &mut dave);
-		session.seal(&framed, &mut packet).expect("seal frame");
-		udp.send(&packet).await.expect("send frame");
+	loop {
+		match player.tick() {
+			Tick::Frame { bytes, samples } => {
+				let scaled = volume.process(bytes).expect("gain").to_vec();
+				let framed = encrypt(&scaled, &mut dave);
+				session.seal(&framed, &mut packet).expect("seal frame");
+				udp.send(&packet).await.expect("send frame");
+				session.advance(samples);
+				elapsed_us += samples as u64 * 1_000_000 / 48_000;
+			}
+			// Nothing to send: hold the speaking state and wait a tick.
+			Tick::Starving => elapsed_us += 20_000,
+			Tick::Idle => break,
+		}
 
-		let samples = packet_info(opus).map_or(960, |info| info.samples());
-		session.advance(samples);
+		for event in player.drain_events() {
+			println!("  {event:?}");
+		}
 
-		elapsed_us += *duration_us as u64;
 		let deadline = Duration::from_micros(elapsed_us);
 		if let Some(wait) = deadline.checked_sub(started.elapsed()) {
 			tokio::time::sleep(wait).await;
-		}
-		if index % 500 == 0 {
-			println!("  {}s", elapsed_us / 1_000_000);
 		}
 		if args.seconds.is_some_and(|limit| elapsed_us >= limit * 1_000_000) {
 			println!("stopping at the {}s limit", elapsed_us / 1_000_000);
@@ -368,7 +412,8 @@ async fn main() {
 	}
 
 	for _ in 0..3 {
-		session.seal(&amhra_voice::SILENCE_FRAME, &mut packet).expect("seal silence");
+		let framed = encrypt(&amhra_voice::SILENCE_FRAME, &mut dave);
+		session.seal(&framed, &mut packet).expect("seal silence");
 		udp.send(&packet).await.expect("send silence");
 		session.advance(960);
 		tokio::time::sleep(Duration::from_millis(20)).await;
