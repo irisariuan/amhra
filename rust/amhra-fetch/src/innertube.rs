@@ -16,6 +16,12 @@ use crate::format::{AudioFormat, best_opus};
 
 const PLAYER_ENDPOINT: &str = "https://www.youtube.com/youtubei/v1/player";
 const DEFAULT_PROFILES: &str = include_str!("profiles.json");
+/// Where a visitor id is minted. The home page embeds one in its `ytcfg` blob,
+/// and asking for it costs one cached request per process.
+const HOME_PAGE: &str = "https://www.youtube.com/";
+/// A browser user agent, only for minting: the home page hands a visitor id to
+/// a browser and not to an Oculus app.
+const MINT_USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ExtractError {
@@ -81,6 +87,8 @@ pub struct Attempt {
 pub struct Extractor {
 	client: reqwest::Client,
 	profiles: Vec<Profile>,
+	/// Minted once per process, on the first player call that needs it.
+	visitor: tokio::sync::OnceCell<Option<String>>,
 }
 
 impl Extractor {
@@ -92,7 +100,7 @@ impl Extractor {
 			.connect_timeout(Duration::from_secs(10))
 			.timeout(Duration::from_secs(30))
 			.build()?;
-		Ok(Self { client, profiles })
+		Ok(Self { client, profiles, visitor: tokio::sync::OnceCell::new() })
 	}
 
 	/// Walk the ladder from `start`, returning the first profile that yields a
@@ -203,10 +211,53 @@ impl Extractor {
 		self.profiles.len()
 	}
 
+	/// A visitor id, minted once and reused.
+	///
+	/// Without one, an unauthenticated player call from a datacentre address is
+	/// answered with `LOGIN_REQUIRED (Sign in to confirm you're not a bot)` no
+	/// matter which client it claims to be — every token-free profile in the
+	/// ladder fails identically. With one, the same call succeeds and the media
+	/// URL it returns is served.
+	///
+	/// A failed mint is cached as `None` rather than retried: if the home page
+	/// is unreachable the player endpoint will not be reachable either, and the
+	/// ladder should spend its time on profiles, not on retries.
+	async fn visitor_data(&self) -> Option<&str> {
+		self.visitor
+			.get_or_init(|| async {
+				let body = self
+					.client
+					.get(HOME_PAGE)
+					.header("User-Agent", MINT_USER_AGENT)
+					.send()
+					.await
+					.ok()?
+					.text()
+					.await
+					.ok()?;
+				scrape_visitor_data(&body)
+			})
+			.await
+			.as_deref()
+	}
+
 	async fn player(&self, profile: &Profile, video_id: &str) -> Result<Value, ExtractError> {
+		// Injected rather than stored in profiles.json: a visitor id is minted
+		// per process and expires, so it is not something an operator can pin in
+		// a config file. A profile that carries its own is left alone.
+		let mut context = profile.context.clone();
+		let visitor = self.visitor_data().await;
+		if let (Some(visitor), Some(client)) = (
+			visitor,
+			context.pointer_mut("/client").and_then(Value::as_object_mut),
+		) && !client.contains_key("visitorData")
+		{
+			client.insert("visitorData".to_owned(), Value::String(visitor.to_owned()));
+		}
+
 		let body = json!({
 			"videoId": video_id,
-			"context": profile.context,
+			"context": context,
 			"contentCheckOk": true,
 			"racyCheckOk": true,
 		});
@@ -225,6 +276,10 @@ impl Extractor {
 					.and_then(Value::as_str)
 					.unwrap_or_default(),
 			);
+		// The id goes in the header as well as the context; YouTube checks both.
+		if let Some(visitor) = visitor {
+			request = request.header("X-Goog-Visitor-Id", visitor);
+		}
 		for (name, value) in &profile.headers {
 			request = request.header(name.as_str(), value.as_str());
 		}
@@ -235,6 +290,20 @@ impl Extractor {
 	pub fn client(&self) -> &reqwest::Client {
 		&self.client
 	}
+}
+
+/// Pull the visitor id out of the home page's inline config.
+///
+/// A scan rather than an HTML or JS parse: the value appears as a plain JSON
+/// string field in a script blob, and anything more thorough would be parsing
+/// megabytes of markup for one base64 field that either matches or does not.
+fn scrape_visitor_data(page: &str) -> Option<String> {
+	const KEY: &str = "\"visitorData\":\"";
+	let start = page.find(KEY)? + KEY.len();
+	let value: String = page[start..].chars().take_while(|c| *c != '"').collect();
+	// Real ids are ~500 characters of base64; anything tiny is a truncated page
+	// or a placeholder, and sending it is worse than sending nothing.
+	(value.len() >= 16).then_some(value)
 }
 
 /// Pull the eleven-character video id out of whatever the user pasted.
@@ -278,15 +347,29 @@ mod tests {
 
 		// Every token-free profile has to precede every descrambling one, or a
 		// bot check on the first client costs a wasted player-JS round trip
-		// before the cheap backups are even tried.
+		// before the cheap ones are even tried.
 		let first_scrambled =
 			profiles.iter().position(|profile| profile.needs_player_js).unwrap_or(profiles.len());
 		assert!(profiles[first_scrambled..].iter().all(|profile| profile.needs_player_js));
-		assert!(first_scrambled >= 4, "the ladder needs backups for when android_vr is gated");
 
-		// The embedded TV client is refused outright without its embed url.
-		let embedded = profiles.iter().find(|profile| profile.name == "tv_embedded").unwrap();
-		assert!(embedded.context.pointer("/thirdParty/embedUrl").is_some());
+		// visitorData is minted per process and injected, never pinned in config.
+		assert!(
+			profiles.iter().all(|p| p.context.pointer("/client/visitorData").is_none()),
+			"a pinned visitor id would expire and re-break the ladder"
+		);
+	}
+
+	#[test]
+	fn a_visitor_id_is_scraped_out_of_the_home_page() {
+		let page = r#"<script>ytcfg.set({"INNERTUBE_CONTEXT":{"client":{"visitorData":"CgtBQkNERUZHSElKSxi7-abBBjIKCgJVUxIEGgAgYQ%3D%3D","hl":"en"}}});</script>"#;
+		let scraped = scrape_visitor_data(page).unwrap();
+		assert!(scraped.starts_with("CgtBQkNERUZHSElKSx"));
+		assert!(!scraped.contains('"'));
+
+		// A page without one, or with a stub, must yield nothing rather than a
+		// value that would be sent and rejected.
+		assert_eq!(scrape_visitor_data("<html>no config here</html>"), None);
+		assert_eq!(scrape_visitor_data(r#"{"visitorData":"short"}"#), None);
 	}
 
 	#[test]

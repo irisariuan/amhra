@@ -12,10 +12,14 @@
 		"parameter and no signatureCipher. TVHTML5 and WEB answer UNPLAYABLE without",
 		"a PO token.",
 		"",
-		"ANDROID_MUSIC and TVHTML5_SIMPLY_EMBEDDED_PLAYER sit after them as the",
-		"token-free backups for when ANDROID_VR draws a bot check: both still answer",
-		"without a PO token, and the embedded TV client needs the 'thirdParty'",
-		"embedUrl or it refuses age- and embed-gated videos."
+		"Re-probed 2026-08-13 for a bot-check failure. Adding more token-free",
+		"clients is not the fix and was tried: ANDROID_MUSIC, IOS_MUSIC and",
+		"ANDROID_CREATOR answer LOGIN_REQUIRED, WEB_EMBEDDED_PLAYER and",
+		"TVHTML5_SIMPLY_EMBEDDED_PLAYER are retired ('no longer supported'), and MWEB",
+		"answers UNPLAYABLE — on a known-good control video too, so they are dead",
+		"everywhere, not gated on one video. What actually clears the bot check is",
+		"visitorData, which the extractor now mints and injects into every profile.",
+		"Do not re-add those clients: each one costs a wasted round trip per fetch."
 	],
 	"profiles": [
 		{
@@ -52,41 +56,6 @@
 					"osVersion": "18.2.1.22C161",
 					"hl": "en",
 					"gl": "US"
-				}
-			}
-		},
-		{
-			"name": "android_music",
-			"clientId": 21,
-			"userAgent": "com.google.android.apps.youtube.music/7.27.52 (Linux; U; Android 14; US) gzip",
-			"needsPlayerJs": false,
-			"context": {
-				"client": {
-					"clientName": "ANDROID_MUSIC",
-					"clientVersion": "7.27.52",
-					"androidSdkVersion": 34,
-					"osName": "Android",
-					"osVersion": "14",
-					"hl": "en",
-					"gl": "US"
-				}
-			}
-		},
-		{
-			"name": "tv_embedded",
-			"clientId": 85,
-			"userAgent": "Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
-			"needsPlayerJs": false,
-			"context": {
-				"client": {
-					"clientName": "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
-					"clientVersion": "2.0",
-					"hl": "en",
-					"gl": "US",
-					"clientScreen": "EMBED"
-				},
-				"thirdParty": {
-					"embedUrl": "https://www.youtube.com"
 				}
 			}
 		},
