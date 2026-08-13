@@ -4,7 +4,13 @@ import chalk from "chalk";
 import express, { type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import NodeCache from "node-cache";
-import { getYouTubeVideoInfo, isYouTubeVideo, searchYouTube } from "../youtube";
+import {
+	getYouTubePlaylist,
+	getYouTubeVideoInfo,
+	isYouTubePlaylist,
+	isYouTubeVideo,
+	searchYouTube,
+} from "../youtube";
 import type { CustomClient } from "../custom";
 import {
 	getPlayingGuildsForAccount,
@@ -135,6 +141,9 @@ export async function initServer(client: CustomClient) {
 
 	const logQueue = await load(...(setting.PRELOAD ?? []));
 	const videoCache = new NodeCache({ stdTTL: 60 * 60 * 24 * 5 });
+	// Shorter than the video cache: a playlist's contents change, a video's
+	// title does not
+	const playlistCache = new NodeCache({ stdTTL: 60 * 30 });
 
 	// Periodically prune expired sessions, challenges, and anonymous accounts.
 	setInterval(() => collectGarbage().catch(() => {}), 1000 * 60 * 30);
@@ -485,6 +494,31 @@ export async function initServer(client: CustomClient) {
 				return res.send(JSON.stringify(video));
 			} catch {
 				res.sendStatus(500);
+			}
+		},
+	);
+
+	// Lets the dashboard show what a playlist link holds before queueing it.
+	// Cached alongside videos: a listing costs one InnerTube call per 100
+	// entries, and the same link is usually previewed and then added.
+	app.post(
+		"/api/getPlaylistDetail",
+		jsonParser,
+		auth(Permission.User),
+		basicCheckBuilder(["url"]),
+		async (req, res) => {
+			if (!req.body.url || !isYouTubePlaylist(req.body.url)) {
+				return res.sendStatus(400);
+			}
+			const cached = playlistCache.get(req.body.url);
+			if (cached) return res.json(cached);
+			try {
+				const playlist = await getYouTubePlaylist(req.body.url);
+				playlistCache.set(req.body.url, playlist);
+				return res.json(playlist);
+			} catch (error) {
+				exp.error(`Failed to read playlist ${req.body.url}: ${error}`);
+				return res.sendStatus(502);
 			}
 		},
 	);
