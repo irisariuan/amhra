@@ -25,6 +25,7 @@ import {
 	nativeFetchEnabled,
 	nativeFetchReady,
 } from "./nativeFetch";
+import { stopSidecar } from "./sidecar";
 
 if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
 	writeFileSync(`${process.cwd()}/data/lastUsed.record`, "");
@@ -65,6 +66,9 @@ function useNativeFetch() {
 async function closeAllStreams() {
 	globalApp.important("Closing all streams");
 	killNativeFetches();
+	// The sidecar is a child process: without this it survives the bot and
+	// keeps holding its voice connections open.
+	stopSidecar();
 	for (const [id, stream] of streams) {
 		if (stream.rawStream?.destroyed) continue;
 		dcb.log(`Killing stream: ${id}`);

@@ -54,6 +54,14 @@ import {
 } from "./opusStream";
 import { WebmOpusDemuxer } from "./webm";
 import { pickRadioTrack } from "./suggest";
+import {
+	getNativeConnection,
+	joinVoiceNative,
+	nativeVoiceActive,
+	type NativeConnection,
+} from "./native";
+import { nativeFetchReady } from "./nativeFetch";
+import { updateLastUsed } from "./cache";
 
 const videoInfoCache = new NodeCache();
 const setting = readSetting();
@@ -72,7 +80,15 @@ try {
 	globalApp.warn("No cookies found");
 }
 
-export function disconnectConnection(connection: VoiceConnection) {
+/**
+ * Either backend's handle on a voice channel.
+ *
+ * Commands mostly only ask "is the bot in voice?" and "leave", which both
+ * paths answer identically, so they do not need to know which one is running.
+ */
+export type VoiceHandle = VoiceConnection | NativeConnection;
+
+export function disconnectConnection(connection: VoiceHandle) {
 	connection.disconnect();
 	connection.destroy();
 }
@@ -94,7 +110,7 @@ function createAudioPlayer(
 			`Auto quitted for inactivity (${player.isPlaying ? "Y" : "N"}_${player.queue.length})`,
 		);
 		player.cleanStop();
-		const connection = getVoiceConnection(guildId);
+		const connection = getConnection(guildId);
 		destroyAudioPlayer(client, guildId);
 		if (connection) {
 			disconnectConnection(connection);
@@ -224,9 +240,11 @@ export function destroyAudioPlayer(
 	return false;
 }
 
-export function getConnection(guildId: string | null) {
+export function getConnection(guildId: string | null): VoiceHandle | undefined {
 	if (!guildId) return;
-	return getVoiceConnection(guildId);
+	// Checked first so a guild joined natively is not reported as absent just
+	// because @discordjs/voice has never heard of it.
+	return getNativeConnection(guildId) ?? getVoiceConnection(guildId);
 }
 
 export interface Stream {
@@ -280,6 +298,42 @@ export async function getVideoInfo(
 	return videoInfo;
 }
 
+/**
+ * The metadata half of a resource, for playback that happens elsewhere.
+ *
+ * The sidecar reads the cache file itself, so there is no stream to build, no
+ * demuxer to run and no buffer to hold here — only the track's details, the
+ * segments, and the cache id it should be asked to play. What this does do is
+ * make sure the file exists first: the sidecar cannot download.
+ */
+async function createNativeResource(
+	url: string,
+	detail: YouTubeVideoInfo["video_details"],
+	seek?: number,
+	skipCache = false,
+): Promise<Resource | null> {
+	const id = getYouTubeVideoId(url);
+	if (!id) return null;
+	await nativeFetchReady(id, skipCache);
+	await updateLastUsed([id]);
+
+	const segments = await getSegments(id, [SegmentCategory.MusicOffTopic]);
+	if (!detail.channel || !detail.title) {
+		throw new Error(
+			"Resource could not be created due to channel and title missing",
+		);
+	}
+	return {
+		videoId: id,
+		channel: detail.channel,
+		title: detail.title,
+		details: detail,
+		segments,
+		url,
+		startFrom: (seek ?? 0) * 1000,
+	};
+}
+
 export async function createResource(
 	url: string,
 	seek?: number,
@@ -288,6 +342,7 @@ export async function createResource(
 	const detail = (await getVideoInfo(url))?.video_details;
 	if (!detail || (detail.id && setting.BANNED_IDS.includes(detail.id)))
 		return null;
+	if (nativeVoiceActive()) return createNativeResource(url, detail, seek, skipCache);
 	// WebM/Opus goes through our own demuxer, which skips ffmpeg entirely: the
 	// packets in the container are already the 20ms Opus frames Discord wants.
 	// Anything else (rare, but yt-dlp does occasionally hand back AAC) keeps
@@ -373,7 +428,8 @@ export function joinVoice(
 	voiceChannel: VoiceChannel | VoiceBasedChannel,
 	guild: Guild,
 	record = true,
-) {
+): VoiceHandle {
+	if (nativeVoiceActive()) return joinVoiceNative(voiceChannel);
 	const connection = joinVoiceChannel({
 		channelId: voiceChannel.id,
 		guildId: voiceChannel.guildId,

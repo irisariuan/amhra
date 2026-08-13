@@ -8,6 +8,7 @@ import { hasSecret, requireSecret } from "./lib/secrets";
 import { readSetting } from "./lib/setting";
 import { watch } from "node:fs";
 import { updateYtdlpVersion } from "./lib/voice/ytdlp";
+import { bindNativeVoice, nativeVoiceActive } from "./lib/voice/native";
 
 const setting = readSetting();
 
@@ -67,6 +68,13 @@ const setting = readSetting();
 	}
 
 	const token = requireSecret(result === "prod" ? "TOKEN" : "TESTING_TOKEN");
+	// Bound before login so the very first track's `finished` report has a
+	// handler; the sidecar starts here rather than on the first join, so a
+	// failure to launch it is visible at boot instead of mid-song.
+	if (nativeVoiceActive()) {
+		console.log(chalk.bgBlue.whiteBright("Voice runs through the Rust sidecar"));
+		bindNativeVoice(client);
+	}
 	const app = await initServer(client);
 	app.listen(setting.PORT, () =>
 		exp.log(
