@@ -20,7 +20,7 @@ data/setting.json
 data/recordings/*
 data/lastUsed.record
 
-cache/*
+**/cache/*
 
 .DS_Store
 
