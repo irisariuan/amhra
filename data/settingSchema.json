@@ -80,6 +80,18 @@
    "type": "string",
    "description": "Path to the amhra-sidecar binary; defaults to rust/target/release/amhra-sidecar"
   },
+  "CROSSFADE_IN_MS": {
+   "type": "integer",
+   "minimum": 0,
+   "maximum": 15000,
+   "description": "Overlap between one track and the next in milliseconds; 0 is a hard cut (Rust voice path only)"
+  },
+  "SKIP_FADE_IN_MS": {
+   "type": "integer",
+   "minimum": 0,
+   "maximum": 5000,
+   "description": "Overlap when a listener skips, in milliseconds; kept short so a skip feels immediate"
+  },
   "SEEK": {
    "type": "boolean",
    "description": "Enable time seeking function, should be closed when using youtube-dl"

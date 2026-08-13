@@ -182,5 +182,9 @@ export const GlobalSettingSchema = z
 		MAX_STREAM_BUFFER_IN_MB: z.number().positive().optional(),
 		MESSAGE_LOGGING: z.boolean().optional(),
 		VOICE_LOGGING: z.boolean().optional(),
+		// Bounded rather than merely positive: a fade longer than the shortest
+		// plausible track would never finish before the next one started.
+		CROSSFADE_IN_MS: z.number().int().min(0).max(15_000).optional(),
+		SKIP_FADE_IN_MS: z.number().int().min(0).max(5_000).optional(),
 	})
 	.passthrough();

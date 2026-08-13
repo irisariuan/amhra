@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { Sidecar, sidecarBinary } from "../lib/voice/sidecar";
+import { Sidecar, fadeSettings, sidecarBinary } from "../lib/voice/sidecar";
 
 /**
  * Tests for the voice sidecar client, run against the real Rust process.
@@ -34,6 +34,18 @@ function next<T extends string>(sidecar: Sidecar, type: T, timeoutMs = 5_000) {
 		sidecar.on(type, onEvent);
 	});
 }
+
+describe("fadeSettings", () => {
+	test("defaults to a hard cut with a short skip fade", () => {
+		// Matching the Rust defaults: blending track changes is opt-in, but a
+		// skip always gets a brief fade so it does not click.
+		const fades = fadeSettings();
+		expect(fades.crossfadeMs).toBeGreaterThanOrEqual(0);
+		expect(fades.skipFadeMs).toBeGreaterThanOrEqual(0);
+		expect(Number.isInteger(fades.crossfadeMs)).toBe(true);
+		expect(Number.isInteger(fades.skipFadeMs)).toBe(true);
+	});
+});
 
 describeBuilt("Sidecar", () => {
 	let running: Sidecar | null = null;
@@ -126,6 +138,25 @@ describeBuilt("Sidecar", () => {
 		sidecar.send({ type: "listSessions" });
 		const sessions = await next(sidecar, "sessions");
 		expect(sessions.guilds).toEqual([]);
+	});
+
+	test("accepts a fade change for a guild it knows nothing about", async () => {
+		const sidecar = start();
+		await next(sidecar, "hello");
+
+		// The dashboard pushes fades to every connected guild; one that has
+		// just disconnected must produce a complaint, not a crash.
+		sidecar.send({
+			type: "setFades",
+			guildId: "404",
+			crossfadeMs: 3000,
+			skipFadeMs: 40,
+		});
+		const error = await next(sidecar, "error");
+		expect(error.guildId).toBe("404");
+
+		sidecar.send({ type: "listSessions" });
+		expect((await next(sidecar, "sessions")).guilds).toEqual([]);
 	});
 
 	test("stops without restarting when asked", async () => {

@@ -24,6 +24,7 @@ import { getSuggestions } from "../voice/suggest";
 import { load } from "../log/load";
 import { exp, globalApp, misc } from "../misc";
 import { readSetting, reloadSetting, writeJsonSync } from "../setting";
+import { pushFadeSettings } from "../voice/sidecar";
 import {
 	accountCanAccessGuild,
 	auth,
@@ -379,6 +380,9 @@ export async function initServer(client: CustomClient) {
 					nextResult.data,
 				);
 				reloadSetting();
+				// Fades are held by the sidecar, so a saved change has to be
+				// pushed to it or it only takes effect on the next join.
+				pushFadeSettings();
 				return res.json(publicGlobalSettings(nextResult.data));
 			} catch (error) {
 				exp.error(`Failed to save global settings: ${error}`);

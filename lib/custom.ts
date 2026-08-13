@@ -8,6 +8,7 @@ import { createResource, Stream } from "./voice/core";
 import type { VolumeControl } from "./voice/volume";
 import { isSeekable } from "./voice/opusStream";
 import { Segment, sendSkipMessage } from "./voice/segment";
+import { segmentAt, upcomingSegments } from "./voice/segmentTiming";
 import { prefetch } from "./voice/stream";
 import { Language } from "./interaction";
 
@@ -444,47 +445,32 @@ export class CustomAudioPlayer extends AudioPlayer {
 	}
 	updateSongTimeouts() {
 		const currentPos = this.getCurrentSongPosition();
-		if (
-			!this.nowPlaying ||
-			!this.isPlaying ||
-			!this.nowPlaying.segments ||
-			!currentPos
-		)
-			return;
+		// Zero is a position, not the absence of one: a track that just
+		// started sits at exactly zero, and treating that as "no position"
+		// left every switched-to track with no segment timers at all.
+		if (!this.nowPlaying || !this.isPlaying || currentPos === null) return;
 		if (this.isPaused) {
 			return this.clearSongTimeouts();
 		}
-		for (const segment of this.nowPlaying.segments) {
-			const [startInSec] = segment.segment;
-			const start = startInSec * 1000;
-			if (start < currentPos) continue;
+		for (const { delayMs } of upcomingSegments(
+			this.nowPlaying.segments,
+			currentPos,
+		)) {
 			const id = setTimeout(() => {
 				if (this.customSetting.autoSkipSegment)
 					return this.skipCurrentSegment();
 				sendSkipMessage(this);
-			}, start - currentPos);
+			}, delayMs);
 			this.songSegmentsTimeoutArray.push(id);
 		}
 	}
 
 	currentSegment() {
-		const currentPos = this.getCurrentSongPosition();
-		if (
-			!this.nowPlaying ||
-			!this.isPlaying ||
-			!this.nowPlaying.segments ||
-			!currentPos
-		)
-			return null;
-		for (const segment of this.nowPlaying.segments) {
-			const [startInSec, endInSec] = segment.segment;
-			const start = startInSec * 1000;
-			const end = endInSec * 1000;
-			if (currentPos >= start && currentPos <= end) {
-				return segment;
-			}
-		}
-		return null;
+		if (!this.nowPlaying || !this.isPlaying) return null;
+		return segmentAt(
+			this.nowPlaying.segments,
+			this.getCurrentSongPosition(),
+		);
 	}
 
 	async skipCurrentSegment(skipThreshold = 1) {

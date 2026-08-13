@@ -58,6 +58,16 @@ export interface Setting {
 	NATIVE_FETCH_BIN?: string;
 	/** Play through the Rust voice sidecar instead of @discordjs/voice */
 	USE_RUST_VOICE?: boolean;
+	/**
+	 * Overlap between one track and the next, in milliseconds. Zero is a hard
+	 * cut. Only the Rust voice path can blend; the legacy path ignores it.
+	 */
+	CROSSFADE_IN_MS?: number;
+	/**
+	 * Overlap when a listener skips, in milliseconds. Kept separate from
+	 * CROSSFADE_IN_MS because a skip should feel immediate rather than mixed.
+	 */
+	SKIP_FADE_IN_MS?: number;
 	/** Override the amhra-sidecar binary path; defaults to the cargo build output */
 	NATIVE_VOICE_BIN?: string;
 	SEEK: boolean;

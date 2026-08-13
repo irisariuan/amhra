@@ -273,6 +273,35 @@ export class Sidecar extends EventEmitter {
 	}
 }
 
+/**
+ * The fade settings the sidecar should be using, from the global config.
+ *
+ * Defaults match the Rust side: no crossfade, and a short fade on skip so it
+ * feels immediate rather than mixed.
+ */
+export function fadeSettings() {
+	const setting = readSetting();
+	return {
+		crossfadeMs: Math.max(0, Math.round(setting.CROSSFADE_IN_MS ?? 0)),
+		skipFadeMs: Math.max(0, Math.round(setting.SKIP_FADE_IN_MS ?? 40)),
+	};
+}
+
+/**
+ * Send the current fade settings to every connected guild.
+ *
+ * Called after the dashboard edits them, so a change takes effect on whatever
+ * is already playing rather than only on the next join.
+ */
+export function pushFadeSettings() {
+	const client = shared;
+	if (!client?.running) return;
+	const fades = fadeSettings();
+	for (const guildId of client.guilds) {
+		client.send({ type: "setFades", guildId, ...fades });
+	}
+}
+
 let shared: Sidecar | null = null;
 
 /** The process-wide sidecar, started on first use. */
@@ -333,7 +362,8 @@ export function joinVoiceViaSidecar(channel: VoiceBasedChannel, deaf = true) {
 			// Both halves are needed, and they arrive in either order.
 			if (!sessionId || !endpoint || !token) return;
 			clearTimeout(timer);
-			sidecar().send({
+			const client = sidecar();
+			client.send({
 				type: "connect",
 				guildId: guild.id,
 				channelId: channel.id,
@@ -342,6 +372,10 @@ export function joinVoiceViaSidecar(channel: VoiceBasedChannel, deaf = true) {
 				endpoint,
 				token,
 			});
+			// Sent straight after connect rather than waiting for a ready
+			// event: the sidecar queues commands per guild, so this is applied
+			// before the first frame either way.
+			client.send({ type: "setFades", guildId: guild.id, ...fadeSettings() });
 			resolve();
 		}
 
