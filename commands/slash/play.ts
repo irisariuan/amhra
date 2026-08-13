@@ -185,7 +185,6 @@ export default {
 						url: videoUrl,
 					}),
 				});
-				// Before the segment handling below, which returns early
 				if (alternatives) {
 					await sendSearchAlternatives({
 						interaction,
@@ -193,16 +192,17 @@ export default {
 						...alternatives,
 					});
 				}
-				if (!data.segments) return;
-				if (player.currentSegment()) {
+				if (data.segments && player.currentSegment()) {
 					if (player.customSetting.autoSkipSegment) {
-						return await player.skipCurrentSegment();
+						await player.skipCurrentSegment();
+					} else {
+						await sendInteractionSkipMessage(interaction, player);
 					}
-					return await sendInteractionSkipMessage(
-						interaction,
-						player,
-					);
 				}
+				// The track is playing, not queued. Falling through to the
+				// queue reply below would overwrite "now playing" with "added
+				// to queue" and offer the search alternatives a second time.
+				return;
 			} catch (e) {
 				globalApp.err(
 					"An error occurred while trying to start playing music: ",
