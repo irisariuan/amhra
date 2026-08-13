@@ -47,8 +47,8 @@
     "build:rust": "cargo build --release --manifest-path rust/Cargo.toml",
     "test:rust": "cargo test --manifest-path rust/Cargo.toml",
     "lint:rust": "cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings",
-    "test": "bun test",
-    "test:all": "bun test && cargo test --manifest-path rust/Cargo.toml"
+    "test": "bun test test/",
+    "test:all": "bun test test/ && cargo test --manifest-path rust/Cargo.toml"
   },
   "devDependencies": {
     "eslint": "^8.57.1",

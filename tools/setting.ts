@@ -1,6 +1,5 @@
 import { confirm, input } from "@inquirer/prompts";
 import chalk from "chalk";
-import crypto from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import type { LogFile, Setting } from "../lib/setting";
 import { writeJsonSync } from "../lib/setting";
@@ -36,10 +35,7 @@ function writeEnv(values: Record<string, string>) {
 (async () => {
 	// Credentials are collected here but written to .env, never to
 	// data/setting.json, which the dashboard can read and edit.
-	const secrets: Record<string, string> = {
-		AUTH_TOKEN:
-			"b83688be9b1a88796694310157b24fdc167b10d499dcbd71b953f8dbac441d30",
-	};
+	const secrets: Record<string, string> = {};
 
 	const setting: Setting = {
 		CLIENT_ID: "",
@@ -80,20 +76,6 @@ function writeEnv(values: Record<string, string>) {
 		setting.TEST_CLIENT_ID = testId;
 	}
 
-	if (
-		await confirm({
-			message: "Set up custom dashboard authentication password?",
-			default: true,
-		})
-	) {
-		const pw = await input({ message: "Password" });
-		const hash = crypto
-			.createHash("sha256")
-			.update(`Basic ${pw}`)
-			.digest("hex");
-		console.log(`Your password: ${chalk.bgGray.whiteBright(pw)}`);
-		secrets.AUTH_TOKEN = hash;
-	}
 	if (await confirm({ message: "Set up custom port?", default: false })) {
 		const port = Number.parseInt(
 			await input({

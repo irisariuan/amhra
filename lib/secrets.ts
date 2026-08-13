@@ -22,8 +22,6 @@ export const SECRET_NAMES = {
 	TESTING_TOKEN: "TESTING_TOKEN",
 	/** OAuth2 client secret, exchanged for user tokens by the dashboard. */
 	OAUTH_TOKEN: "OAUTH_TOKEN",
-	/** SHA-256 of the dashboard's basic auth header. */
-	AUTH_TOKEN: "AUTH_TOKEN",
 } as const;
 
 export type SecretName = keyof typeof SECRET_NAMES;

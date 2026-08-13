@@ -8,7 +8,7 @@ import { hasSecret, presentSecrets, requireSecret, secret } from "../lib/secrets
  * credential that is missing must fail here rather than somewhere far away.
  */
 
-const NAMES = ["TOKEN", "TESTING_TOKEN", "OAUTH_TOKEN", "AUTH_TOKEN"] as const;
+const NAMES = ["TOKEN", "TESTING_TOKEN", "OAUTH_TOKEN"] as const;
 const saved = new Map<string, string | undefined>();
 
 function set(name: string, value: string | undefined) {
@@ -53,18 +53,18 @@ describe("secrets", () => {
 	});
 
 	test("requiring a present credential returns it", () => {
-		set("AUTH_TOKEN", "deadbeef");
-		expect(requireSecret("AUTH_TOKEN")).toBe("deadbeef");
+		set("OAUTH_TOKEN", "deadbeef");
+		expect(requireSecret("OAUTH_TOKEN")).toBe("deadbeef");
 	});
 
 	test("lists which credentials are set without revealing them", () => {
 		for (const name of NAMES) set(name, undefined);
 		set("TOKEN", "one");
-		set("AUTH_TOKEN", "two");
+		set("OAUTH_TOKEN", "two");
 
 		const present = presentSecrets();
 		expect(present).toContain("TOKEN");
-		expect(present).toContain("AUTH_TOKEN");
+		expect(present).toContain("OAUTH_TOKEN");
 		expect(present).not.toContain("TESTING_TOKEN");
 		// Names only: this is meant to be safe to log.
 		expect(JSON.stringify(present)).not.toContain("one");
