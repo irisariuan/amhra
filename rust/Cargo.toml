@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+members = [
+	"amhra-voice",
+	"amhra-fetch",
+	"amhra-audio",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.87"
+
+[workspace.dependencies]
+amhra-audio = { path = "amhra-audio" }
+thiserror = "2"
+
+# The audio thread must never wait on an allocator or a page fault it did not
+# ask for, and the extractor is the only place where a few extra milliseconds of
+# compile time buy anything measurable at runtime.
+#
+# Unwinding rather than aborting is deliberate: `tls_codec` panics instead of
+# erroring on some truncated MLS payloads, and those arrive from the network, so
+# the DAVE session catches them and turns them back into errors. `panic = abort`
+# would turn a malformed gateway frame into a dead bot.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "unwind"
+strip = "debuginfo"
+
+# Demuxing a whole cache file under a debugger is unbearable at opt-level 0.
+[profile.dev.package."*"]
+opt-level = 2

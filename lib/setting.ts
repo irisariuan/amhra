@@ -51,6 +51,10 @@ export interface Setting {
 	PRELOAD: LogFile[];
 	DETAIL_LOGGING: boolean;
 	USE_YOUTUBE_DL: boolean;
+	/** Download through the Rust fetcher instead of yt-dlp */
+	USE_NATIVE_FETCH?: boolean;
+	/** Override the amhra-fetch binary path; defaults to the cargo build output */
+	NATIVE_FETCH_BIN?: string;
 	SEEK: boolean;
 	AUTO_LEAVE: number;
 	PREFIX: string;

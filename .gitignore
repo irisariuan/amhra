@@ -25,3 +25,11 @@ cache/*
 .DS_Store
 
 !**/.gitkeep
+# YouTube session cookies: never commit a real export
+data/cookies.json
+
+# Rust build output
+rust/target/
+
+# Player scripts ytdl-core dumps into the working directory
+*-player-script.js

@@ -18,6 +18,13 @@ import { getYouTubeVideoId } from "../youtube";
 import { dcb, globalApp } from "../misc";
 import { collectOrphanedTemps, updateLastUsed, reviewCaches } from "./cache";
 import { CHANNELS, SAMPLE_RATE } from "./opus";
+import {
+	killNativeFetches,
+	nativeFetch,
+	nativeFetchAvailable,
+	nativeFetchEnabled,
+	nativeFetchReady,
+} from "./nativeFetch";
 
 if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
 	writeFileSync(`${process.cwd()}/data/lastUsed.record`, "");
@@ -35,8 +42,29 @@ interface YtDlpStream {
 
 const streams = new Map<string, YtDlpStream>();
 
+/**
+ * Whether downloads go through the Rust fetcher.
+ *
+ * Checked per call rather than once at import: the setting is reloadable, and a
+ * missing binary must not take the bot down — it falls back to yt-dlp and says
+ * so, once.
+ */
+let warnedAboutMissingBinary = false;
+function useNativeFetch() {
+	if (!nativeFetchEnabled()) return false;
+	if (nativeFetchAvailable()) return true;
+	if (!warnedAboutMissingBinary) {
+		warnedAboutMissingBinary = true;
+		globalApp.warn(
+			"USE_NATIVE_FETCH is on but amhra-fetch is not built; run `bun run build:rust`. Using yt-dlp.",
+		);
+	}
+	return false;
+}
+
 async function closeAllStreams() {
 	globalApp.important("Closing all streams");
+	killNativeFetches();
 	for (const [id, stream] of streams) {
 		if (stream.rawStream?.destroyed) continue;
 		dcb.log(`Killing stream: ${id}`);
@@ -76,6 +104,16 @@ export async function prefetch(url: string, force = false) {
 		!force
 	) {
 		dcb.log(`Cache hit: ${id}, skipping prefetch`);
+		return;
+	}
+
+	// The native fetcher owns its own de-duplication and writes straight to the
+	// cache, so a prefetch is only a nudge: nothing here holds the audio.
+	if (useNativeFetch()) {
+		nativeFetch(id, force).then(
+			() => updateLastUsed([id]).then(() => reviewCaches([])),
+			() => {},
+		);
 		return;
 	}
 
@@ -500,6 +538,18 @@ export async function createYtDlpStream(
 ): Promise<Readable> {
 	const id = getYouTubeVideoId(url);
 	if (!id) throw new Error(`Invalid YouTube video URL: ${url}`);
+
+	// The native path never keeps audio in memory. The download writes the
+	// cache file and playback follows it, so a second listener joining mid
+	// download reads the same file rather than a second copy of the bytes.
+	if (useNativeFetch()) {
+		await nativeFetchReady(id, force);
+		await updateLastUsed([id]);
+		const stream = openCacheStream(id, true);
+		if (!stream) throw new Error(`No cache file to play for ${id}`);
+		return stream;
+	}
+
 	const fetchedStream = streams.get(id);
 	if (fetchedStream && !force) {
 		// it is still being fetched or already fetched in current process

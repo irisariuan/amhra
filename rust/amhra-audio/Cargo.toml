@@ -1,0 +1,12 @@
+[package]
+name = "amhra-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+memmap2 = "0.9"
+thiserror.workspace = true
+
+[dev-dependencies]

@@ -60,7 +60,11 @@ const setting = readSetting();
 let agent: ytdl.Agent | undefined = undefined;
 
 try {
-	const cookies = JSON.parse(fs.readFileSync("cookies.json", "utf8"));
+	// The file has always lived in data/; reading it from the working directory
+	// meant the try never succeeded and USE_COOKIES never did anything.
+	const cookies = JSON.parse(
+		fs.readFileSync(`${process.cwd()}/data/cookies.json`, "utf8"),
+	);
 	if (cookies && setting.USE_COOKIES) {
 		agent = ytdl.createAgent(cookies);
 	}
