@@ -2,6 +2,7 @@ import NodeCache from "node-cache";
 import { client } from "../client";
 import { prisma } from "../db/core";
 import { createWebAccount } from "../db/account";
+import { requireSecret } from "../secrets";
 import { readSetting } from "../setting";
 import type { Account } from "@prisma/client";
 
@@ -26,7 +27,7 @@ async function exchangeCode(code: string): Promise<DiscordOAuthData | null> {
 			method: "POST",
 			body: new URLSearchParams({
 				client_id: setting.CLIENT_ID,
-				client_secret: setting.OAUTH_TOKEN,
+				client_secret: requireSecret("OAUTH_TOKEN"),
 				code,
 				grant_type: "authorization_code",
 				redirect_uri: setting.REDIRECT_URI,
@@ -112,7 +113,7 @@ async function refreshDiscordToken(
 		method: "POST",
 		body: new URLSearchParams({
 			client_id: setting.CLIENT_ID,
-			client_secret: setting.OAUTH_TOKEN,
+			client_secret: requireSecret("OAUTH_TOKEN"),
 			refresh_token: identity.refreshToken,
 			grant_type: "refresh_token",
 		}).toString(),

@@ -42,6 +42,14 @@ import { handleSongInterruption } from "./songEdit";
 import editAccountSetting, { getAccountSetting } from "../db/accountSetting";
 
 const setting = readSetting(`${process.cwd()}/data/setting.json`);
+/**
+ * Never serve these to the dashboard.
+ *
+ * Credentials moved to `.env`, so a current settings file has none of them.
+ * The filter stays anyway: it costs nothing, and it is what stops an old file
+ * left over from before the move — or a key someone re-adds by hand — from
+ * being handed to a browser.
+ */
 const privateGlobalSettingKeys = new Set([
 	"TOKEN",
 	"TESTING_TOKEN",

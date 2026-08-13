@@ -3,14 +3,6 @@
  "description": "Setting for Amhra",
  "type": "object",
  "properties": {
-  "TOKEN": {
-   "type": "string",
-   "description": "The main token"
-  },
-  "TESTING_TOKEN": {
-   "type": "string",
-   "description": "The testing token"
-  },
   "PREFIX": {
    "type": "string",
    "description": "The prefix for commands"
@@ -18,10 +10,6 @@
   "CLIENT_ID": {
    "type": "string",
    "description": "The client ID"
-  },
-  "OAUTH_TOKEN": {
-   "type": "string",
-   "description": "The OAuth2 discord token"
   },
   "REDIRECT_URI": {
    "type": "string",
@@ -53,10 +41,6 @@
   "QUEUE_SIZE": {
    "type": "integer",
    "description": "The maximum log size sent to client, <=0 means no limit"
-  },
-  "AUTH_TOKEN": {
-   "type": "string",
-   "description": "The authentication token"
   },
   "TEST_CLIENT_ID": {
    "type": "string",
@@ -140,10 +124,7 @@
   }
  },
  "required": [
-  "TOKEN",
   "CLIENT_ID",
-  "OAUTH_TOKEN",
-  "REDIRECT_URI",
-  "AUTH_TOKEN"
+  "REDIRECT_URI"
  ]
 }

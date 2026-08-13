@@ -1,13 +1,17 @@
 import crypto from "node:crypto";
-import { input, confirm } from "@inquirer/prompts";
-import { writeJsonSync, readSetting } from "../lib/setting";
+import { input } from "@inquirer/prompts";
 
-input({ message: "Hash" }).then(async (v) => {
-	const hash = crypto.createHash("sha256").update(`Basic ${v}`).digest("hex");
-	console.log(hash);
-	if (await confirm({ message: "Write to setting.json?" })) {
-		const setting = readSetting(`${process.cwd()}/data/setting.json`);
-		setting.AUTH_TOKEN = hash;
-		writeJsonSync(`${process.cwd()}/data/setting.json`, setting);
-	}
+/**
+ * Hash a dashboard password into the value AUTH_TOKEN expects.
+ *
+ * It is printed rather than written: AUTH_TOKEN lives in `.env` now, and a tool
+ * that edits a credential file behind the operator's back is how a secret ends
+ * up somewhere nobody remembers putting it.
+ */
+input({ message: "Password" }).then((password) => {
+	const hash = crypto
+		.createHash("sha256")
+		.update(`Basic ${password}`)
+		.digest("hex");
+	console.log(`\nAdd this line to .env:\n\nAUTH_TOKEN=${hash}\n`);
 });

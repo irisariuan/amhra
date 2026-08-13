@@ -1,25 +1,55 @@
 import { confirm, input } from "@inquirer/prompts";
 import chalk from "chalk";
 import crypto from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import type { LogFile, Setting } from "../lib/setting";
 import { writeJsonSync } from "../lib/setting";
 
+/**
+ * Merge credentials into `.env`, leaving anything already there alone.
+ *
+ * Rewritten rather than appended so running setup twice does not leave two
+ * definitions of the same variable, where which one wins depends on the loader.
+ */
+function writeEnv(values: Record<string, string>) {
+	const path = `${process.cwd()}/.env`;
+	const lines = existsSync(path)
+		? readFileSync(path, "utf8").split("\n")
+		: [];
+
+	for (const [key, value] of Object.entries(values)) {
+		if (!value) continue;
+		const line = `${key}=${value}`;
+		const at = lines.findIndex((existing) =>
+			existing.trimStart().startsWith(`${key}=`),
+		);
+		if (at === -1) lines.push(line);
+		else lines[at] = line;
+	}
+
+	writeFileSync(path, `${lines.filter((line, index, all) =>
+		line.trim().length > 0 || index < all.length - 1
+	).join("\n").replace(/\n+$/, "")}\n`);
+	return path;
+}
+
 (async () => {
-	const setting: Setting = {
-		TOKEN: "",
-		TESTING_TOKEN: "",
-		CLIENT_ID: "",
-		TEST_CLIENT_ID: "",
+	// Credentials are collected here but written to .env, never to
+	// data/setting.json, which the dashboard can read and edit.
+	const secrets: Record<string, string> = {
 		AUTH_TOKEN:
 			"b83688be9b1a88796694310157b24fdc167b10d499dcbd71b953f8dbac441d30",
+	};
+
+	const setting: Setting = {
+		CLIENT_ID: "",
+		TEST_CLIENT_ID: "",
 		PORT: 3000,
 		RATE_LIMIT: 0,
 		DETAIL_LOGGING: false,
 		QUEUE_SIZE: 0,
 		WEBSITE: null,
 		HTTPS: false,
-		OAUTH_TOKEN: "",
 		PREFIX: "!",
 		PRELOAD: [],
 		REDIRECT_URI: "",
@@ -34,8 +64,7 @@ import { writeJsonSync } from "../lib/setting";
 		MAX_STREAM_BUFFER_IN_MB: 34,
 	};
 
-	const token = await input({ message: "Bot Token" });
-	setting.TOKEN = token;
+	secrets.TOKEN = await input({ message: "Bot Token" });
 	const id = await input({
 		message: "Bot ID",
 		validate: (v) => /[0-9]+/.test(v),
@@ -43,8 +72,7 @@ import { writeJsonSync } from "../lib/setting";
 	setting.CLIENT_ID = id;
 
 	if (await confirm({ message: "Set up development bot?", default: false })) {
-		const testToken = await input({ message: "Development Bot Token" });
-		setting.TESTING_TOKEN = testToken;
+		secrets.TESTING_TOKEN = await input({ message: "Development Bot Token" });
 		const testId = await input({
 			message: "Development Bot ID",
 			validate: (v) => /[0-9]+/.test(v),
@@ -64,7 +92,7 @@ import { writeJsonSync } from "../lib/setting";
 			.update(`Basic ${pw}`)
 			.digest("hex");
 		console.log(`Your password: ${chalk.bgGray.whiteBright(pw)}`);
-		setting.AUTH_TOKEN = hash;
+		secrets.AUTH_TOKEN = hash;
 	}
 	if (await confirm({ message: "Set up custom port?", default: false })) {
 		const port = Number.parseInt(
@@ -188,11 +216,23 @@ import { writeJsonSync } from "../lib/setting";
 		.map((v) => v.trim())
 		.filter((v) => v.length > 0) as LogFile[];
 
+	secrets.OAUTH_TOKEN = await input({
+		message: "OAuth2 client secret (blank to skip the dashboard login)",
+		default: "",
+	});
+
 	if (await confirm({ message: "Write to setting.json?", default: true })) {
 		writeJsonSync(`${process.cwd()}/data/setting.json`, setting);
-		console.log("Done!");
+		const path = writeEnv(secrets);
+		console.log(`Done! Credentials went to ${path}, everything else to data/setting.json.`);
 	} else {
 		console.log(JSON.stringify(setting, null, 4));
+		console.log(
+			`Credentials for .env:\n${Object.entries(secrets)
+				.filter(([, value]) => value)
+				.map(([key]) => `${key}=<set>`)
+				.join("\n")}`,
+		);
 	}
 
 	if (!existsSync(`${process.cwd()}/data/cookies.json`)) {

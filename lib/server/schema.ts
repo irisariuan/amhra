@@ -151,14 +151,15 @@ export const UserSettingUploadSchema = z.object({
  * The editable global bot configuration. Required fields mirror
  * `data/settingSchema.json`; the remaining documented settings are optional
  * so existing installations can upgrade without first adding every key.
+ *
+ * Credentials are deliberately absent: they live in `.env` and are read through
+ * `lib/secrets.ts`, so the dashboard can neither read them back nor overwrite
+ * them with a PATCH.
  */
 export const GlobalSettingSchema = z
 	.object({
-		TOKEN: z.string(),
-		TESTING_TOKEN: z.string().optional(),
 		PREFIX: z.string().optional(),
 		CLIENT_ID: z.string(),
-		OAUTH_TOKEN: z.string(),
 		REDIRECT_URI: z.string(),
 		PRELOAD: z
 			.array(z.enum(["errim", "error", "errwn", "express", "main"]))
@@ -166,7 +167,6 @@ export const GlobalSettingSchema = z
 		RATE_LIMIT: z.number().int().optional(),
 		DETAIL_LOGGING: z.boolean().optional(),
 		QUEUE_SIZE: z.number().int().optional(),
-		AUTH_TOKEN: z.string(),
 		TEST_CLIENT_ID: z.string().optional(),
 		PORT: z.number().int().min(0).max(65535).optional(),
 		WEBSITE: z.string().nullable().optional(),

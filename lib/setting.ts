@@ -31,15 +31,16 @@ export function writeJsonSync(file: string, data: object) {
 
 export type LogFile = "errim" | "error" | "errwn" | "express" | "main";
 
+/**
+ * Everything the bot is configured with, except credentials.
+ *
+ * Tokens live in `.env` and are read through `lib/secrets.ts`: this file is
+ * edited from the dashboard, served to it as a schema, and written by the setup
+ * tools, so it is the wrong place for anything bearer-shaped.
+ */
 export interface Setting {
-	TOKEN: string;
 	CLIENT_ID: string;
-
 	TEST_CLIENT_ID: string;
-	TESTING_TOKEN: string;
-
-	OAUTH_TOKEN: string;
-	AUTH_TOKEN: string;
 
 	QUEUE_SIZE: number;
 	HTTPS: boolean;
