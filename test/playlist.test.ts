@@ -1,8 +1,12 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
 	fetchPlaylist,
+	forgetPlaylists,
+	forgetVisitorData,
 	getPlaylistId,
 	isPlaylistUrl,
+	readPlaylist,
+	scrapeVisitorData,
 } from "../lib/youtubePlaylist";
 
 /**
@@ -270,5 +274,124 @@ describe("fetchPlaylist", () => {
 		expect(
 			fetchPlaylist("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
 		).rejects.toThrow(/Not a YouTube playlist/);
+	});
+});
+
+describe("scrapeVisitorData", () => {
+	test("pulls the id out of the home page's inline config", () => {
+		const page = `<script>ytcfg.set({"INNERTUBE_CONTEXT":{"client":{"visitorData":"CgtBQkNERUZHSElKSxi7-abBBjIKCgJVUxIEGgAgYQ%3D%3D","hl":"en"}}});</script>`;
+		expect(scrapeVisitorData(page)).toBe(
+			"CgtBQkNERUZHSElKSxi7-abBBjIKCgJVUxIEGgAgYQ%3D%3D",
+		);
+	});
+
+	test("refuses a page with no id, and a truncated one", () => {
+		// Sending a placeholder is worse than sending nothing.
+		expect(scrapeVisitorData("<html>no config here</html>")).toBeNull();
+		expect(scrapeVisitorData('{"visitorData":"short"}')).toBeNull();
+	});
+});
+
+describe("visitorData on a browse call", () => {
+	const VISITOR = "CgtBQkNERUZHSElKSxi7-abBBjIKCgJVUxIEGgAgYQ%3D%3D";
+
+	beforeEach(() => {
+		forgetVisitorData();
+		forgetPlaylists();
+	});
+	afterEach(() => forgetVisitorData());
+
+	/** Serve the home page to the mint, and one playlist page to browse. */
+	function stubWithMint(homePage: string) {
+		const headers: (string | undefined)[] = [];
+		const bodies: any[] = [];
+		globalThis.fetch = (async (url: string, init: RequestInit = {}) => {
+			if (!init.body) return new Response(homePage, { status: 200 });
+			headers.push(
+				(init.headers as Record<string, string>)["x-goog-visitor-id"],
+			);
+			bodies.push(JSON.parse(init.body as string));
+			return new Response(
+				JSON.stringify(webPage([lockup("vid00000001", "First", "1:00")])),
+				{ status: 200 },
+			);
+		}) as typeof fetch;
+		return { headers, bodies };
+	}
+
+	test("sends the minted id in the context and the header", async () => {
+		// The Rust fetcher mints one per process because an InnerTube call
+		// without it is answered as if nobody asked. This module was making the
+		// same call with no id at all.
+		const { headers, bodies } = stubWithMint(
+			`<script>ytcfg.set({"visitorData":"${VISITOR}"});</script>`,
+		);
+
+		await fetchPlaylist(PLAYLIST_URL);
+
+		expect(bodies[0].context.client.visitorData).toBe(VISITOR);
+		expect(headers[0]).toBe(VISITOR);
+	});
+
+	test("still browses when the id cannot be minted", async () => {
+		const { headers, bodies } = stubWithMint("<html>nothing here</html>");
+
+		const playlist = await fetchPlaylist(PLAYLIST_URL);
+
+		expect(playlist.videos).toHaveLength(1);
+		expect(bodies[0].context.client.visitorData).toBeUndefined();
+		expect(headers[0]).toBeUndefined();
+	});
+});
+
+describe("readPlaylist", () => {
+	beforeEach(() => forgetPlaylists());
+
+	test("reuses a recent read of the same playlist", async () => {
+		// The dashboard previews a link and then queues it. Walking every
+		// continuation page twice for one user action is the cost this avoids.
+		const calls = stubBrowse({
+			first: webPage([lockup("vid00000001", "First", "1:00")]),
+		});
+
+		const first = await readPlaylist(PLAYLIST_URL);
+		const second = await readPlaylist(PLAYLIST_URL);
+
+		expect(second).toBe(first);
+		expect(calls).toHaveLength(1);
+	});
+
+	test("matches a watch link against the playlist link it shares an id with", async () => {
+		// The preview and the queueing rarely arrive spelt the same way.
+		const calls = stubBrowse({
+			first: webPage([lockup("vid00000001", "First", "1:00")]),
+		});
+
+		await readPlaylist(`https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=${LIST}`);
+		await readPlaylist(PLAYLIST_URL);
+
+		expect(calls).toHaveLength(1);
+	});
+
+	test("reads again once the entry has aged out", async () => {
+		const calls = stubBrowse({
+			first: webPage([lockup("vid00000001", "First", "1:00")]),
+		});
+
+		await readPlaylist(PLAYLIST_URL, 0);
+		await readPlaylist(PLAYLIST_URL, 31 * 60 * 1000);
+
+		expect(calls).toHaveLength(2);
+	});
+
+	test("caches nothing when the read fails", async () => {
+		stubBrowse({});
+		expect(readPlaylist(PLAYLIST_URL)).rejects.toThrow(/Could not read/);
+	});
+
+	test("throws on a link that is not a playlist", async () => {
+		expect(readPlaylist("https://www.youtube.com/watch?v=abc")).rejects.toThrow(
+			/Not a YouTube playlist/,
+		);
 	});
 });

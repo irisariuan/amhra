@@ -3,13 +3,12 @@ import type { VoiceBasedChannel } from "discord.js";
 import type { CustomAudioPlayer, CustomClient } from "../custom";
 import { dcb, globalApp } from "../misc";
 import { getYouTubeVideoId } from "../youtube";
-import { nativeFetchAvailable } from "./nativeFetch";
+import { nativeFetchBin } from "./nativeFetch";
 import { planArm } from "./nativePlan";
 import {
 	joinVoiceViaSidecar,
 	sidecar,
-	sidecarAvailable,
-	sidecarEnabled,
+	sidecarBin,
 	type SidecarCommand,
 } from "./sidecar";
 
@@ -36,8 +35,8 @@ let warnedMissing = false;
  * it to play.
  */
 export function nativeVoiceActive() {
-	if (!sidecarEnabled()) return false;
-	if (sidecarAvailable() && nativeFetchAvailable()) return true;
+	if (!sidecarBin.enabled()) return false;
+	if (sidecarBin.available() && nativeFetchBin.available()) return true;
 	if (!warnedMissing) {
 		warnedMissing = true;
 		globalApp.warn(
@@ -155,9 +154,19 @@ export function joinVoiceNative(channel: VoiceBasedChannel) {
  */
 function send(guildId: string, command: SidecarCommand) {
 	const connection = connections.get(guildId);
-	// With no connection the sidecar would answer every one of these with
-	// "not connected to a voice channel", which is noise rather than news.
-	if (!connection) return;
+	if (!connection) {
+		// With no connection the sidecar would answer most of these with "not
+		// connected to a voice channel", which is noise rather than news.
+		//
+		// "Stop" is the exception, because the two sides can disagree about a
+		// guild: a join that failed here after the sidecar had already
+		// registered it leaves audio playing that this map knows nothing
+		// about. Dropping the one command that ends it is how a guild is left
+		// playing with nothing able to stop it, and the worst answer it can
+		// draw is that there was nothing to stop.
+		if (command.type === "stop") sidecar().send(command);
+		return;
+	}
 	connection.connected.then(
 		() => sidecar().send(command),
 		() => {},

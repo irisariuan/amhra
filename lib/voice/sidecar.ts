@@ -1,11 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { existsSync } from "node:fs";
 import type { Guild, VoiceBasedChannel } from "discord.js";
 import { z } from "zod";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { fadesFrom } from "./fades";
+import { nativeBinary } from "./nativeBinary";
 
 /**
  * Client for the Rust voice sidecar.
@@ -97,20 +97,11 @@ export type SidecarCommand =
 	| { type: "listSessions" }
 	| { type: "shutdown" };
 
-export function sidecarBinary() {
-	return (
-		readSetting().NATIVE_VOICE_BIN ??
-		`${process.cwd()}/rust/target/release/amhra-sidecar`
-	);
-}
-
-export function sidecarEnabled() {
-	return readSetting().USE_RUST_VOICE === true;
-}
-
-export function sidecarAvailable() {
-	return existsSync(sidecarBinary());
-}
+export const sidecarBin = nativeBinary(
+	(setting) => setting.USE_RUST_VOICE,
+	(setting) => setting.NATIVE_VOICE_BIN,
+	"amhra-sidecar",
+);
 
 /**
  * A running sidecar process, restarted if it dies.
@@ -130,7 +121,7 @@ export class Sidecar extends EventEmitter {
 		if (this.child) return;
 		this.stopping = false;
 
-		const binary = sidecarBinary();
+		const binary = sidecarBin.path();
 		dcb.log(`Starting voice sidecar: ${binary}`);
 		const child = spawn(binary, ["--cache-dir", `${process.cwd()}/cache`], {
 			stdio: ["pipe", "pipe", "pipe"],

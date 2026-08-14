@@ -16,6 +16,12 @@ import { globalApp } from "./misc";
 const BROWSE_ENDPOINT = "https://www.youtube.com/youtubei/v1/browse?prettyPrint=false";
 const WATCH_URL = "https://www.youtube.com/watch?v=";
 
+/** Where a visitor id is minted: the home page embeds one in its `ytcfg` blob. */
+const HOME_PAGE = "https://www.youtube.com/";
+/** Only for minting — the home page hands a visitor id to a browser. */
+const MINT_USER_AGENT =
+	"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
 /**
  * The web client returns 100 entries a page in the current `lockupViewModel`
  * shape. iOS still answers with the classic `playlistVideoRenderer`, 20 a page,
@@ -243,10 +249,63 @@ function titleOf(response: Json): string {
 	);
 }
 
+/**
+ * Pull the visitor id out of the home page's inline config.
+ *
+ * A scan rather than an HTML or JS parse: the value appears as a plain JSON
+ * string field in a script blob, and anything more thorough would be parsing
+ * megabytes of markup for one base64 field that either matches or does not.
+ */
+export function scrapeVisitorData(page: string): string | null {
+	const key = '"visitorData":"';
+	const start = page.indexOf(key);
+	if (start < 0) return null;
+	const end = page.indexOf('"', start + key.length);
+	if (end < 0) return null;
+	const value = page.slice(start + key.length, end);
+	// Real ids are ~500 characters of base64; anything tiny is a truncated page
+	// or a placeholder, and sending it is worse than sending nothing.
+	return value.length >= 16 ? value : null;
+}
+
+/**
+ * A visitor id for this process, minted once and reused.
+ *
+ * Without one, an unauthenticated InnerTube call from a datacentre address is
+ * answered as if nobody asked — which is what the Rust fetcher hit and mints
+ * around. This module was making the same call without one.
+ *
+ * A failed mint is cached rather than retried: if the home page is unreachable
+ * the browse endpoint will not be reachable either.
+ */
+let visitorMint: Promise<string | null> | null = null;
+function visitorData(): Promise<string | null> {
+	visitorMint ??= (async () => {
+		try {
+			const response = await fetch(HOME_PAGE, {
+				headers: { "user-agent": MINT_USER_AGENT },
+			});
+			if (!response.ok) return null;
+			return scrapeVisitorData(await response.text());
+		} catch {
+			return null;
+		}
+	})();
+	return visitorMint;
+}
+
+/** Mint a fresh visitor id on the next call. For tests, and after a ban. */
+export function forgetVisitorData() {
+	visitorMint = null;
+}
+
 async function browse(
 	client: (typeof CLIENTS)[number],
 	body: Json,
 ): Promise<Json | null> {
+	// Injected rather than written into CLIENTS: a visitor id is minted per
+	// process and expires, so it is not something to pin in a literal.
+	const visitor = await visitorData();
 	try {
 		const response = await fetch(BROWSE_ENDPOINT, {
 			method: "POST",
@@ -256,8 +315,14 @@ async function browse(
 					client.clientName === "IOS"
 						? `com.google.ios.youtube/${client.clientVersion} (iPhone16,2; U; CPU iOS 18_2_1 like Mac OS X;)`
 						: "Mozilla/5.0",
+				// The id goes in the header as well as the context; YouTube
+				// checks both.
+				...(visitor ? { "x-goog-visitor-id": visitor } : {}),
 			},
-			body: JSON.stringify({ context: { client }, ...body }),
+			body: JSON.stringify({
+				context: { client: visitor ? { ...client, visitorData: visitor } : client },
+				...body,
+			}),
 		});
 		if (!response.ok) return null;
 		return (await response.json()) as Json;
@@ -309,4 +374,47 @@ export async function fetchPlaylist(url: string): Promise<PlaylistListing> {
 	}
 
 	throw new Error(`Could not read playlist ${listId}`);
+}
+
+/**
+ * How long a listing is reused. Shorter than the dashboard's video cache: a
+ * playlist's contents change, a video's title does not.
+ */
+const CACHE_TTL_MS = 30 * 60 * 1000;
+
+const listings = new Map<string, { at: number; listing: PlaylistListing }>();
+
+/**
+ * A playlist listing, reusing a recent read of the same playlist.
+ *
+ * The dashboard previews a link and then queues it, and each of those is a full
+ * walk of every continuation page — a ten-thousand entry playlist is a hundred
+ * round trips, done twice for one user action. The second read inside the TTL
+ * would return what the first one did, so it is not made.
+ *
+ * Keyed by list id rather than by the URL that was pasted: a watch link
+ * carrying `list=` and the playlist link are the same playlist, and the preview
+ * and the queueing rarely arrive spelt the same way.
+ */
+export async function readPlaylist(
+	url: string,
+	now = Date.now(),
+): Promise<PlaylistListing> {
+	const listId = getPlaylistId(url);
+	if (!listId) throw new Error(`Not a YouTube playlist URL: ${url}`);
+
+	const hit = listings.get(listId);
+	if (hit && now - hit.at < CACHE_TTL_MS) return hit.listing;
+
+	const listing = await fetchPlaylist(url);
+	for (const [key, entry] of listings) {
+		if (now - entry.at >= CACHE_TTL_MS) listings.delete(key);
+	}
+	listings.set(listId, { at: now, listing });
+	return listing;
+}
+
+/** Forget every cached listing. For tests, and for a manual cache clear. */
+export function forgetPlaylists() {
+	listings.clear();
 }

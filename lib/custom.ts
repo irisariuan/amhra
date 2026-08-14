@@ -27,7 +27,7 @@ import {
 	nativeVoiceActive,
 } from "./voice/native";
 import { fadeSettings } from "./voice/sidecar";
-import { defaultedFades, nextFades, type Fades } from "./voice/fades";
+import { nextFades, syncedFades, type Fades } from "./voice/fades";
 import {
 	positionFrom,
 	shouldSendPlay,
@@ -490,17 +490,12 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 * the new default, an adjusted one should keep what it was given.
 	 */
 	syncFadesWithSetting() {
-		const next = defaultedFades(
+		const next = syncedFades(
 			{ crossfadeMs: this.crossfadeMs, skipFadeMs: this.skipFadeMs },
 			this.fadesOverridden,
 			fadeSettings(),
 		);
-		if (
-			next.crossfadeMs === this.crossfadeMs &&
-			next.skipFadeMs === this.skipFadeMs
-		) {
-			return;
-		}
+		if (!next) return;
 		this.crossfadeMs = next.crossfadeMs;
 		this.skipFadeMs = next.skipFadeMs;
 		this.pushFades();
