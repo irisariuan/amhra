@@ -48,6 +48,28 @@ losing, four times over, on work paid fifty times a second per guild. With
 encryption went from 2.2µs to 0.47µs. On x86_64 the crate detects AES-NI at
 runtime and needs nothing.
 
+**Demuxing a whole file was memory-latency bound, not parse bound.** Feeding
+the demuxer one 60MiB buffer took 11ms while feeding the same bytes in 256KiB
+chunks took 2.4ms — the chunked path does strictly more work, since it copies
+every byte into its staging buffer first. The parser reads a few header bytes
+and then jumps over a ~370 byte Opus packet, which no hardware prefetcher
+recognises as a stream, so every block header was a fresh DRAM access; the
+chunked path was accidentally fast because it walked a small, hot copy.
+Requesting the next 4KiB by hand (`prfm`/`_mm_prefetch`, only when the buffer is
+too big to be cached) took whole-file demuxing to 3.5ms. Playback and the
+`.idx` builder both feed whole mappings, so this is the path that mattered.
+
+**Opening a track was mostly page faults.** 12.5ms, of which the parse is 3.5ms:
+the rest was one minor fault per page, taken from inside the parse loop, plus
+the frame table reallocating its way up to 166k entries. One `madvise(WILLNEED)`
+and a reserve sized from the average frame seen so far: 4.1ms.
+
+**Re-encoding was paying for analysis the source no longer had.** The volume
+path is 28µs of decode and 81µs of encode at libopus' default complexity. The
+curve bends at 6 — 10, 9 and 8 are within a few microseconds of each other, 6 is
+50µs — and what is being encoded is an already-lossy 128kbps stream that has
+been decoded and scaled. `volume_scaled` went from ~131µs to ~106µs.
+
 **The volume path is where the CPU went.** Both stacks decode and re-encode at
 roughly the same speed, because both are libopus — 165µs against 179µs per
 frame. The difference is that the old pipeline pays it on every stream whether

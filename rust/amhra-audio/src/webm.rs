@@ -14,6 +14,46 @@
 use crate::ebml::{read_float, read_id, read_size, read_uint};
 use crate::opus::{OpusHead, packet_info};
 
+/// Cache line, on every target this runs on.
+const LINE: usize = 64;
+
+/// How far ahead of the cursor to keep lines requested.
+///
+/// The parser reads a few bytes of header and then jumps over a whole Opus
+/// packet — about 370 bytes on a YouTube stream — so it touches roughly one
+/// line in six. Hardware prefetchers key on sequential or fixed-stride access
+/// and do not recognise that pattern, which leaves the whole walk waiting on
+/// DRAM one header at a time. Requesting the next few lines by hand turns those
+/// stalls into overlapped fetches. Half a kilobyte is enough to cover one skip
+/// without evicting anything useful.
+const PREFETCH_AHEAD: usize = 4096;
+
+/// Below this, the buffer being parsed is small enough to sit in cache and the
+/// hints cost more than the misses they would have hidden.
+const PREFETCH_MIN_BUFFER: usize = 2 << 20;
+
+/// Ask for a line to be brought toward L1 without waiting for it.
+///
+/// Both intrinsics are hints: an out-of-range address is not a fault, but the
+/// callers bound them anyway rather than rely on that.
+#[inline(always)]
+fn prefetch_line(buf: &[u8], offset: usize) {
+	if offset >= buf.len() {
+		return;
+	}
+	// SAFETY: `offset` is in bounds, and both instructions are pure hints that
+	// never fault and never write.
+	unsafe {
+		let ptr = buf.as_ptr().add(offset);
+		#[cfg(target_arch = "aarch64")]
+		std::arch::asm!("prfm pldl1keep, [{0}]", in(reg) ptr, options(nostack, readonly, preserves_flags));
+		#[cfg(target_arch = "x86_64")]
+		std::arch::x86_64::_mm_prefetch(ptr as *const i8, std::arch::x86_64::_MM_HINT_T0);
+		#[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
+		let _ = ptr;
+	}
+}
+
 /// Element IDs, marker bit intact.
 const ID_EBML: u64 = 0x1a45_dfa3;
 const ID_SEGMENT: u64 = 0x1853_8067;
@@ -193,7 +233,25 @@ impl WebmDemuxer {
 		}
 
 		let mut cursor = 0usize;
+		// First offset not yet handed to the prefetcher. Kept outside the loop so
+		// each line is requested once however many elements share it.
+		let mut prefetched = 0usize;
+		// Only worth it on a buffer too big to be in cache already. The download
+		// path feeds network-sized chunks, which it re-copies into one reused
+		// staging buffer that stays hot; there the hint instructions are pure
+		// overhead — measured at half again the parse time.
+		let prefetching = buf.len() >= PREFETCH_MIN_BUFFER;
 		loop {
+			// A skip can jump further than the window, in which case the lines in
+			// between were never wanted and the window simply restarts.
+			if prefetching {
+				prefetched = prefetched.max(cursor);
+				while prefetched < cursor + PREFETCH_AHEAD {
+					prefetch_line(buf, prefetched);
+					prefetched += LINE;
+				}
+			}
+
 			if self.skipping > 0 {
 				let take = self.skipping.min((buf.len() - cursor) as u64) as usize;
 				cursor += take;

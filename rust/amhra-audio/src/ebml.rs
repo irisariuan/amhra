@@ -22,6 +22,24 @@ pub struct Vint {
 	pub unknown: bool,
 }
 
+/// The first `len` bytes at `offset`, read big-endian.
+///
+/// Whenever eight bytes are readable — which is every element but the last few
+/// in a buffer — one unaligned load and a shift replace the byte-at-a-time
+/// fold. The parser runs this twice per element, so the difference is paid
+/// hundreds of thousands of times over a track.
+///
+/// `len` must be 1..=8 and the bytes must be in bounds; both callers check.
+#[inline]
+fn be_prefix(buf: &[u8], offset: usize, len: usize) -> u64 {
+	debug_assert!((1..=8).contains(&len) && offset + len <= buf.len());
+	if let Some(window) = buf.get(offset..offset + 8) {
+		let raw = u64::from_be_bytes(window.try_into().expect("eight bytes"));
+		return raw >> (64 - 8 * len as u32);
+	}
+	buf[offset..offset + len].iter().fold(0u64, |acc, &byte| (acc << 8) | byte as u64)
+}
+
 /// Element ID, marker bit intact.
 ///
 /// Returns `None` when the buffer is too short to hold the whole ID, or when
@@ -35,11 +53,7 @@ pub fn read_id(buf: &[u8], offset: usize) -> Option<Vint> {
 	if len == 0 || len > 4 || offset + len > buf.len() {
 		return None;
 	}
-	let mut value = 0u64;
-	for &byte in &buf[offset..offset + len] {
-		value = (value << 8) | byte as u64;
-	}
-	Some(Vint { value, len, unknown: false })
+	Some(Vint { value: be_prefix(buf, offset, len), len, unknown: false })
 }
 
 /// Element size, marker bit stripped.
@@ -51,18 +65,14 @@ pub fn read_size(buf: &[u8], offset: usize) -> Option<Vint> {
 	if len == 0 || len > 8 || offset + len > buf.len() {
 		return None;
 	}
-	// An 8-byte VINT spends its whole first byte on the marker, leaving no
-	// value bits there — and `0xff >> 8` is an overflow, not a zero.
-	let mask = 0xffu8.checked_shr(len as u32).unwrap_or(0);
-	let mut value = (first & mask) as u64;
-	let mut unknown = value == mask as u64;
-	for &byte in &buf[offset + 1..offset + len] {
-		value = (value << 8) | byte as u64;
-		if byte != 0xff {
-			unknown = false;
-		}
-	}
-	Some(Vint { value, len, unknown })
+	// A VINT of `len` bytes spends `len` bits on the marker, so `7 * len` value
+	// bits remain. Masking them off the whole integer is the same as clearing
+	// the marker from the first byte and then shifting the rest in, one
+	// instruction instead of a loop.
+	let bits = 7 * len as u32;
+	let mask = (1u64 << bits) - 1;
+	let value = be_prefix(buf, offset, len) & mask;
+	Some(Vint { value, len, unknown: value == mask })
 }
 
 /// Unsigned EBML integer of any width, as stored in TrackNumber or Timestamp.
