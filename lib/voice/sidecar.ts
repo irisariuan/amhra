@@ -6,6 +6,10 @@ import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { fadesFrom } from "./fades";
 import { nativeBinary } from "./nativeBinary";
+import type {
+	Command as WireCommand,
+	Event as WireEvent,
+} from "../../rust/amhra-sidecar/bindings/protocol";
 
 /**
  * Client for the Rust voice sidecar.
@@ -46,6 +50,12 @@ const sessionState = z.object({
  * declarations live in that crate's bindings/protocol.d.ts. Parsed rather than
  * cast: this is a process boundary, and a version skew should be a clear error
  * rather than an undefined field three calls later.
+ *
+ * The declarations cannot replace this — a type checks nothing at runtime,
+ * which is the whole job here — so `sameShape` below checks the two against
+ * each other at compile time instead. Adding a variant on the Rust side and
+ * forgetting this one is then a build failure rather than a parse error in
+ * production.
  */
 const event = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("hello"), version: z.number(), pid: z.number() }),
@@ -73,29 +83,22 @@ const event = z.discriminatedUnion("type", [
 export type SidecarEvent = z.infer<typeof event>;
 export type SidecarSession = z.infer<typeof sessionState>;
 
-export type SidecarCommand =
-	| {
-			type: "connect";
-			guildId: string;
-			channelId: string;
-			userId: string;
-			sessionId: string;
-			endpoint: string;
-			token: string;
-	  }
-	| { type: "disconnect"; guildId: string }
-	| { type: "play"; guildId: string; trackId: string; startMs?: number }
-	| { type: "setNext"; guildId: string; trackId: string }
-	| { type: "clearNext"; guildId: string }
-	| { type: "skip"; guildId: string }
-	| { type: "stop"; guildId: string }
-	| { type: "pause"; guildId: string }
-	| { type: "resume"; guildId: string }
-	| { type: "seek"; guildId: string; positionMs: number }
-	| { type: "setVolume"; guildId: string; gain: number }
-	| { type: "setFades"; guildId: string; crossfadeMs: number; skipFadeMs: number }
-	| { type: "listSessions" }
-	| { type: "shutdown" };
+/**
+ * The commands, taken from the Rust definition rather than restated here.
+ * Nothing about them needs checking at runtime — this side is the one writing
+ * them — so the generated declaration is the whole story.
+ */
+export type SidecarCommand = WireCommand;
+
+/** True only when the two types are each other, not merely assignable. */
+type SameShape<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+
+/**
+ * Fails to compile when the schema above and the Rust enum have drifted.
+ * Regenerate the declarations with `cargo test --manifest-path rust/Cargo.toml`.
+ */
+const sameShape: SameShape<SidecarEvent, WireEvent> = true;
+void sameShape;
 
 export const sidecarBin = nativeBinary(
 	(setting) => setting.USE_RUST_VOICE,
