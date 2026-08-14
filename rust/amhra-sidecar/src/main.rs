@@ -17,6 +17,7 @@
 //! nothing left to play for.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -36,12 +37,24 @@ use amhra_voice::{Session, VoiceUdp};
 /// of the audio path, so it does not need to be tick-accurate.
 const SPEAKING_POLL: Duration = Duration::from_millis(100);
 
+/// How many DAVE frames to hold while waiting for the session description.
+/// The join sequence is a handful of messages, so this is slack, not a queue.
+const MAX_EARLY_DAVE: usize = 32;
+
 /// Highest DAVE version this build speaks. Zero is refused by the server.
 const MAX_DAVE_VERSION: u8 = amhra_voice::dave::PROTOCOL_VERSION;
 
 struct GuildSession {
 	worker: Worker,
 	gateway: gateway::GatewayHandle,
+	/// Cleared when this session is replaced or told to leave.
+	///
+	/// Closing the gateway is not instant: the task keeps draining its channel
+	/// for a moment afterwards, and a `Disconnected` it emits then would be read
+	/// by the bot as the *current* session dropping — which tears down a
+	/// connection that is fine and leaves the guild silent with nothing to
+	/// explain it.
+	alive: Arc<AtomicBool>,
 	channel_id: String,
 	track_id: Option<String>,
 	position_ms: u32,
@@ -132,6 +145,7 @@ async fn dispatch(
 			// Reconnecting to the same guild replaces the old session rather
 			// than leaving two things sending to one channel.
 			if let Some(existing) = guilds.remove(&guild_id) {
+				existing.alive.store(false, Ordering::Relaxed);
 				existing.gateway.close().await;
 				existing.worker.shutdown();
 			}
@@ -156,6 +170,7 @@ async fn dispatch(
 				max_dave_protocol_version: MAX_DAVE_VERSION,
 			};
 			let (handle, gateway_events) = gateway::connect(info);
+			let alive = Arc::new(AtomicBool::new(true));
 
 			tokio::spawn(drive_connection(
 				guild_id.clone(),
@@ -166,6 +181,7 @@ async fn dispatch(
 				events.clone(),
 				worker.command_sender(),
 				worker.speaking_flag(),
+				alive.clone(),
 			));
 
 			guilds.insert(
@@ -173,6 +189,7 @@ async fn dispatch(
 				GuildSession {
 					worker,
 					gateway: handle,
+					alive,
 					channel_id,
 					track_id: None,
 					position_ms: 0,
@@ -184,6 +201,7 @@ async fn dispatch(
 
 		Command::Disconnect { guild_id } => {
 			if let Some(session) = guilds.remove(&guild_id) {
+				session.alive.store(false, Ordering::Relaxed);
 				session.gateway.close().await;
 				session.worker.shutdown();
 				let _ = events.send(Event::Disconnected {
@@ -321,10 +339,17 @@ async fn drive_connection(
 	events: Sender<Event>,
 	worker: Sender<WorkerCommand>,
 	speaking: Arc<std::sync::atomic::AtomicBool>,
+	alive: Arc<AtomicBool>,
 ) {
 	let mut ssrc = 0u32;
 	let mut udp: Option<VoiceUdp> = None;
 	let mut dave: Option<Arc<Mutex<Driver>>> = None;
+	// DAVE frames that arrived before the keys did. The driver cannot exist
+	// until the session description says which DAVE version this call runs, and
+	// the server does not wait for that before it starts driving the join.
+	// Dropping those frames loses the external sender, and without it every
+	// proposal that follows lands on a group we never built.
+	let mut early: Vec<(amhra_voice::wire::Opcode, serde_json::Value, Vec<u8>)> = Vec::new();
 	let mut speaking_sent = false;
 	let mut poll = tokio::time::interval(SPEAKING_POLL);
 
@@ -342,6 +367,13 @@ async fn drive_connection(
 
 			event = gateway_events.recv() => {
 				let Some(event) = event else { return };
+				// This guild belongs to a newer session now. Anything still in
+				// flight here describes a connection the bot has already been
+				// told about, so it is dropped rather than reported over the
+				// top of the live one.
+				if !alive.load(Ordering::Relaxed) {
+					return;
+				}
 				match event {
 					GatewayEvent::Ready { ssrc: theirs, ip, port, modes } => {
 						ssrc = theirs;
@@ -429,6 +461,17 @@ async fn drive_connection(
 							}
 						}
 
+						// Whatever the server sent while it was waiting for us,
+						// in the order it sent it.
+						if let Some(driver) = dave.as_ref() {
+							for (opcode, data, payload) in early.drain(..) {
+								feed_dave(driver, &handle, &events, &guild_id, opcode, &data, &payload)
+									.await;
+							}
+						} else {
+							early.clear();
+						}
+
 						let _ = worker.send(WorkerCommand::Attach {
 							socket,
 							session: Box::new(session),
@@ -441,26 +484,34 @@ async fn drive_connection(
 					}
 
 					GatewayEvent::Dave { opcode, data, payload } => {
-						let Some(driver) = dave.as_ref() else { continue };
-						let outcome = {
-							let Ok(mut driver) = driver.lock() else { continue };
-							driver.handle(opcode, &data, &payload)
+						let Some(driver) = dave.as_ref() else {
+							// Bounded: a server that talks this much before the
+							// session description is not one this build can
+							// follow anyway, and an unbounded queue here would
+							// grow for as long as the call lasts.
+							if early.len() < MAX_EARLY_DAVE {
+								early.push((opcode, data, payload));
+							}
+							continue;
 						};
-						match outcome {
-							Ok(actions) => {
-								for action in actions {
-									perform(&handle, action).await;
-								}
-							}
-							Err(error) => {
-								fail(&events, &guild_id, format!("dave {opcode:?}: {error}"));
-							}
-						}
+						feed_dave(driver, &handle, &events, &guild_id, opcode, &data, &payload).await;
 					}
 
-					GatewayEvent::Reconnecting(reason) => {
-						// Stop sending into a socket that is about to be replaced.
-						let _ = worker.send(WorkerCommand::Detach);
+					GatewayEvent::Reconnecting { reason, resumable } => {
+						// Only a session that is starting over gets a new socket
+						// and new keys, and only that one is worth detaching for.
+						// A resume keeps both, and nothing re-attaches after it —
+						// there is no second session description — so detaching
+						// here would silence the guild for the rest of the call.
+						if !resumable {
+							let _ = worker.send(WorkerCommand::Detach);
+							// The next session builds its group from scratch.
+							// Frames for it that arrive before its session
+							// description are held rather than fed to the
+							// driver of a call that no longer exists.
+							dave = None;
+							early.clear();
+						}
 						let _ = events
 							.send(Event::Reconnecting { guild_id: guild_id.clone(), reason });
 					}
@@ -476,6 +527,30 @@ async fn drive_connection(
 				}
 			}
 		}
+	}
+}
+
+/// Hand one DAVE frame to the driver and send back whatever it answers with.
+async fn feed_dave(
+	driver: &Arc<Mutex<Driver>>,
+	handle: &gateway::GatewayHandle,
+	events: &Sender<Event>,
+	guild_id: &str,
+	opcode: amhra_voice::wire::Opcode,
+	data: &serde_json::Value,
+	payload: &[u8],
+) {
+	let outcome = {
+		let Ok(mut driver) = driver.lock() else { return };
+		driver.handle(opcode, data, payload)
+	};
+	match outcome {
+		Ok(actions) => {
+			for action in actions {
+				perform(handle, action).await;
+			}
+		}
+		Err(error) => fail(events, guild_id, format!("dave {opcode:?}: {error}")),
 	}
 }
 

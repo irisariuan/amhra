@@ -86,9 +86,15 @@ export class NativeConnection {
 
 	disconnect() {
 		const registered = connections.get(this.guildId) === this;
-		if (registered) connections.delete(this.guildId);
+		if (!registered) {
+			// A newer connection owns this guild. Sending `disconnect` for it
+			// would tear down a session someone is listening to, on behalf of
+			// one that is already gone.
+			return false;
+		}
+		connections.delete(this.guildId);
 		sidecar().send({ type: "disconnect", guildId: this.guildId });
-		return registered;
+		return true;
 	}
 
 	/**
@@ -120,7 +126,12 @@ export function joinVoiceNative(channel: VoiceBasedChannel) {
 	const existing = connections.get(guildId);
 	if (existing && existing.channelId === channel.id) return existing;
 
-	const connected = joinVoiceViaSidecar(channel, false).catch((error: Error) => {
+	const connected = joinVoiceViaSidecar(channel, false, () => {
+		// discord.js tells the adapter it is finished with the guild. Only the
+		// connection that still owns it may act on that; a stale one would be
+		// disconnecting whoever replaced it.
+		if (connections.get(guildId) === connection) connection.disconnect();
+	}).catch((error: Error) => {
 		globalApp.err(`Failed to join voice via the sidecar in ${guildId}`, error);
 		// Leaving a connection registered that never came up would make every
 		// later command believe the bot is in the channel.
