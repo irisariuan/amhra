@@ -80,6 +80,13 @@ pub struct Session {
 	group_id: GroupId,
 	user_id: u64,
 	external_sender: Option<ExternalSender>,
+	/// The bytes the external sender arrived as.
+	///
+	/// Kept so a session rebuilt for a new epoch can be handed the same key
+	/// back: the server announces it once per voice session, not once per
+	/// group, and a rebuilt session that lost it cannot accept the welcome
+	/// that follows.
+	external_sender_payload: Option<Vec<u8>>,
 	group: Option<MlsGroup>,
 	encryptor: Encryptor,
 	status: Status,
@@ -126,6 +133,7 @@ impl Session {
 			group_id: GroupId::from_slice(&channel_id.to_be_bytes()),
 			user_id,
 			external_sender: None,
+			external_sender_payload: None,
 			group: None,
 			encryptor: Encryptor::new(vec![0u8; MEDIA_KEY_BASE_LEN]),
 			status: Status::Uninitialised,
@@ -162,9 +170,15 @@ impl Session {
 	pub fn set_external_sender(&mut self, payload: &[u8]) -> Result<(), SessionError> {
 		let external_sender: ExternalSender = decode_untrusted(payload)?;
 		self.external_sender = Some(external_sender);
+		self.external_sender_payload = Some(payload.to_vec());
 		self.group = None;
 		self.create_pending_group()?;
 		Ok(())
+	}
+
+	/// The external sender this session was given, as it arrived.
+	pub fn external_sender_payload(&self) -> Option<&[u8]> {
+		self.external_sender_payload.as_deref()
 	}
 
 	/// Payload for `dave_mls_key_package (26)`.

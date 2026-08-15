@@ -3,13 +3,12 @@ import type { VoiceBasedChannel } from "discord.js";
 import type { CustomAudioPlayer, CustomClient } from "../custom";
 import { dcb, globalApp } from "../misc";
 import { getYouTubeVideoId } from "../youtube";
-import { nativeFetchAvailable } from "./nativeFetch";
+import { nativeFetchBin } from "./nativeFetch";
 import { planArm } from "./nativePlan";
 import {
 	joinVoiceViaSidecar,
 	sidecar,
-	sidecarAvailable,
-	sidecarEnabled,
+	sidecarBin,
 	type SidecarCommand,
 } from "./sidecar";
 
@@ -36,8 +35,8 @@ let warnedMissing = false;
  * it to play.
  */
 export function nativeVoiceActive() {
-	if (!sidecarEnabled()) return false;
-	if (sidecarAvailable() && nativeFetchAvailable()) return true;
+	if (!sidecarBin.enabled()) return false;
+	if (sidecarBin.available() && nativeFetchBin.available()) return true;
 	if (!warnedMissing) {
 		warnedMissing = true;
 		globalApp.warn(
@@ -86,9 +85,15 @@ export class NativeConnection {
 
 	disconnect() {
 		const registered = connections.get(this.guildId) === this;
-		if (registered) connections.delete(this.guildId);
+		if (!registered) {
+			// A newer connection owns this guild. Sending `disconnect` for it
+			// would tear down a session someone is listening to, on behalf of
+			// one that is already gone.
+			return false;
+		}
+		connections.delete(this.guildId);
 		sidecar().send({ type: "disconnect", guildId: this.guildId });
-		return registered;
+		return true;
 	}
 
 	/**
@@ -120,7 +125,12 @@ export function joinVoiceNative(channel: VoiceBasedChannel) {
 	const existing = connections.get(guildId);
 	if (existing && existing.channelId === channel.id) return existing;
 
-	const connected = joinVoiceViaSidecar(channel, false).catch((error: Error) => {
+	const connected = joinVoiceViaSidecar(channel, false, () => {
+		// discord.js tells the adapter it is finished with the guild. Only the
+		// connection that still owns it may act on that; a stale one would be
+		// disconnecting whoever replaced it.
+		if (connections.get(guildId) === connection) connection.disconnect();
+	}).catch((error: Error) => {
 		globalApp.err(`Failed to join voice via the sidecar in ${guildId}`, error);
 		// Leaving a connection registered that never came up would make every
 		// later command believe the bot is in the channel.
@@ -144,9 +154,19 @@ export function joinVoiceNative(channel: VoiceBasedChannel) {
  */
 function send(guildId: string, command: SidecarCommand) {
 	const connection = connections.get(guildId);
-	// With no connection the sidecar would answer every one of these with
-	// "not connected to a voice channel", which is noise rather than news.
-	if (!connection) return;
+	if (!connection) {
+		// With no connection the sidecar would answer most of these with "not
+		// connected to a voice channel", which is noise rather than news.
+		//
+		// "Stop" is the exception, because the two sides can disagree about a
+		// guild: a join that failed here after the sidecar had already
+		// registered it leaves audio playing that this map knows nothing
+		// about. Dropping the one command that ends it is how a guild is left
+		// playing with nothing able to stop it, and the worst answer it can
+		// draw is that there was nothing to stop.
+		if (command.type === "stop") sidecar().send(command);
+		return;
+	}
 	connection.connected.then(
 		() => sidecar().send(command),
 		() => {},
@@ -213,18 +233,19 @@ export function cachedTrackId(url: string) {
  * in time.
  */
 export function armNext(player: CustomAudioPlayer) {
-	if (!player.native || !player.isPlaying) return;
+	const playback = player.nativePlayback;
+	if (!playback || !player.isPlaying) return;
 	const next = player.queue.at(0);
-	const plan = planArm(next ? cachedTrackId(next.url) : null, player.nativeArmed);
+	const plan = planArm(next ? cachedTrackId(next.url) : null, playback.armed);
 	const guildId = player.guildId;
 
 	switch (plan.action) {
 		case "arm":
-			player.nativeArmed = plan.trackId;
+			playback.armed = plan.trackId;
 			send(guildId, { type: "setNext", guildId, trackId: plan.trackId });
 			break;
 		case "clear":
-			player.nativeArmed = null;
+			playback.armed = null;
 			send(guildId, { type: "clearNext", guildId });
 			break;
 		case "none":
@@ -260,13 +281,14 @@ export function bindNativeVoice(client: CustomClient) {
 	bus.on("position", (payload: { guildId: string; positionMs: number }) => {
 		const player = playerFor(payload.guildId);
 		if (!player) return;
-		player.nativePosition = { ms: payload.positionMs, at: Date.now() };
+		player.nativePlayback?.anchorAt(payload.positionMs, Date.now());
 		armNext(player);
 	});
 
 	bus.on("finished", (payload: { guildId: string; trackId: string }) => {
 		const player = playerFor(payload.guildId);
-		if (!player?.native) return;
+		const playback = player?.nativePlayback;
+		if (!player || !playback) return;
 		// A report for a track that is no longer the current one is stale — a
 		// direct `play` replaces the active slot without finishing it — and
 		// advancing on it would skip whatever just started.
@@ -278,10 +300,7 @@ export function bindNativeVoice(client: CustomClient) {
 		// Captured here, before the advance below runs, because that advance
 		// is asynchronous and a position report landing part-way through it
 		// re-arms the new queue head over the top of this.
-		player.nativePromoted = player.nativeArmed
-			? { trackId: player.nativeArmed, at: Date.now() }
-			: null;
-		player.nativeArmed = null;
+		playback.promote(Date.now());
 		player.clearSongTimeouts();
 		// Nothing drives the base player's state machine in this mode, so the
 		// queue-advance handler is triggered from here instead. One path, the
@@ -298,11 +317,9 @@ export function bindNativeVoice(client: CustomClient) {
 	bus.on("disconnected", (payload: { guildId: string; reason: string }) => {
 		connections.delete(payload.guildId);
 		const player = playerFor(payload.guildId);
-		if (!player?.native) return;
+		if (!player?.nativePlayback) return;
 		globalApp.warn(`Voice disconnected in ${payload.guildId}: ${payload.reason}`);
-		player.nativeArmed = null;
-		player.nativePromoted = null;
-		player.nativePosition = null;
+		player.nativePlayback.clear();
 		player.clearSongTimeouts();
 		player.reset();
 	});

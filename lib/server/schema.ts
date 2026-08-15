@@ -1,6 +1,6 @@
 import z from "zod";
 import { SongEditType } from "./event";
-import { isYouTubeVideo } from "../youtube";
+import { isYouTubePlaylist, isYouTubeVideo } from "../youtube";
 import { Language } from "../interaction";
 
 // Queue item (from custom.ts)
@@ -70,6 +70,28 @@ const AddSongSchema = z.object({
 			),
 		force: z.boolean().default(false),
 		seek: z.number().nonnegative().optional()
+	}),
+});
+
+/**
+ * AddPlaylist: queue every video of a YouTube playlist.
+ *
+ * `next` puts the set at the head of the queue, the dashboard's equivalent of
+ * `/play next:true`. The videos are resolved server-side, so the dashboard only
+ * has to hand over the link the user pasted.
+ */
+const AddPlaylistSchema = z.object({
+	action: z.literal(SongEditType.AddPlaylist),
+	guildId: z.string(),
+	detail: z.object({
+		url: z
+			.string()
+			.refine(
+				(u) => isYouTubePlaylist(u),
+				"Must be a valid YouTube playlist URL",
+			),
+		next: z.boolean().default(false),
+		force: z.boolean().default(false),
 	}),
 });
 
@@ -151,6 +173,7 @@ export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	UnmuteSchema,
 	SetTimeSchema,
 	AddSongSchema,
+	AddPlaylistSchema,
 	RemoveSongSchema,
 	SetVolumeSchema,
 	SetCrossfadeSchema,

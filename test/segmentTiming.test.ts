@@ -52,6 +52,19 @@ describe("segmentAt", () => {
 		expect(segmentAt(segments, 20_001)).toBeNull();
 	});
 
+	test("prefers the segment starting here over the one ending here", () => {
+		// Two touching segments both cover the instant between them. Answering
+		// with the one that just ended is a loop: skipCurrentSegment seeks to
+		// its end, which is this same position, and asks again.
+		const segments = [segment(0, 10), segment(10, 20)];
+		expect(segmentAt(segments, 10_000)?.segment).toEqual([10, 20]);
+	});
+
+	test("prefers the later segment whatever order they arrive in", () => {
+		const segments = [segment(10, 20), segment(0, 10)];
+		expect(segmentAt(segments, 10_000)?.segment).toEqual([10, 20]);
+	});
+
 	test("returns nothing between segments", () => {
 		expect(segmentAt([segment(0, 5), segment(30, 45)], 12_000)).toBeNull();
 	});
@@ -89,6 +102,19 @@ describe("upcomingSegments", () => {
 		const upcoming = upcomingSegments([segment(60, 75)], 65_000);
 		expect(upcoming).toHaveLength(0);
 		expect(segmentAt([segment(60, 75)], 65_000)).not.toBeNull();
+	});
+
+	test("a segment starting exactly here has not started yet", () => {
+		// The pair that has to agree: whatever upcomingSegments schedules at
+		// zero delay, segmentAt has to answer with when that timer fires.
+		const segments = [segment(0, 10), segment(10, 20)];
+		const upcoming = upcomingSegments(segments, 10_000);
+
+		expect(upcoming).toHaveLength(1);
+		expect(upcoming[0].delayMs).toBe(0);
+		expect(segmentAt(segments, 10_000)?.segment).toEqual(
+			upcoming[0].segment.segment,
+		);
 	});
 
 	test("returns nothing when there is no position or no segments", () => {

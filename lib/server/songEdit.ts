@@ -8,6 +8,7 @@ import {
 	timeFormat,
 } from "../voice/core";
 import { deleteSkipMessage, sendSkipMessage } from "../voice/segment";
+import { getYouTubePlaylist } from "../youtube";
 import { SongEditType } from "./event";
 import { SongEditRequest } from "./schema";
 
@@ -78,6 +79,43 @@ export async function handleSongInterruption(
 					return 500;
 				}
 
+				player.playResource(res);
+				dcb.log("Started playing song from queue");
+			}
+			break;
+		}
+		case SongEditType.AddPlaylist: {
+			let playlist: Awaited<ReturnType<typeof getYouTubePlaylist>>;
+			try {
+				playlist = await getYouTubePlaylist(data.detail.url);
+			} catch (error) {
+				globalApp.err("Failed to read playlist from dashboard: ", error);
+				return 502;
+			}
+			if (!playlist.videos.length) {
+				globalApp.err("Playlist is empty");
+				return 400;
+			}
+			player.bulkAddToQueue(
+				playlist.videos.map((video) => video.url),
+				false,
+				data.detail.next ? 0 : undefined,
+			);
+			dcb.log(
+				`Added playlist "${playlist.title}" (${playlist.videos.length} songs) from dashboard to queue`,
+			);
+			if (!player.isPlaying) {
+				const nextUrl = player.getNextQueueItem();
+				if (!nextUrl) return 400;
+				const res = await createResource(
+					nextUrl,
+					undefined,
+					data.detail.force,
+				);
+				if (!res) {
+					globalApp.err("Failed to create resource");
+					return 500;
+				}
 				player.playResource(res);
 				dcb.log("Started playing song from queue");
 			}

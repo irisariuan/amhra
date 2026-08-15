@@ -1,6 +1,9 @@
 import ytdl from "@distube/ytdl-core";
 import ytSearch from "yt-search";
 import { globalApp } from "./misc";
+import { getPlaylistId, isPlaylistUrl, readPlaylist } from "./youtubePlaylist";
+
+export { getPlaylistId };
 
 export interface YouTubeChannel {
 	name: string;
@@ -24,7 +27,6 @@ export interface YouTubePlaylist {
 	url: string;
 	title: string;
 	videos: YouTubeVideo[];
-	all_videos(): Promise<YouTubeVideo[]>;
 }
 
 export interface YouTubeVideoInfo {
@@ -72,19 +74,7 @@ export function isYouTubeVideo(url: string): boolean {
 }
 
 export function isYouTubePlaylist(url: string): boolean {
-	try {
-		const parsed = new URL(url);
-		return (
-			(parsed.hostname === "youtube.com" ||
-				parsed.hostname === "www.youtube.com" ||
-				parsed.hostname === "m.youtube.com" ||
-				parsed.hostname === "music.youtube.com") &&
-			parsed.pathname === "/playlist" &&
-			Boolean(parsed.searchParams.get("list"))
-		);
-	} catch {
-		return false;
-	}
+	return isPlaylistUrl(url);
 }
 
 export function isYouTubeUrl(url: string): boolean {
@@ -113,21 +103,7 @@ export async function searchYouTube(query: string): Promise<YouTubeVideo[]> {
 export async function getYouTubePlaylist(
 	url: string,
 ): Promise<YouTubePlaylist> {
-	const listId = new URL(url).searchParams.get("list");
-	if (!listId) throw new Error("Invalid YouTube playlist URL");
-
-	const playlist = await ytSearch({ listId });
-	const videos = playlist.videos
-		.filter(video => Boolean(video.videoId))
-		.map(normalizeVideo);
-	const playlistUrl = `https://www.youtube.com/playlist?list=${listId}`;
-
-	return {
-		url: playlistUrl,
-		title: playlist.title,
-		videos,
-		all_videos: async () => videos,
-	};
+	return await readPlaylist(url);
 }
 
 export async function getYouTubeVideoInfo(

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
 	DEFAULT_FADES,
-	defaultedFades,
 	fadesFrom,
 	nextFades,
+	syncedFades,
 } from "../lib/voice/fades";
 
 /**
@@ -59,17 +59,23 @@ describe("nextFades", () => {
 	});
 });
 
-describe("defaultedFades", () => {
+describe("syncedFades", () => {
 	const fromSetting = { crossfadeMs: 800, skipFadeMs: 60 };
 
 	test("an untouched guild follows a changed default", () => {
-		expect(defaultedFades(current, false, fromSetting)).toEqual(fromSetting);
+		expect(syncedFades(current, false, fromSetting)).toEqual(fromSetting);
 	});
 
 	test("an adjusted guild keeps what it was given", () => {
 		// Saving an unrelated field on the settings page must not undo a live
 		// adjustment, the same way it does not reset a guild's volume.
-		expect(defaultedFades(current, true, fromSetting)).toEqual(current);
+		expect(syncedFades(current, true, fromSetting)).toBeNull();
+	});
+
+	test("says nothing to do when the default already matches", () => {
+		// The caller pushes what it gets across a process boundary, so a
+		// no-op has to be distinguishable from a change to the same numbers.
+		expect(syncedFades(current, false, { ...current })).toBeNull();
 	});
 });
 

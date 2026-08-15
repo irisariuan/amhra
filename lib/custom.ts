@@ -27,12 +27,8 @@ import {
 	nativeVoiceActive,
 } from "./voice/native";
 import { fadeSettings } from "./voice/sidecar";
-import { defaultedFades, nextFades, type Fades } from "./voice/fades";
-import {
-	positionFrom,
-	shouldSendPlay,
-	type Promotion,
-} from "./voice/nativePlan";
+import { nextFades, syncedFades, type Fades } from "./voice/fades";
+import { NativePlayback, shouldSendPlay } from "./voice/nativePlan";
 import { prefetch } from "./voice/stream";
 import { Language } from "./interaction";
 
@@ -190,30 +186,18 @@ export class CustomAudioPlayer extends AudioPlayer {
 	currentLanguage: Language;
 
 	/**
-	 * Whether this player drives the Rust sidecar instead of @discordjs/voice.
+	 * The sidecar's state, on a player that drives it, and null on one driving
+	 * @discordjs/voice.
 	 *
 	 * Decided once, when the player is created, so a flag flipped mid-song
 	 * cannot leave one half of a player talking to the wrong backend.
 	 */
-	readonly native: boolean;
-	/**
-	 * The track handed to the sidecar as "what comes next", so the seam can be
-	 * crossfaded. Null when nothing is armed.
-	 */
-	nativeArmed: string | null;
-	/**
-	 * The last position the sidecar reported, and when it arrived. Reports come
-	 * about once a second, so the wall clock fills the gaps between them.
-	 */
-	nativePosition: { ms: number; at: number } | null;
-	/**
-	 * The track the sidecar moved to by itself when the last one ended.
-	 *
-	 * Recorded the moment it is known rather than read off `nativeArmed`
-	 * later: the queue advance is asynchronous, and a position report arriving
-	 * part-way through it re-arms whatever is at the head of the queue by then.
-	 */
-	nativePromoted: Promotion | null;
+	readonly nativePlayback: NativePlayback | null;
+
+	/** Whether this player drives the Rust sidecar instead of @discordjs/voice. */
+	get native() {
+		return this.nativePlayback !== null;
+	}
 
 	/** Milliseconds the seam between two tracks is mixed over. Zero is a cut. */
 	crossfadeMs: number;
@@ -237,10 +221,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 	) {
 		super(options);
 		this.guildId = guildId;
-		this.native = nativeVoiceActive();
-		this.nativeArmed = null;
-		this.nativePosition = null;
-		this.nativePromoted = null;
+		this.nativePlayback = nativeVoiceActive() ? new NativePlayback() : null;
 
 		const fades = fadeSettings();
 		this.crossfadeMs = fades.crossfadeMs;
@@ -295,7 +276,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 * all, so this is the one place that decides between the two.
 	 */
 	private applyGain(gain: number) {
-		if (this.native) return nativeSetVolume(this.guildId, gain);
+		if (this.nativePlayback) return nativeSetVolume(this.guildId, gain);
 		this.nowPlaying?.volume?.setVolume(gain);
 	}
 
@@ -313,10 +294,10 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 * skip and wrong for a stop.
 	 */
 	private hardStop() {
-		if (!this.native) return this.stop();
+		if (!this.nativePlayback) return this.stop();
 		const wasPlaying = this.isPlaying;
-		this.nativeArmed = null;
-		this.nativePromoted = null;
+		this.nativePlayback.armed = null;
+		this.nativePlayback.promoted = null;
 		nativeStop(this.guildId);
 		return wasPlaying;
 	}
@@ -336,9 +317,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 		this.startTime = 0;
 		this.startFrom = 0;
-		this.nativeArmed = null;
-		this.nativePosition = null;
-		this.nativePromoted = null;
+		this.nativePlayback?.clear();
 	}
 
 	cleanStop() {
@@ -416,8 +395,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 		if (!replay) this.history.push(resource.url);
 		this.clearVoiceStateTimeouts();
 
-		if (this.native) {
-			this.startNative(resource);
+		if (this.nativePlayback) {
+			this.startNative(this.nativePlayback, resource);
 		} else if (resource.resource) {
 			this.play(resource.resource);
 		}
@@ -437,10 +416,10 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 * advances here as it always does, and sending a `play` for the track
 	 * already playing would restart it and undo the crossfade that just ran.
 	 */
-	private startNative(resource: Resource) {
+	private startNative(playback: NativePlayback, resource: Resource) {
 		const trackId = resource.videoId;
 		const startMs = Math.max(0, Math.round(resource.startFrom ?? 0));
-		this.nativePosition = { ms: startMs, at: Date.now() };
+		playback.anchorAt(startMs, Date.now());
 		if (!trackId) {
 			globalApp.err(`No cache id for ${resource.url}; nothing to play`);
 			return;
@@ -449,10 +428,9 @@ export class CustomAudioPlayer extends AudioPlayer {
 		// restart, or a player created after the connection came up all end up
 		// with this guild's fades rather than the sidecar's defaults.
 		this.pushFades();
-		const promoted = this.nativePromoted;
-		this.nativePromoted = null;
+		const promoted = playback.takePromotion();
 		if (shouldSendPlay(promoted, trackId, startMs, Date.now())) {
-			this.nativeArmed = null;
+			playback.armed = null;
 			nativePlay(this.guildId, trackId, startMs);
 		}
 		armNext(this);
@@ -490,17 +468,12 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 * the new default, an adjusted one should keep what it was given.
 	 */
 	syncFadesWithSetting() {
-		const next = defaultedFades(
+		const next = syncedFades(
 			{ crossfadeMs: this.crossfadeMs, skipFadeMs: this.skipFadeMs },
 			this.fadesOverridden,
 			fadeSettings(),
 		);
-		if (
-			next.crossfadeMs === this.crossfadeMs &&
-			next.skipFadeMs === this.skipFadeMs
-		) {
-			return;
-		}
+		if (!next) return;
 		this.crossfadeMs = next.crossfadeMs;
 		this.skipFadeMs = next.skipFadeMs;
 		this.pushFades();
@@ -508,7 +481,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	/** Send the current fades to the sidecar, if it is the one playing. */
 	pushFades() {
-		if (!this.native) return;
+		if (!this.nativePlayback) return;
 		nativeSetFades(this.guildId, this.crossfadeMs, this.skipFadeMs);
 	}
 
@@ -520,11 +493,11 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 */
 	seekTo(seconds: number) {
 		if (!this.nowPlaying || !this.isPlaying) return false;
-		if (this.native) {
+		if (this.nativePlayback) {
 			// The sidecar plays from an indexed cache file, so every track it
 			// can play at all, it can seek in.
 			nativeSeek(this.guildId, seconds * 1000);
-			this.nativePosition = { ms: seconds * 1000, at: Date.now() };
+			this.nativePlayback.anchorAt(seconds * 1000, Date.now());
 		} else {
 			const stream = this.nowPlaying.volume;
 			if (!isSeekable(stream)) return false;
@@ -585,13 +558,13 @@ export class CustomAudioPlayer extends AudioPlayer {
 		if (this.isPaused) return false;
 		// Read before the flag flips: once paused, the position is frozen at
 		// the anchor, and everything since the last report would be lost.
-		const position = this.native ? this.getCurrentSongPosition() : null;
+		const position = this.nativePlayback ? this.getCurrentSongPosition() : null;
 		this.isPaused = true;
 		this.pauseTimestamp = Date.now();
-		if (this.native) {
+		if (this.nativePlayback) {
 			// No report arrives while paused, so the wall clock must stop
 			// contributing to the position too.
-			this.nativePosition = { ms: position ?? 0, at: Date.now() };
+			this.nativePlayback.anchorAt(position ?? 0, Date.now());
 			nativePause(this.guildId);
 		} else {
 			super.pause();
@@ -606,12 +579,10 @@ export class CustomAudioPlayer extends AudioPlayer {
 			this.isPaused = false;
 			// Time starts counting again from now, not from the last report,
 			// which arrived before the pause.
-			if (this.native && this.nativePosition) {
-				this.nativePosition = { ...this.nativePosition, at: Date.now() };
-			}
+			this.nativePlayback?.resumeAt(Date.now());
 			this.updateSongTimeouts();
 		}
-		if (this.native) {
+		if (this.nativePlayback) {
 			nativeResume(this.guildId);
 			// The callers announce success from this, so it has to mean "was
 			// paused and is not any more" rather than "the message was sent".
@@ -629,7 +600,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 * handler for that plays the next song.
 	 */
 	stop(force?: boolean) {
-		if (!this.native) return super.stop(force);
+		if (!this.nativePlayback) return super.stop(force);
 		if (!this.isPlaying) return false;
 		nativeSkip(this.guildId);
 		return true;
@@ -771,9 +742,9 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	getCurrentSongPosition() {
 		if (!this.isPlaying) return null;
-		if (this.native) {
+		if (this.nativePlayback) {
 			return (
-				positionFrom(this.nativePosition, this.isPaused, Date.now()) ??
+				this.nativePlayback.positionAt(this.isPaused, Date.now()) ??
 				this.startFrom
 			);
 		}

@@ -112,30 +112,39 @@ export default {
 			results: YouTubeVideo[];
 			chosenUrl: string;
 		} | null = null;
-		if (isVideo(input)) {
-			resultUrl = input;
-			player.addToQueue(resultUrl, false, next ? 0 : undefined);
-		} else if (isPlaylist(input)) {
+		// Checked before the video case: a link shared from an open playlist is a
+		// watch URL carrying `list=`, and reading it as a single video would
+		// queue one song where the whole set was asked for
+		if (isPlaylist(input)) {
 			let playlist: YouTubePlaylist;
 			const cached = client.cache.get(input);
 			if (cached?.isPlaylist()) {
 				playlist = cached.value;
 			} else {
-				playlist = await getYouTubePlaylist(input);
+				try {
+					playlist = await getYouTubePlaylist(input);
+				} catch (e) {
+					globalApp.err("Failed to read playlist: ", e);
+					return interaction.editReply(
+						languageText("error", language),
+					);
+				}
 				client.cache.set(input, playlist, "playlist");
 			}
-			const allVideos = await playlist.all_videos();
 
-			if (!playlist.url)
+			if (!playlist.videos.length)
 				return interaction.editReply(
 					languageText("empty_playlist", language),
 				);
 			player.bulkAddToQueue(
-				allVideos.map((v) => v.url),
+				playlist.videos.map((v) => v.url),
 				false,
 				next ? 0 : undefined,
 			);
 			resultUrl = playlist.url;
+		} else if (isVideo(input)) {
+			resultUrl = input;
+			player.addToQueue(resultUrl, false, next ? 0 : undefined);
 
 			// searching on YouTube
 		} else {

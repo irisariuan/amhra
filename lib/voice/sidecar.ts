@@ -1,11 +1,15 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { existsSync } from "node:fs";
 import type { Guild, VoiceBasedChannel } from "discord.js";
 import { z } from "zod";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { fadesFrom } from "./fades";
+import { nativeBinary } from "./nativeBinary";
+import type {
+	Command as WireCommand,
+	Event as WireEvent,
+} from "../../rust/amhra-sidecar/bindings/protocol";
 
 /**
  * Client for the Rust voice sidecar.
@@ -26,6 +30,11 @@ const PROTOCOL_VERSION = 1;
 /** Restart backoff bounds after an unexpected exit. */
 const MIN_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 30_000;
+/**
+ * How long to let a leave settle before rejoining. The gateway has to see the
+ * old voice state go before it will treat the next op 4 as a new session.
+ */
+const VOICE_STATE_RESET_MS = 500;
 
 const sessionState = z.object({
 	guildId: z.string(),
@@ -41,6 +50,12 @@ const sessionState = z.object({
  * declarations live in that crate's bindings/protocol.d.ts. Parsed rather than
  * cast: this is a process boundary, and a version skew should be a clear error
  * rather than an undefined field three calls later.
+ *
+ * The declarations cannot replace this — a type checks nothing at runtime,
+ * which is the whole job here — so `sameShape` below checks the two against
+ * each other at compile time instead. Adding a variant on the Rust side and
+ * forgetting this one is then a build failure rather than a parse error in
+ * production.
  */
 const event = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("hello"), version: z.number(), pid: z.number() }),
@@ -68,44 +83,28 @@ const event = z.discriminatedUnion("type", [
 export type SidecarEvent = z.infer<typeof event>;
 export type SidecarSession = z.infer<typeof sessionState>;
 
-export type SidecarCommand =
-	| {
-			type: "connect";
-			guildId: string;
-			channelId: string;
-			userId: string;
-			sessionId: string;
-			endpoint: string;
-			token: string;
-	  }
-	| { type: "disconnect"; guildId: string }
-	| { type: "play"; guildId: string; trackId: string; startMs?: number }
-	| { type: "setNext"; guildId: string; trackId: string }
-	| { type: "clearNext"; guildId: string }
-	| { type: "skip"; guildId: string }
-	| { type: "stop"; guildId: string }
-	| { type: "pause"; guildId: string }
-	| { type: "resume"; guildId: string }
-	| { type: "seek"; guildId: string; positionMs: number }
-	| { type: "setVolume"; guildId: string; gain: number }
-	| { type: "setFades"; guildId: string; crossfadeMs: number; skipFadeMs: number }
-	| { type: "listSessions" }
-	| { type: "shutdown" };
+/**
+ * The commands, taken from the Rust definition rather than restated here.
+ * Nothing about them needs checking at runtime — this side is the one writing
+ * them — so the generated declaration is the whole story.
+ */
+export type SidecarCommand = WireCommand;
 
-export function sidecarBinary() {
-	return (
-		readSetting().NATIVE_VOICE_BIN ??
-		`${process.cwd()}/rust/target/release/amhra-sidecar`
-	);
-}
+/** True only when the two types are each other, not merely assignable. */
+type SameShape<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
-export function sidecarEnabled() {
-	return readSetting().USE_RUST_VOICE === true;
-}
+/**
+ * Fails to compile when the schema above and the Rust enum have drifted.
+ * Regenerate the declarations with `cargo test --manifest-path rust/Cargo.toml`.
+ */
+const sameShape: SameShape<SidecarEvent, WireEvent> = true;
+void sameShape;
 
-export function sidecarAvailable() {
-	return existsSync(sidecarBinary());
-}
+export const sidecarBin = nativeBinary(
+	(setting) => setting.USE_RUST_VOICE,
+	(setting) => setting.NATIVE_VOICE_BIN,
+	"amhra-sidecar",
+);
 
 /**
  * A running sidecar process, restarted if it dies.
@@ -125,7 +124,7 @@ export class Sidecar extends EventEmitter {
 		if (this.child) return;
 		this.stopping = false;
 
-		const binary = sidecarBinary();
+		const binary = sidecarBin.path();
 		dcb.log(`Starting voice sidecar: ${binary}`);
 		const child = spawn(binary, ["--cache-dir", `${process.cwd()}/cache`], {
 			stdio: ["pipe", "pipe", "pipe"],
@@ -308,7 +307,11 @@ export function stopSidecar() {
  * events that answer it. Reusing it means the sidecar never needs a gateway
  * connection of its own, and the bot's existing shard handles everything.
  */
-export function joinVoiceViaSidecar(channel: VoiceBasedChannel, deaf = true) {
+export function joinVoiceViaSidecar(
+	channel: VoiceBasedChannel,
+	deaf = true,
+	onLibraryDestroy?: () => void,
+) {
 	const guild: Guild = channel.guild;
 	const client = guild.client;
 	const userId = client.user?.id;
@@ -318,31 +321,84 @@ export function joinVoiceViaSidecar(channel: VoiceBasedChannel, deaf = true) {
 		let sessionId: string | undefined;
 		let endpoint: string | undefined;
 		let token: string | undefined;
+		/**
+		 * Updates that arrive before the join payload describe the session being
+		 * torn down, whose token is already spent. Taking them would hand the
+		 * sidecar credentials that are dead on arrival.
+		 */
+		let joining = false;
+		let settled = false;
+		/** Set while the old voice state is being stood down before joining. */
+		let leaving = false;
+		let leaveTimer: ReturnType<typeof setTimeout> | undefined;
 
 		const adapter = guild.voiceAdapterCreator({
 			onVoiceStateUpdate: (state) => {
 				if (state.user_id !== userId) return;
+				if (!joining) {
+					// The leave landed. Waiting for this rather than for a fixed
+					// delay is what makes the rejoin reliable: the gateway only
+					// mints a token for a session it considers new, and how long
+					// it takes to forget the old one is not ours to guess.
+					if (leaving && !state.channel_id) {
+						leaving = false;
+						clearTimeout(leaveTimer);
+						join();
+					}
+					return;
+				}
 				sessionId = state.session_id ?? undefined;
 				ready();
 			},
 			onVoiceServerUpdate: (server) => {
+				if (!joining) return;
 				endpoint = server.endpoint ?? undefined;
 				token = server.token;
 				ready();
 			},
 			destroy: () => {
+				// The caller decides, because by the time this fires the guild
+				// may belong to a newer join than this one.
+				if (onLibraryDestroy) return onLibraryDestroy();
 				sidecar().send({ type: "disconnect", guildId: guild.id });
 			},
 		});
 
+		/** Op 4 with no channel: leave the guild's voice entirely. */
+		function leave() {
+			adapter.sendPayload({
+				op: 4,
+				d: {
+					guild_id: guild.id,
+					channel_id: null,
+					self_mute: false,
+					self_deaf: deaf,
+				},
+			});
+		}
+
 		const timer = setTimeout(() => {
+			settled = true;
+			clearTimeout(leaveTimer);
+			// Whatever half a session is left behind would wedge every later
+			// attempt the same way, so this stands the guild back down before
+			// giving up on it.
+			leave();
 			adapter.destroy();
-			reject(new Error(`Timed out joining voice in ${guild.id}`));
+			const missing = [
+				sessionId ? null : "session id",
+				endpoint ? null : "endpoint",
+				token ? null : "token",
+			]
+				.filter(Boolean)
+				.join(", ");
+			reject(new Error(`Timed out joining voice in ${guild.id} (no ${missing})`));
 		}, 15_000);
 
 		function ready() {
 			// Both halves are needed, and they arrive in either order.
-			if (!sessionId || !endpoint || !token) return;
+			if (settled || !sessionId || !endpoint || !token) return;
+			settled = true;
 			clearTimeout(timer);
 			const client = sidecar();
 			client.send({
@@ -361,19 +417,43 @@ export function joinVoiceViaSidecar(channel: VoiceBasedChannel, deaf = true) {
 			resolve();
 		}
 
-		const sent = adapter.sendPayload({
-			op: 4,
-			d: {
-				guild_id: guild.id,
-				channel_id: channel.id,
-				self_mute: false,
-				self_deaf: deaf,
-			},
-		});
-		if (!sent) {
-			clearTimeout(timer);
-			adapter.destroy();
-			reject(new Error(`Shard for ${guild.id} is not available`));
+		function join() {
+			if (settled) return;
+			joining = true;
+			const sent = adapter.sendPayload({
+				op: 4,
+				d: {
+					guild_id: guild.id,
+					channel_id: channel.id,
+					self_mute: false,
+					self_deaf: deaf,
+				},
+			});
+			if (!sent) {
+				settled = true;
+				clearTimeout(timer);
+				adapter.destroy();
+				reject(new Error(`Shard for ${guild.id} is not available`));
+			}
+		}
+
+		// Discord only mints a voice token for a *new* session. Asking to join
+		// while the gateway still holds a voice state for this bot — a channel
+		// move, or a restart that left the old state standing — is answered
+		// with a state update and no server update, so the handshake never
+		// completes. Standing the old session down first is what makes the
+		// token arrive.
+		if (guild.members.me?.voice.channelId) {
+			leaving = true;
+			leave();
+			// The state update is the signal; this is only the backstop for a
+			// leave the gateway never reports.
+			leaveTimer = setTimeout(() => {
+				leaving = false;
+				join();
+			}, VOICE_STATE_RESET_MS);
+		} else {
+			join();
 		}
 	});
 }

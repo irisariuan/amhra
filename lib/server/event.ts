@@ -8,6 +8,7 @@ export enum SongEditType {
 	Skip = "skip",
 	Stop = "stop",
 	AddSong = "addSong",
+	AddPlaylist = "addPlaylist",
 	SetTime = "setTime",
 	RemoveSong = "removeSong",
 	SetVolume = "setVolume",

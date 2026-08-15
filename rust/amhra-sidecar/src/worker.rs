@@ -196,7 +196,9 @@ fn run(
 			continue;
 		};
 		// While the DAVE group is still forming there is no key to send under.
-		if attached.dave.as_ref().is_some_and(|dave| !dave.lock().is_ok_and(|d| d.is_ready())) {
+		// A downgraded call has no group and never will, and that one still
+		// sends — under transport encryption alone, like everyone else on it.
+		if attached.dave.as_ref().is_some_and(|dave| !dave.lock().is_ok_and(|d| d.can_send())) {
 			continue;
 		}
 
@@ -271,8 +273,20 @@ fn send_frame(
 	let payload: &[u8] = match attached.dave.as_ref() {
 		Some(dave) => {
 			let mut driver = dave.lock().map_err(|_| "dave session poisoned".to_owned())?;
-			driver.encrypt_opus(opus, e2ee).map_err(|error| format!("dave: {error}"))?;
-			e2ee
+			// Re-checked under the same lock that encrypts. The gateway task can
+			// rebuild the group between the tick's check and this one — a member
+			// joining is enough — and encrypting into a session that is mid-epoch
+			// is a frame nobody could have decrypted anyway, not an error worth
+			// reporting.
+			if !driver.can_send() {
+				return Ok(());
+			}
+			if driver.encrypting() {
+				driver.encrypt_opus(opus, e2ee).map_err(|error| format!("dave: {error}"))?;
+				e2ee
+			} else {
+				opus
+			}
 		}
 		None => opus,
 	};
