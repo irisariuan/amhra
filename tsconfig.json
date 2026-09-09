@@ -18,6 +18,13 @@
 		"**/node_modules/*",
 		"**/dist/*",
 		"test/**",
-		"bench/**"
+		"bench/**",
+		// Cargo build artefacts, not TypeScript. CMake writes its dependency
+		// timestamps to files called `compiler_depend.ts`, which tsc otherwise
+		// globs up and fails to parse. Only appears once the Rust crates have
+		// been built on a platform where audiopus_sys goes through CMake, which
+		// is why this passed locally on macOS and failed in Linux CI. Scoped to
+		// `target` so the hand-written bindings under rust/*/bindings stay checked.
+		"rust/target/**"
 	]
 }

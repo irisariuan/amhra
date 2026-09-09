@@ -26,8 +26,11 @@ const MAX_BACKOFF: Duration = Duration::from_secs(30);
 
 #[derive(Debug, thiserror::Error)]
 pub enum GatewayError {
+	/// Boxed because `tungstenite::Error` is far larger than every other
+	/// variant, and this enum is the `Err` of almost every function in here —
+	/// unboxed it sets the size of results that overwhelmingly return `Ok`.
 	#[error("websocket: {0}")]
-	WebSocket(#[from] tokio_tungstenite::tungstenite::Error),
+	WebSocket(Box<tokio_tungstenite::tungstenite::Error>),
 	#[error("gateway closed: {0}")]
 	Closed(String),
 	#[error("authentication failed")]
@@ -38,6 +41,12 @@ pub enum GatewayError {
 	Disconnected,
 	#[error("the server requires DAVE end-to-end encryption")]
 	E2eeRequired,
+}
+
+impl From<tokio_tungstenite::tungstenite::Error> for GatewayError {
+	fn from(err: tokio_tungstenite::tungstenite::Error) -> Self {
+		Self::WebSocket(Box::new(err))
+	}
 }
 
 /// Everything needed to identify to a voice server. All four fields come from
