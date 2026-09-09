@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	NativePlayback,
 	planArm,
 	positionFrom,
 	PROMOTION_GRACE_MS,
@@ -126,5 +127,90 @@ describe("positionFrom", () => {
 		// Clamped rather than trusted: a negative elapsed would make the
 		// position jump back and re-fire segment timers already dealt with.
 		expect(positionFrom({ ms: 5_000, at: 2_000 }, false, 1_000)).toBe(5_000);
+	});
+});
+
+describe("NativePlayback", () => {
+	test("starts with nothing armed, anchored, or promoted", () => {
+		const playback = new NativePlayback();
+		expect(playback.armed).toBeNull();
+		expect(playback.anchor).toBeNull();
+		expect(playback.promoted).toBeNull();
+		expect(playback.positionAt(false, 1_000)).toBeNull();
+	});
+
+	test("clears all three at once", () => {
+		// They were three fields on the player, cleared in three separate
+		// places — and one of those places having missed a field is why they
+		// are one object now.
+		const playback = new NativePlayback();
+		playback.armed = "nextTrack1";
+		playback.anchorAt(5_000, 1_000);
+		playback.promote(2_000);
+
+		playback.clear();
+
+		expect(playback.armed).toBeNull();
+		expect(playback.anchor).toBeNull();
+		expect(playback.promoted).toBeNull();
+	});
+
+	test("promotes the armed track and stops considering it armed", () => {
+		// The seam: the sidecar moved to the standby track the instant the
+		// last one ended, so it is playing now rather than standing by.
+		const playback = new NativePlayback();
+		playback.armed = "nextTrack1";
+
+		playback.promote(9_000);
+
+		expect(playback.promoted).toEqual({ trackId: "nextTrack1", at: 9_000 });
+		expect(playback.armed).toBeNull();
+	});
+
+	test("promotes nothing when nothing was armed", () => {
+		const playback = new NativePlayback();
+		playback.promote(9_000);
+		expect(playback.promoted).toBeNull();
+	});
+
+	test("hands over a promotion once", () => {
+		// shouldSendPlay weighs it, and the track after must not be weighed
+		// against the previous one's promotion.
+		const playback = new NativePlayback();
+		playback.armed = "nextTrack1";
+		playback.promote(9_000);
+
+		expect(playback.takePromotion()).toEqual({
+			trackId: "nextTrack1",
+			at: 9_000,
+		});
+		expect(playback.takePromotion()).toBeNull();
+	});
+
+	test("carries the position on the wall clock between reports", () => {
+		const playback = new NativePlayback();
+		playback.anchorAt(5_000, 1_000);
+
+		expect(playback.positionAt(false, 3_000)).toBe(7_000);
+		expect(playback.positionAt(true, 3_000)).toBe(5_000);
+	});
+
+	test("restarts the clock on resume without moving the position", () => {
+		// Time was not running during the pause, and the last report arrived
+		// before it — so counting from that report would jump the position
+		// forward by however long the pause lasted.
+		const playback = new NativePlayback();
+		playback.anchorAt(5_000, 1_000);
+
+		playback.resumeAt(60_000);
+
+		expect(playback.positionAt(false, 60_000)).toBe(5_000);
+		expect(playback.positionAt(false, 61_000)).toBe(6_000);
+	});
+
+	test("resuming before any report anchors nothing", () => {
+		const playback = new NativePlayback();
+		playback.resumeAt(60_000);
+		expect(playback.anchor).toBeNull();
 	});
 });

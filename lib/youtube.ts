@@ -1,7 +1,7 @@
 import ytdl from "@distube/ytdl-core";
 import ytSearch from "yt-search";
 import { globalApp } from "./misc";
-import { fetchPlaylist, getPlaylistId, isPlaylistUrl } from "./youtubePlaylist";
+import { getPlaylistId, isPlaylistUrl, readPlaylist } from "./youtubePlaylist";
 
 export { getPlaylistId };
 
@@ -103,7 +103,7 @@ export async function searchYouTube(query: string): Promise<YouTubeVideo[]> {
 export async function getYouTubePlaylist(
 	url: string,
 ): Promise<YouTubePlaylist> {
-	return await fetchPlaylist(url);
+	return await readPlaylist(url);
 }
 
 export async function getYouTubeVideoInfo(

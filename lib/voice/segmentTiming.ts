@@ -13,19 +13,29 @@ import type { Segment } from "./segment";
 /** Milliseconds into the track, or `null` when nothing is playing. */
 export type Position = number | null;
 
-/** The segment covering `positionMs`, if any. */
+/**
+ * The segment covering `positionMs`, if any.
+ *
+ * Both ends count as inside, so two segments that touch — one ending where the
+ * next begins — both cover that instant. The later one wins: it is the part
+ * still ahead of the listener, while the earlier one is over. Taking the
+ * earlier one is what made a skip land on its own end and stay there, because
+ * the caller seeks to `segment[1]` and then asks this again.
+ */
 export function segmentAt(
 	segments: Segment[] | null | undefined,
 	positionMs: Position,
 ): Segment | null {
 	if (!segments || positionMs === null) return null;
+	let found: Segment | null = null;
 	for (const segment of segments) {
 		const [startInSec, endInSec] = segment.segment;
-		if (positionMs >= startInSec * 1000 && positionMs <= endInSec * 1000) {
-			return segment;
+		if (positionMs < startInSec * 1000 || positionMs > endInSec * 1000) {
+			continue;
 		}
+		if (!found || startInSec > found.segment[0]) found = segment;
 	}
-	return null;
+	return found;
 }
 
 /** A segment that has not been reached yet, and how long until it starts. */
@@ -35,10 +45,14 @@ export interface UpcomingSegment {
 }
 
 /**
- * Segments still ahead of `positionMs`, with the delay until each one.
+ * Segments not yet started at `positionMs`, with the delay until each one.
  *
- * A segment already in progress is not included: it is not something to wait
- * for, it is something the caller should act on now via {@link segmentAt}.
+ * A segment already under way is left out: it is not something to wait for, it
+ * is something the caller should act on now via {@link segmentAt}. One
+ * starting at exactly this position is not yet under way, so it is included
+ * with a delay of zero — that is the case a track opening with a non-music
+ * intro hits, checked at the instant it starts, and dropping it is how those
+ * went undetected before.
  */
 export function upcomingSegments(
 	segments: Segment[] | null | undefined,

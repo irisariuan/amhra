@@ -23,6 +23,16 @@ const UNITY_EPSILON: f32 = 0.002;
 /// Frames over which a mode change is ramped, at 20ms each.
 const RAMP_FRAMES: u32 = 2;
 
+/// libopus encoder complexity for the re-encode.
+///
+/// The default costs 81µs a frame here against 50µs at 6, and the drop from 8
+/// to 6 is where that curve bends — 10, 9 and 8 are within a few microseconds
+/// of each other. What is being encoded is already a lossy 128kbps stream that
+/// has been decoded and scaled, so the analysis the higher settings pay for is
+/// spent on detail the source no longer has. Raise it if a listener ever
+/// reports the difference; it is one constant.
+const ENCODER_COMPLEXITY: i32 = 6;
+
 /// Largest PCM buffer a single Opus packet can decode to: 120ms stereo.
 const MAX_SAMPLES: usize = (SAMPLE_RATE as usize / 1000) * 120 * CHANNELS as usize;
 
@@ -121,6 +131,7 @@ impl Volume {
 			// Match what YouTube's Opus is already encoded at, so a volume
 			// change is not also a quality change.
 			encoder.set_bitrate(opus::Bitrate::Bits(128_000))?;
+			encoder.set_complexity(ENCODER_COMPLEXITY)?;
 			self.codec = Some(Codec { decoder, encoder });
 		}
 
@@ -193,6 +204,7 @@ impl Crossfader {
 		let mut encoder =
 			opus::Encoder::new(SAMPLE_RATE, opus::Channels::Stereo, opus::Application::Audio)?;
 		encoder.set_bitrate(opus::Bitrate::Bits(128_000))?;
+		encoder.set_complexity(ENCODER_COMPLEXITY)?;
 		Ok(Self {
 			decoder_a: opus::Decoder::new(SAMPLE_RATE, opus::Channels::Stereo)?,
 			decoder_b: opus::Decoder::new(SAMPLE_RATE, opus::Channels::Stereo)?,
@@ -228,10 +240,12 @@ impl Crossfader {
 		let angle = progress * std::f32::consts::FRAC_PI_2;
 		let (gain_a, gain_b) = (angle.cos(), angle.sin());
 
-		for index in 0..filled {
-			let mixed =
-				self.pcm_a[index] as f32 * gain_a + self.pcm_b[index] as f32 * gain_b;
-			self.pcm_a[index] = mixed.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+		// Zipped rather than indexed: the pair of slices carries its own length,
+		// so the mix is one bounds check instead of two per sample and the
+		// compiler is free to vectorise it.
+		for (a, b) in self.pcm_a[..filled].iter_mut().zip(&self.pcm_b[..filled]) {
+			let mixed = *a as f32 * gain_a + *b as f32 * gain_b;
+			*a = mixed.clamp(i16::MIN as f32, i16::MAX as f32) as i16;
 		}
 
 		self.written = self.encoder.encode(&self.pcm_a[..filled], &mut self.out)?;
@@ -245,12 +259,27 @@ impl Crossfader {
 /// codec round trip does not preserve amplitudes closely enough to assert on,
 /// but this does.
 fn apply_gain(pcm: &mut [i16], from: f32, to: f32) {
-	let span = pcm.len().max(1) as f32;
+	const LOW: f32 = i16::MIN as f32;
+	const HIGH: f32 = i16::MAX as f32;
+
+	// Outside a ramp — which is all but two frames of a volume change — the gain
+	// is one constant for the whole block, and the loop is a multiply the
+	// compiler can put through the vector unit. Written as one branch rather
+	// than leaving the interpolation in place because a per-sample divide and an
+	// index-to-float conversion are what stop that from happening.
+	if from == to {
+		for sample in pcm.iter_mut() {
+			// Saturating rather than wrapping: a wrap turns a loud passage into
+			// white noise, which is the worst way for a volume control to fail.
+			*sample = (*sample as f32 * from).clamp(LOW, HIGH) as i16;
+		}
+		return;
+	}
+
+	let step = (to - from) / pcm.len().max(1) as f32;
 	for (index, sample) in pcm.iter_mut().enumerate() {
-		let gain = from + (to - from) * (index as f32 / span);
-		// Saturating rather than wrapping: a wrap turns a loud passage into
-		// white noise, which is the worst way for a volume control to fail.
-		*sample = (*sample as f32 * gain).clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+		let gain = from + step * index as f32;
+		*sample = (*sample as f32 * gain).clamp(LOW, HIGH) as i16;
 	}
 }
 

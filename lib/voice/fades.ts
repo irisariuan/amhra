@@ -44,19 +44,31 @@ export function nextFades(current: Fades, change: Partial<Fades>): Fades {
 }
 
 /**
- * What a guild's fades should be after the global default changes.
+ * What a guild's fades should become after the global default changes, or
+ * `null` when they should be left exactly as they are.
  *
  * A guild nobody has adjusted follows the new default. One that has been
  * adjusted keeps its own values, the same way a guild's volume survives an
  * edit to VOLUME_MODIFIER — otherwise saving an unrelated setting would
  * silently undo whatever was set from the player controls.
+ *
+ * Null rather than the unchanged pair, because the caller's next move is to
+ * push the values across a process boundary: "nothing changed" and "changed to
+ * the same numbers" are the same fades but not the same amount of work.
  */
-export function defaultedFades(
+export function syncedFades(
 	current: Fades,
 	overridden: boolean,
 	fromSetting: Fades,
-): Fades {
-	return overridden ? current : fromSetting;
+): Fades | null {
+	if (overridden) return null;
+	if (
+		fromSetting.crossfadeMs === current.crossfadeMs &&
+		fromSetting.skipFadeMs === current.skipFadeMs
+	) {
+		return null;
+	}
+	return fromSetting;
 }
 
 /** Read a pair of fades from loosely-typed settings, with the defaults. */

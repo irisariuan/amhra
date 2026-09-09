@@ -62,6 +62,20 @@ struct GuildSession {
 	gain: f32,
 }
 
+impl GuildSession {
+	/// Close this session for good, in the one order that is safe.
+	///
+	/// The flag has to be cleared before the gateway is closed, and every way a
+	/// session ends — replaced, told to leave, or caught by shutdown — has to do
+	/// it. Written once because it was previously written three times, and the
+	/// third copy had already forgotten the flag.
+	async fn stand_down(self) {
+		self.alive.store(false, Ordering::Relaxed);
+		self.gateway.close().await;
+		self.worker.shutdown();
+	}
+}
+
 #[tokio::main]
 async fn main() {
 	let cache_dir = std::env::args()
@@ -129,8 +143,7 @@ async fn main() {
 
 	eprintln!("shutting down {} guild(s)", guilds.len());
 	for (_, session) in guilds.drain() {
-		session.gateway.close().await;
-		session.worker.shutdown();
+		session.stand_down().await;
 	}
 }
 
@@ -145,9 +158,7 @@ async fn dispatch(
 			// Reconnecting to the same guild replaces the old session rather
 			// than leaving two things sending to one channel.
 			if let Some(existing) = guilds.remove(&guild_id) {
-				existing.alive.store(false, Ordering::Relaxed);
-				existing.gateway.close().await;
-				existing.worker.shutdown();
+				existing.stand_down().await;
 			}
 
 			let worker = match Worker::spawn(guild_id.clone(), events.clone()) {
@@ -201,9 +212,7 @@ async fn dispatch(
 
 		Command::Disconnect { guild_id } => {
 			if let Some(session) = guilds.remove(&guild_id) {
-				session.alive.store(false, Ordering::Relaxed);
-				session.gateway.close().await;
-				session.worker.shutdown();
+				session.stand_down().await;
 				let _ = events.send(Event::Disconnected {
 					guild_id,
 					reason: "asked to leave".to_owned(),
@@ -212,43 +221,25 @@ async fn dispatch(
 		}
 
 		Command::Play { guild_id, track_id, start_ms } => {
-			let Some(session) = guilds.get_mut(&guild_id) else {
-				return not_connected(events, &guild_id);
-			};
-			match CacheReader::open(cache_dir, &track_id) {
-				Ok(reader) => {
-					session.track_id = Some(track_id.clone());
-					session.position_ms = start_ms;
-					session.paused = false;
-					session.worker.send(WorkerCommand::Play {
-						track_id,
-						reader: Box::new(reader),
-						start_ms,
-					});
-				}
-				Err(error) => {
-					let _ = events.send(Event::Error {
-						guild_id: Some(guild_id),
-						message: format!("cannot play {track_id}: {error}"),
-					});
-				}
+			if let Some((session, reader)) =
+				with_track(guilds, events, &guild_id, &track_id, cache_dir, "play")
+			{
+				session.track_id = Some(track_id.clone());
+				session.position_ms = start_ms;
+				session.paused = false;
+				session.worker.send(WorkerCommand::Play {
+					track_id,
+					reader: Box::new(reader),
+					start_ms,
+				});
 			}
 		}
 
 		Command::SetNext { guild_id, track_id } => {
-			let Some(session) = guilds.get_mut(&guild_id) else {
-				return not_connected(events, &guild_id);
-			};
-			match CacheReader::open(cache_dir, &track_id) {
-				Ok(reader) => session
-					.worker
-					.send(WorkerCommand::SetNext { track_id, reader: Box::new(reader) }),
-				Err(error) => {
-					let _ = events.send(Event::Error {
-						guild_id: Some(guild_id),
-						message: format!("cannot queue {track_id}: {error}"),
-					});
-				}
+			if let Some((session, reader)) =
+				with_track(guilds, events, &guild_id, &track_id, cache_dir, "queue")
+			{
+				session.worker.send(WorkerCommand::SetNext { track_id, reader: Box::new(reader) });
 			}
 		}
 
@@ -318,6 +309,35 @@ fn with_guild(
 	match guilds.get_mut(guild_id) {
 		Some(session) => act(session),
 		None => not_connected(events, guild_id),
+	}
+}
+
+/// The connected guild and an open cache file, or nothing and a reported reason.
+///
+/// The two commands that name a track — play it now, queue it for the seam —
+/// both have the same two ways of not happening, and `verb` is all that differs
+/// between what they say when the file will not open.
+fn with_track<'a>(
+	guilds: &'a mut HashMap<String, GuildSession>,
+	events: &Sender<Event>,
+	guild_id: &str,
+	track_id: &str,
+	cache_dir: &std::path::Path,
+	verb: &str,
+) -> Option<(&'a mut GuildSession, CacheReader)> {
+	let Some(session) = guilds.get_mut(guild_id) else {
+		not_connected(events, guild_id);
+		return None;
+	};
+	match CacheReader::open(cache_dir, track_id) {
+		Ok(reader) => Some((session, reader)),
+		Err(error) => {
+			let _ = events.send(Event::Error {
+				guild_id: Some(guild_id.to_owned()),
+				message: format!("cannot {verb} {track_id}: {error}"),
+			});
+			None
+		}
 	}
 }
 

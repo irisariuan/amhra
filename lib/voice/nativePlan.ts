@@ -94,3 +94,76 @@ export function positionFrom(
 	if (paused) return anchor.ms;
 	return anchor.ms + Math.max(0, now - anchor.at);
 }
+
+/**
+ * Everything a player knows about the sidecar playing for it.
+ *
+ * These three travelled together as separate fields on the player: set
+ * together, cleared together in three different places, and meaningless on a
+ * player driving @discordjs/voice instead. Held as one object, a player either
+ * has one — and is native — or has none, so there is no longer a way to write a
+ * sidecar-only field on the path with no sidecar behind it.
+ */
+export class NativePlayback {
+	/**
+	 * The track handed to the sidecar as "what comes next", so the seam can be
+	 * crossfaded. Null when nothing is armed.
+	 */
+	armed: string | null = null;
+	/**
+	 * The last position the sidecar reported, and when it arrived. Reports come
+	 * about once a second, so the wall clock fills the gaps between them.
+	 */
+	anchor: PositionAnchor | null = null;
+	/**
+	 * The track the sidecar moved to by itself when the last one ended.
+	 *
+	 * Recorded the moment it is known rather than read off `armed` later: the
+	 * queue advance is asynchronous, and a position report arriving part-way
+	 * through it re-arms whatever is at the head of the queue by then.
+	 */
+	promoted: Promotion | null = null;
+
+	/** Nothing playing, nothing armed, nothing promoted. */
+	clear() {
+		this.armed = null;
+		this.anchor = null;
+		this.promoted = null;
+	}
+
+	/** Pin the position to `ms` as of `now`: a report, a seek, a track start. */
+	anchorAt(ms: number, now: number) {
+		this.anchor = { ms, at: now };
+	}
+
+	/**
+	 * Start counting from now again, at the position already anchored.
+	 *
+	 * What unpausing needs: time is running once more, but it has not been
+	 * running since the last report, which arrived before the pause.
+	 */
+	resumeAt(now: number) {
+		if (this.anchor) this.anchor = { ...this.anchor, at: now };
+	}
+
+	/** Where playback is now, or null when nothing has been reported yet. */
+	positionAt(paused: boolean, now: number) {
+		return positionFrom(this.anchor, paused, now);
+	}
+
+	/**
+	 * Take the armed track as the one the sidecar has just moved to, and stop
+	 * considering it armed — it is playing now, not standing by.
+	 */
+	promote(now: number) {
+		this.promoted = this.armed ? { trackId: this.armed, at: now } : null;
+		this.armed = null;
+	}
+
+	/** The promotion to weigh against a `play`, taken and forgotten in one go. */
+	takePromotion() {
+		const promoted = this.promoted;
+		this.promoted = null;
+		return promoted;
+	}
+}

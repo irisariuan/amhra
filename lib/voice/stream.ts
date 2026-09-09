@@ -21,8 +21,7 @@ import { CHANNELS, SAMPLE_RATE } from "./opus";
 import {
 	killNativeFetches,
 	nativeFetch,
-	nativeFetchAvailable,
-	nativeFetchEnabled,
+	nativeFetchBin,
 	nativeFetchReady,
 } from "./nativeFetch";
 import { stopSidecar } from "./sidecar";
@@ -52,8 +51,8 @@ const streams = new Map<string, YtDlpStream>();
  */
 let warnedAboutMissingBinary = false;
 function useNativeFetch() {
-	if (!nativeFetchEnabled()) return false;
-	if (nativeFetchAvailable()) return true;
+	if (!nativeFetchBin.enabled()) return false;
+	if (nativeFetchBin.available()) return true;
 	if (!warnedAboutMissingBinary) {
 		warnedAboutMissingBinary = true;
 		globalApp.warn(

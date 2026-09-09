@@ -36,8 +36,9 @@ export interface OpusEngine {
 export function loadNativeOpus(): NativeOpus | null {
 	try {
 		return require("@discordjs/opus") as NativeOpus;
-	} catch {
+	} catch (e) {
 		// Fall through to the prebuild scan below
+		console.error(`Failed to load @discordjs/opus directly, trying to find load the binary...\nDetails: ${e}`)
 	}
 	try {
 		const root = dirname(dirname(require.resolve("@discordjs/opus")));

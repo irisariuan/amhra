@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
-import { Sidecar, fadeSettings, sidecarBinary } from "../lib/voice/sidecar";
+import { Sidecar, fadeSettings, sidecarBin } from "../lib/voice/sidecar";
 
 /**
  * Tests for the voice sidecar client, run against the real Rust process.
@@ -12,11 +11,11 @@ import { Sidecar, fadeSettings, sidecarBinary } from "../lib/voice/sidecar";
  * "run bun run build:rust", not "the code is broken".
  */
 
-const built = existsSync(sidecarBinary());
+const built = sidecarBin.available();
 const describeBuilt = built ? describe : describe.skip;
 
 if (!built) {
-	console.warn(`skipping sidecar tests: ${sidecarBinary()} is not built`);
+	console.warn(`skipping sidecar tests: ${sidecarBin.path()} is not built`);
 }
 
 /** Wait for the first event of a type, with a deadline. */

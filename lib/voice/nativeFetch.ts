@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
+import { nativeBinary } from "./nativeBinary";
 
 /**
  * Downloads through the Rust fetcher (`rust/amhra-fetch`) instead of yt-dlp.
@@ -50,24 +51,11 @@ interface InFlight {
 
 const inFlight = new Map<string, InFlight>();
 
-export function nativeFetchEnabled() {
-	return readSetting().USE_NATIVE_FETCH === true;
-}
-
-/**
- * Where the binary lives. `cargo build --release` puts it in the workspace
- * target directory; a packaged deployment can point elsewhere.
- */
-export function nativeFetchBinary() {
-	return (
-		readSetting().NATIVE_FETCH_BIN ??
-		`${process.cwd()}/rust/target/release/amhra-fetch`
-	);
-}
-
-export function nativeFetchAvailable() {
-	return existsSync(nativeFetchBinary());
-}
+export const nativeFetchBin = nativeBinary(
+	(setting) => setting.USE_NATIVE_FETCH,
+	(setting) => setting.NATIVE_FETCH_BIN,
+	"amhra-fetch",
+);
 
 /** Cancel every running download, for shutdown */
 export function killNativeFetches() {
@@ -94,9 +82,15 @@ export function nativeFetch(
 	const existing = inFlight.get(id);
 	if (existing && !force) return existing.promise;
 
-	const binary = nativeFetchBinary();
+	const binary = nativeFetchBin.path();
 	const args = [id, "--cache-dir", `${process.cwd()}/cache`];
 	if (force) args.push("--force");
+	// The client ladder is compiled into the binary, so a client YouTube
+	// retires would otherwise need a rebuild to replace. Handing the fetcher an
+	// operator file when one exists makes that a JSON edit and a restart, which
+	// is the difference between fixing playback now and waiting on a release.
+	const clients = `${process.cwd()}/data/youtube-clients.json`;
+	if (existsSync(clients)) args.push("--profiles", clients);
 
 	dcb.log(`Native fetch: ${id}`);
 	const child = spawn(binary, args, { stdio: ["ignore", "pipe", "pipe"] });

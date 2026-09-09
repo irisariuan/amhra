@@ -1,11 +1,15 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { existsSync } from "node:fs";
 import type { Guild, VoiceBasedChannel } from "discord.js";
 import { z } from "zod";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { fadesFrom } from "./fades";
+import { nativeBinary } from "./nativeBinary";
+import type {
+	Command as WireCommand,
+	Event as WireEvent,
+} from "../../rust/amhra-sidecar/bindings/protocol";
 
 /**
  * Client for the Rust voice sidecar.
@@ -46,6 +50,12 @@ const sessionState = z.object({
  * declarations live in that crate's bindings/protocol.d.ts. Parsed rather than
  * cast: this is a process boundary, and a version skew should be a clear error
  * rather than an undefined field three calls later.
+ *
+ * The declarations cannot replace this — a type checks nothing at runtime,
+ * which is the whole job here — so `sameShape` below checks the two against
+ * each other at compile time instead. Adding a variant on the Rust side and
+ * forgetting this one is then a build failure rather than a parse error in
+ * production.
  */
 const event = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("hello"), version: z.number(), pid: z.number() }),
@@ -73,44 +83,28 @@ const event = z.discriminatedUnion("type", [
 export type SidecarEvent = z.infer<typeof event>;
 export type SidecarSession = z.infer<typeof sessionState>;
 
-export type SidecarCommand =
-	| {
-			type: "connect";
-			guildId: string;
-			channelId: string;
-			userId: string;
-			sessionId: string;
-			endpoint: string;
-			token: string;
-	  }
-	| { type: "disconnect"; guildId: string }
-	| { type: "play"; guildId: string; trackId: string; startMs?: number }
-	| { type: "setNext"; guildId: string; trackId: string }
-	| { type: "clearNext"; guildId: string }
-	| { type: "skip"; guildId: string }
-	| { type: "stop"; guildId: string }
-	| { type: "pause"; guildId: string }
-	| { type: "resume"; guildId: string }
-	| { type: "seek"; guildId: string; positionMs: number }
-	| { type: "setVolume"; guildId: string; gain: number }
-	| { type: "setFades"; guildId: string; crossfadeMs: number; skipFadeMs: number }
-	| { type: "listSessions" }
-	| { type: "shutdown" };
+/**
+ * The commands, taken from the Rust definition rather than restated here.
+ * Nothing about them needs checking at runtime — this side is the one writing
+ * them — so the generated declaration is the whole story.
+ */
+export type SidecarCommand = WireCommand;
 
-export function sidecarBinary() {
-	return (
-		readSetting().NATIVE_VOICE_BIN ??
-		`${process.cwd()}/rust/target/release/amhra-sidecar`
-	);
-}
+/** True only when the two types are each other, not merely assignable. */
+type SameShape<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
-export function sidecarEnabled() {
-	return readSetting().USE_RUST_VOICE === true;
-}
+/**
+ * Fails to compile when the schema above and the Rust enum have drifted.
+ * Regenerate the declarations with `cargo test --manifest-path rust/Cargo.toml`.
+ */
+const sameShape: SameShape<SidecarEvent, WireEvent> = true;
+void sameShape;
 
-export function sidecarAvailable() {
-	return existsSync(sidecarBinary());
-}
+export const sidecarBin = nativeBinary(
+	(setting) => setting.USE_RUST_VOICE,
+	(setting) => setting.NATIVE_VOICE_BIN,
+	"amhra-sidecar",
+);
 
 /**
  * A running sidecar process, restarted if it dies.
@@ -130,7 +124,7 @@ export class Sidecar extends EventEmitter {
 		if (this.child) return;
 		this.stopping = false;
 
-		const binary = sidecarBinary();
+		const binary = sidecarBin.path();
 		dcb.log(`Starting voice sidecar: ${binary}`);
 		const child = spawn(binary, ["--cache-dir", `${process.cwd()}/cache`], {
 			stdio: ["pipe", "pipe", "pipe"],
