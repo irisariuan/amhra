@@ -49,20 +49,22 @@ export async function sendSearchAlternatives({
 	if (choices.length < 2) return;
 
 	const language = player.currentLanguage;
+	/** The menu with `selectedUrl` shown as the current pick. */
+	const optionsFor = (selectedUrl: string) =>
+		choices.map((video, index) => ({
+			label: trim(video.title, 100),
+			description: trim(
+				`${video.channel.name} · ${timeFormat(video.durationInSec)}`,
+				100,
+			),
+			value: String(index),
+			default: video.url === selectedUrl,
+		}));
+
 	const menu = new StringSelectMenuBuilder()
 		.setCustomId(SELECT_ID)
 		.setPlaceholder(languageText("search_pick_placeholder", language))
-		.addOptions(
-			choices.map((video, index) => ({
-				label: trim(video.title, 100),
-				description: trim(
-					`${video.channel.name} · ${timeFormat(video.durationInSec)}`,
-					100,
-				),
-				value: String(index),
-				default: video.url === chosenUrl,
-			})),
-		);
+		.addOptions(optionsFor(chosenUrl));
 
 	const message = await interaction
 		.followUp({
@@ -99,22 +101,36 @@ export async function sendSearchAlternatives({
 			return;
 		}
 
-		const swapped = await swapTrack(player, currentUrl, picked.url);
-		if (!swapped) {
-			await component
-				.update({
+		// Acknowledge before doing any of the work.
+		//
+		// Swapping a track builds a resource, which can mean waiting on a
+		// download to start, and Discord discards a component interaction that
+		// has not been answered within three seconds. Replying afterwards then
+		// fails, and since the failure was swallowed the switch happened with
+		// nothing at all shown for it.
+		const acknowledged = await component.deferUpdate().then(
+			() => true,
+			(error: Error) => {
+				globalApp.err("Search pick could not acknowledge the choice", error);
+				return false;
+			},
+		);
+		if (!acknowledged) return;
+
+		try {
+			const swapped = await swapTrack(player, currentUrl, picked.url);
+			if (!swapped) {
+				await component.editReply({
 					content: languageText("search_pick_gone", language),
 					components: [],
-				})
-				.catch(() => {});
-			collector.stop("gone");
-			return;
-		}
+				});
+				collector.stop("gone");
+				return;
+			}
 
-		currentUrl = picked.url;
-		dcb.log(`Search pick switched to ${picked.url}`);
-		await component
-			.update({
+			currentUrl = picked.url;
+			dcb.log(`Search pick switched to ${picked.url}`);
+			await component.editReply({
 				content: languageText("search_pick_switched", language, {
 					title: picked.title,
 					url: picked.url,
@@ -123,20 +139,23 @@ export async function sendSearchAlternatives({
 				components: [
 					new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
 						StringSelectMenuBuilder.from(menu).setOptions(
-							choices.map((video, index) => ({
-								label: trim(video.title, 100),
-								description: trim(
-									`${video.channel.name} · ${timeFormat(video.durationInSec)}`,
-									100,
-								),
-								value: String(index),
-								default: video.url === currentUrl,
-							})),
+							optionsFor(currentUrl),
 						),
 					),
 				],
-			})
-			.catch(() => {});
+			});
+		} catch (error) {
+			// Reported rather than dropped: a silent catch here is what made a
+			// missing confirmation impossible to tell apart from a switch that
+			// never happened.
+			globalApp.err("Search pick failed to switch track", error as Error);
+			await component
+				.editReply({
+					content: languageText("error", language),
+					components: [],
+				})
+				.catch(() => {});
+		}
 	});
 
 	collector.on("end", (_collected, reason) => {
@@ -156,10 +175,10 @@ async function swapTrack(
 	nextUrl: string,
 ) {
 	if (player.nowPlaying?.url === currentUrl) {
-		const resource = await createResource(nextUrl).catch((error) => {
-			globalApp.err(`Search pick failed to build resource: ${error}`);
-			return null;
-		});
+		// A failure to build the resource is not the same as the track being
+		// gone, so it is left to throw: the caller says "something went wrong"
+		// rather than the misleading "that track is no longer here".
+		const resource = await createResource(nextUrl);
 		if (!resource) return false;
 		player.playResource(resource);
 		return true;

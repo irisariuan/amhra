@@ -31,15 +31,16 @@ export function writeJsonSync(file: string, data: object) {
 
 export type LogFile = "errim" | "error" | "errwn" | "express" | "main";
 
+/**
+ * Everything the bot is configured with, except credentials.
+ *
+ * Tokens live in `.env` and are read through `lib/secrets.ts`: this file is
+ * edited from the dashboard, served to it as a schema, and written by the setup
+ * tools, so it is the wrong place for anything bearer-shaped.
+ */
 export interface Setting {
-	TOKEN: string;
 	CLIENT_ID: string;
-
 	TEST_CLIENT_ID: string;
-	TESTING_TOKEN: string;
-
-	OAUTH_TOKEN: string;
-	AUTH_TOKEN: string;
 
 	QUEUE_SIZE: number;
 	HTTPS: boolean;
@@ -51,6 +52,24 @@ export interface Setting {
 	PRELOAD: LogFile[];
 	DETAIL_LOGGING: boolean;
 	USE_YOUTUBE_DL: boolean;
+	/** Download through the Rust fetcher instead of yt-dlp */
+	USE_NATIVE_FETCH?: boolean;
+	/** Override the amhra-fetch binary path; defaults to the cargo build output */
+	NATIVE_FETCH_BIN?: string;
+	/** Play through the Rust voice sidecar instead of @discordjs/voice */
+	USE_RUST_VOICE?: boolean;
+	/**
+	 * Overlap between one track and the next, in milliseconds. Zero is a hard
+	 * cut. Only the Rust voice path can blend; the legacy path ignores it.
+	 */
+	CROSSFADE_IN_MS?: number;
+	/**
+	 * Overlap when a listener skips, in milliseconds. Kept separate from
+	 * CROSSFADE_IN_MS because a skip should feel immediate rather than mixed.
+	 */
+	SKIP_FADE_IN_MS?: number;
+	/** Override the amhra-sidecar binary path; defaults to the cargo build output */
+	NATIVE_VOICE_BIN?: string;
 	SEEK: boolean;
 	AUTO_LEAVE: number;
 	PREFIX: string;

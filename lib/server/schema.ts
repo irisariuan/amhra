@@ -1,6 +1,6 @@
 import z from "zod";
 import { SongEditType } from "./event";
-import { isYouTubeVideo } from "../youtube";
+import { isYouTubePlaylist, isYouTubeVideo } from "../youtube";
 import { Language } from "../interaction";
 
 // Queue item (from custom.ts)
@@ -73,6 +73,28 @@ const AddSongSchema = z.object({
 	}),
 });
 
+/**
+ * AddPlaylist: queue every video of a YouTube playlist.
+ *
+ * `next` puts the set at the head of the queue, the dashboard's equivalent of
+ * `/play next:true`. The videos are resolved server-side, so the dashboard only
+ * has to hand over the link the user pasted.
+ */
+const AddPlaylistSchema = z.object({
+	action: z.literal(SongEditType.AddPlaylist),
+	guildId: z.string(),
+	detail: z.object({
+		url: z
+			.string()
+			.refine(
+				(u) => isYouTubePlaylist(u),
+				"Must be a valid YouTube playlist URL",
+			),
+		next: z.boolean().default(false),
+		force: z.boolean().default(false),
+	}),
+});
+
 // RemoveSong: requires detail.index
 const RemoveSongSchema = z.object({
 	action: z.literal(SongEditType.RemoveSong),
@@ -89,6 +111,28 @@ const SetVolumeSchema = z.object({
 	detail: z.object({
 		volume: z.number().nonnegative().max(5, "Volume must be <= 5"),
 	}),
+});
+
+/**
+ * SetCrossfade: the live per-guild version of the CROSSFADE_IN_MS setting.
+ *
+ * Bounded the same way the global setting is — a fade longer than a short
+ * track would never finish before the next one began — and both halves are
+ * optional so a slider can move one without knowing about the other.
+ */
+const SetCrossfadeSchema = z.object({
+	action: z.literal(SongEditType.SetCrossfade),
+	guildId: z.string(),
+	detail: z
+		.object({
+			crossfadeMs: z.number().int().min(0).max(15_000).optional(),
+			skipFadeMs: z.number().int().min(0).max(5_000).optional(),
+		})
+		.refine(
+			(detail) =>
+				detail.crossfadeMs !== undefined || detail.skipFadeMs !== undefined,
+			{ message: "Give at least one of crossfadeMs or skipFadeMs" },
+		),
 });
 
 // SetQueue: requires array of queue items
@@ -129,8 +173,10 @@ export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	UnmuteSchema,
 	SetTimeSchema,
 	AddSongSchema,
+	AddPlaylistSchema,
 	RemoveSongSchema,
 	SetVolumeSchema,
+	SetCrossfadeSchema,
 	SetQueueSchema,
 	LoopSchema,
 	AutoSuggestSchema,
@@ -151,14 +197,15 @@ export const UserSettingUploadSchema = z.object({
  * The editable global bot configuration. Required fields mirror
  * `data/settingSchema.json`; the remaining documented settings are optional
  * so existing installations can upgrade without first adding every key.
+ *
+ * Credentials are deliberately absent: they live in `.env` and are read through
+ * `lib/secrets.ts`, so the dashboard can neither read them back nor overwrite
+ * them with a PATCH.
  */
 export const GlobalSettingSchema = z
 	.object({
-		TOKEN: z.string(),
-		TESTING_TOKEN: z.string().optional(),
 		PREFIX: z.string().optional(),
 		CLIENT_ID: z.string(),
-		OAUTH_TOKEN: z.string(),
 		REDIRECT_URI: z.string(),
 		PRELOAD: z
 			.array(z.enum(["errim", "error", "errwn", "express", "main"]))
@@ -166,7 +213,6 @@ export const GlobalSettingSchema = z
 		RATE_LIMIT: z.number().int().optional(),
 		DETAIL_LOGGING: z.boolean().optional(),
 		QUEUE_SIZE: z.number().int().optional(),
-		AUTH_TOKEN: z.string(),
 		TEST_CLIENT_ID: z.string().optional(),
 		PORT: z.number().int().min(0).max(65535).optional(),
 		WEBSITE: z.string().nullable().optional(),
@@ -182,5 +228,9 @@ export const GlobalSettingSchema = z
 		MAX_STREAM_BUFFER_IN_MB: z.number().positive().optional(),
 		MESSAGE_LOGGING: z.boolean().optional(),
 		VOICE_LOGGING: z.boolean().optional(),
+		// Bounded rather than merely positive: a fade longer than the shortest
+		// plausible track would never finish before the next one started.
+		CROSSFADE_IN_MS: z.number().int().min(0).max(15_000).optional(),
+		SKIP_FADE_IN_MS: z.number().int().min(0).max(5_000).optional(),
 	})
 	.passthrough();

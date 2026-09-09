@@ -8,9 +8,11 @@ export enum SongEditType {
 	Skip = "skip",
 	Stop = "stop",
 	AddSong = "addSong",
+	AddPlaylist = "addPlaylist",
 	SetTime = "setTime",
 	RemoveSong = "removeSong",
 	SetVolume = "setVolume",
+	SetCrossfade = "setCrossfade",
 	SetQueue = "setQueue",
 	Quit = "quit",
 	Mute = "mute",
@@ -25,6 +27,8 @@ export type ExpressEventDetail = {
 	sec?: number;
 	index?: number;
 	volume?: number;
+	crossfadeMs?: number;
+	skipFadeMs?: number;
 	queue?: QueueItem[];
 	time?: number;
 	loop?: boolean;

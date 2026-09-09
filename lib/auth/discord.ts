@@ -1,7 +1,7 @@
 import NodeCache from "node-cache";
-import { client } from "../client";
 import { prisma } from "../db/core";
 import { createWebAccount } from "../db/account";
+import { requireSecret } from "../secrets";
 import { readSetting } from "../setting";
 import type { Account } from "@prisma/client";
 
@@ -26,7 +26,7 @@ async function exchangeCode(code: string): Promise<DiscordOAuthData | null> {
 			method: "POST",
 			body: new URLSearchParams({
 				client_id: setting.CLIENT_ID,
-				client_secret: setting.OAUTH_TOKEN,
+				client_secret: requireSecret("OAUTH_TOKEN"),
 				code,
 				grant_type: "authorization_code",
 				redirect_uri: setting.REDIRECT_URI,
@@ -101,6 +101,23 @@ export async function unlinkDiscord(accountId: string): Promise<void> {
 		.catch(() => {});
 }
 
+/**
+ * The account a Discord user is linked to, or null if they never linked one.
+ *
+ * Linking is what makes a Discord identity usable for anything privileged: the
+ * permission bits live on the account, not on the Discord user, so a command
+ * that wants an admin has to come through here rather than trust a user ID.
+ */
+export async function getAccountByDiscordId(
+	discordId: string,
+): Promise<Account | null> {
+	const identity = await prisma.discordIdentity.findUnique({
+		where: { discordId },
+		include: { account: true },
+	});
+	return identity?.account ?? null;
+}
+
 async function refreshDiscordToken(
 	discordId: string,
 ): Promise<string | null> {
@@ -112,7 +129,7 @@ async function refreshDiscordToken(
 		method: "POST",
 		body: new URLSearchParams({
 			client_id: setting.CLIENT_ID,
-			client_secret: setting.OAUTH_TOKEN,
+			client_secret: requireSecret("OAUTH_TOKEN"),
 			refresh_token: identity.refreshToken,
 			grant_type: "refresh_token",
 		}).toString(),
@@ -162,7 +179,13 @@ export async function getLinkedUserGuilds(
 	return guilds;
 }
 
-export function getAllPlayingGuilds() {
+export async function getAllPlayingGuilds() {
+	// Loaded here rather than at the top of the file. `lib/client` builds its
+	// command map while it is being imported, and that map loads every command
+	// module — one of which reaches this file. Importing the client up here
+	// closes that circle: whichever of the two is loaded first sees the other
+	// half-built, and the command that started it has no `default` yet.
+	const { client } = await import("../client.js");
 	return Promise.all(
 		Array.from(client.player.keys()).map(async v => ({
 			id: v,

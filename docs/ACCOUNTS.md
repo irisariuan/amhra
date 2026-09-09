@@ -47,7 +47,13 @@ The old shared admin password is gone — admin is now a per-account flag, grant
 
 ### Player & data (auth via Session or Anon)
 `/api/song/get/:guildId`, `/api/song/edit`, `/api/live`, `/api/search`, `/api/getVideoDetail`,
-`/api/suggestions/:guildId`, `/api/playingGuildIds`, `/api/setting` (GET/POST).
+`/api/getPlaylistDetail`, `/api/suggestions/:guildId`, `/api/playingGuildIds`, `/api/setting` (GET/POST).
+
+`/api/getPlaylistDetail` takes `{ url }` (a YouTube playlist link, including a
+`watch?v=…&list=…` one) and returns `{ url, title, videos[] }` so the dashboard can
+show a playlist before queueing it. To queue it, POST `/api/song/edit` with
+`{ action: "addPlaylist", guildId, detail: { url, next?, force? } }` — every video is
+added, and playback starts if the guild was idle.
 Admin-only (`Session`, admin bit): `/api/log`, `/api/action`, `/api/admin/settings` (GET/POST), `/api/guildIds/all`.
 
 `/api/admin/settings` exposes and updates the non-secret global `data/setting.json` configuration. Bot, OAuth, and API tokens remain server-only and are preserved when other settings are updated.

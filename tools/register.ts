@@ -7,6 +7,7 @@ import {
 	Routes,
 	type SlashCommandBuilder,
 } from "discord.js";
+import { requireSecret } from "../lib/secrets";
 import { readSetting } from "../lib/setting";
 import { select } from "@inquirer/prompts";
 import { loadCommandsJson } from "../lib/core";
@@ -124,7 +125,7 @@ function loadLocale(
 		],
 		message: "Mode",
 	});
-	const token = result === "prod" ? setting.TOKEN : setting.TESTING_TOKEN;
+	const token = requireSecret(result === "prod" ? "TOKEN" : "TESTING_TOKEN");
 	const clientId =
 		result === "prod" ? setting.CLIENT_ID : setting.TEST_CLIENT_ID;
 

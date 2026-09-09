@@ -30,18 +30,16 @@ Follow instructions and finish setup
 
 ### Manual Setup (Not recommended)
 
-Set `TOKEN` to your custom token and `PORT` to desired port
-> If you want to run tweak it and run it on your testing bot, you may also set `TESTING_TOKEN` and `TEST_CLIENT_ID`
+Put `TOKEN` in `.env` (see `.env.example`) and set `PORT` in `data/setting.json`
+> If you want to tweak it and run it on your testing bot, you may also set `TESTING_TOKEN` in `.env` and `TEST_CLIENT_ID` in `data/setting.json`
+
+> Credentials live in `.env` only. `data/setting.json` is served to the dashboard, so nothing bearer-shaped belongs in it.
 
 Set `CLIENT_ID` to your bot application ID for command registration, then run `node tools/register.js` or `bun tools/register.js` to register commands
 
 Reference `data/settingSchema.json` for more options
 
 If you want to limit API usage, you may enable rate limit for the `ENABLE_RATE_LIMIT` option
-
-You may replace `AUTH_TOKEN` with `tool/hash.js`
-
-> The default token for `AUTH_TOKEN` is `amhraBotDashboard`
 
 ### Misc
 This project is built with [Amhra Dashboard](https://github.com/irisariuan/amhraDashboard), make sure you check out the dashboard there!

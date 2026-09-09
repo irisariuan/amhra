@@ -10,9 +10,11 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// Prisma 7 moved the connection URL out of the schema: the CLI reads it from
+// prisma.config.ts, and the client gets it through the driver adapter in
+// lib/db/core.ts. See docs/ACCOUNTS.md for what lives in this database.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum AccountType {

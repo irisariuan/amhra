@@ -4,9 +4,11 @@ import { client } from "./lib/client";
 import { calculateHash } from "./lib/core";
 import { exp, globalApp } from "./lib/misc";
 import { initServer } from "./lib/server/core";
+import { hasSecret, requireSecret } from "./lib/secrets";
 import { readSetting } from "./lib/setting";
 import { watch } from "node:fs";
 import { updateYtdlpVersion } from "./lib/voice/ytdlp";
+import { bindNativeVoice, nativeVoiceActive } from "./lib/voice/native";
 
 const setting = readSetting();
 
@@ -14,19 +16,23 @@ const setting = readSetting();
 	const hash = await calculateHash();
 	console.log(`Running on version ${chalk.bold(hash)}`);
 	let result: "prod" | "dev";
-	if (process.argv.includes("--prod") && setting.TOKEN) {
+	if (process.argv.includes("--prod") && hasSecret("TOKEN")) {
 		console.log(chalk.bgGreen.whiteBright("Flagged Production Mode"));
 		result = "prod";
 	} else {
 		const choices: { name: string; value: "prod" | "dev" }[] = [];
-		if (setting.TOKEN) {
+		if (hasSecret("TOKEN")) {
 			choices.push({ name: "Production", value: "prod" });
 		}
-		if (setting.TESTING_TOKEN) {
+		if (hasSecret("TESTING_TOKEN")) {
 			choices.push({ name: "Development", value: "dev" });
 		}
 		if (choices.length === 0) {
-			return console.log(chalk.bgRed.whiteBright("No token is provided"));
+			return console.log(
+				chalk.bgRed.whiteBright(
+					"No token is provided: set TOKEN or TESTING_TOKEN in .env",
+				),
+			);
 		}
 		result = await select({ choices: choices, message: "Mode" });
 	}
@@ -61,7 +67,14 @@ const setting = readSetting();
 		}
 	}
 
-	const token = { prod: setting.TOKEN, dev: setting.TESTING_TOKEN }[result];
+	const token = requireSecret(result === "prod" ? "TOKEN" : "TESTING_TOKEN");
+	// Bound before login so the very first track's `finished` report has a
+	// handler; the sidecar starts here rather than on the first join, so a
+	// failure to launch it is visible at boot instead of mid-song.
+	if (nativeVoiceActive()) {
+		console.log(chalk.bgBlue.whiteBright("Voice runs through the Rust sidecar"));
+		bindNativeVoice(client);
+	}
 	const app = await initServer(client);
 	app.listen(setting.PORT, () =>
 		exp.log(

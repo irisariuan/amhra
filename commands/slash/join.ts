@@ -1,8 +1,7 @@
 import type { Command } from "../../lib/interaction";
 
 import { SlashCommandBuilder } from "discord.js";
-import { getVoiceConnection } from "@discordjs/voice";
-import { joinVoice, getAudioPlayer } from "../../lib/voice/core";
+import { joinVoice, getAudioPlayer, getConnection } from "../../lib/voice/core";
 import { dcb } from "../../lib/misc";
 import { misc } from "../../lib/misc";
 import { languageText } from "../../lib/language";
@@ -33,7 +32,7 @@ export default {
 			language,
 			{ createPlayer: false },
 		);
-		const existingConnection = getVoiceConnection(interaction.guild.id);
+		const existingConnection = getConnection(interaction.guild.id);
 		if (
 			existingConnection &&
 			existingPlayer &&

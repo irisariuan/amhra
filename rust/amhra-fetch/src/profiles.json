@@ -1,0 +1,81 @@
+{
+	"_comment": [
+		"InnerTube client profiles, tried top to bottom until one returns a playable",
+		"Opus format. Copy this file to data/youtube-clients.json to override it",
+		"without rebuilding: when YouTube retires a client, editing JSON is the fix.",
+		"",
+		"'context' is merged verbatim into the /youtubei/v1/player request body, so a",
+		"new client needs no Rust changes. 'headers' likewise. 'needsPlayerJs' marks",
+		"profiles whose URLs arrive scrambled and require signature/n descrambling,",
+		"which this crate cannot do — such a profile can be listed, but only after",
+		"every token-free one, and it will not produce a stream today.",
+		"",
+		"Re-probed 2026-08-31 against yt-dlp 2026.08.30, which had just rewritten its",
+		"own client table for the same breakage. Two things changed under us:",
+		"",
+		"ANDROID_VR died. yt-dlp's note: since 2026-08-17 every format it hands back",
+		"is 403'd, and a direct probe here answers LOGIN_REQUIRED. It was the head of",
+		"this ladder; removing it is correct, not a regression to undo.",
+		"",
+		"VISIONOS appeared, and is now the only client that serves plain URLs with no",
+		"PO token and no player JS — yt-dlp made it the sole entry in its",
+		"_DEFAULT_JSLESS_CLIENTS and the head of its unauthenticated default. It is",
+		"the only profile here that fetched every reachable video probed.",
+		"",
+		"IOS is pinned to 20.03.02 on purpose. yt-dlp moved to 21.26.4; that version",
+		"answers with SABR streams only, so the extractor finds no direct Opus format",
+		"and the profile is worse than useless. Do not 'update' it without probing.",
+		"",
+		"TVHTML5 and WEB are gone. Both were probed again at yt-dlp's current",
+		"versions (TVHTML5 7.20260707.07.00 and 5.20260707 with the Cobalt agents,",
+		"WEB 2.20260708.00.00) and every one answers UNPLAYABLE token-free — they",
+		"need a PO token, which is why yt-dlp only reaches for them when signed in.",
+		"They never succeeded once, and each cost a round trip per fetch before the",
+		"yt-dlp fallback was allowed to run.",
+		"",
+		"Also dead, tried and confirmed on earlier probes — do not re-add: ",
+		"ANDROID_MUSIC, IOS_MUSIC and ANDROID_CREATOR answer LOGIN_REQUIRED,",
+		"WEB_EMBEDDED_PLAYER and TVHTML5_SIMPLY_EMBEDDED_PLAYER are retired, MWEB",
+		"answers UNPLAYABLE. What clears the bot check is visitorData, which the",
+		"extractor mints and injects into every profile."
+	],
+	"profiles": [
+		{
+			"name": "visionos",
+			"clientId": 101,
+			"userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+			"needsPlayerJs": false,
+			"context": {
+				"client": {
+					"clientName": "VISIONOS",
+					"clientVersion": "1.02",
+					"deviceMake": "Apple",
+					"deviceModel": "RealityDevice17,1",
+					"userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
+					"osName": "visionOS",
+					"osVersion": "26.5.23O471",
+					"hl": "en",
+					"gl": "US"
+				}
+			}
+		},
+		{
+			"name": "ios",
+			"clientId": 5,
+			"userAgent": "com.google.ios.youtube/20.03.02 (iPhone16,2; U; CPU iOS 18_2_1 like Mac OS X;)",
+			"needsPlayerJs": false,
+			"context": {
+				"client": {
+					"clientName": "IOS",
+					"clientVersion": "20.03.02",
+					"deviceMake": "Apple",
+					"deviceModel": "iPhone16,2",
+					"osName": "iPhone",
+					"osVersion": "18.2.1.22C161",
+					"hl": "en",
+					"gl": "US"
+				}
+			}
+		}
+	]
+}

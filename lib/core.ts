@@ -45,9 +45,13 @@ export async function loadCommandsJson<
 	)[] = [];
 	const commandFiles = getCommandPath(folderName);
 	for (const file of commandFiles) {
-		const command: Command<T> = (
-			await import(`../commands/${folderName}/${file}`)
-		).default;
+		const loaded = (await import(`../commands/${folderName}/${file}`))
+			.default;
+		// Compiled to CommonJS, `import()` hands back a namespace whose
+		// `default` is the whole `module.exports`, so the command sits one
+		// level deeper than it does when this file is run as TypeScript.
+		// Both shapes reach here: the registrar is run either way.
+		const command: Command<T> = loaded.default ?? loaded;
 		if ("data" in command && "execute" in command) {
 			commands.push(command.data.toJSON());
 		} else {

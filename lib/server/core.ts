@@ -4,7 +4,13 @@ import chalk from "chalk";
 import express, { type Request, type Response } from "express";
 import { rateLimit } from "express-rate-limit";
 import NodeCache from "node-cache";
-import { getYouTubeVideoInfo, isYouTubeVideo, searchYouTube } from "../youtube";
+import {
+	getYouTubePlaylist,
+	getYouTubeVideoInfo,
+	isYouTubePlaylist,
+	isYouTubeVideo,
+	searchYouTube,
+} from "../youtube";
 import type { CustomClient } from "../custom";
 import {
 	getPlayingGuildsForAccount,
@@ -42,6 +48,15 @@ import { handleSongInterruption } from "./songEdit";
 import editAccountSetting, { getAccountSetting } from "../db/accountSetting";
 
 const setting = readSetting(`${process.cwd()}/data/setting.json`);
+/**
+ * Never serve these to the dashboard.
+ *
+ * Credentials moved to `.env`, and AUTH_TOKEN was removed entirely, so a
+ * current settings file has none of them. The filter stays anyway: it costs
+ * nothing, and it is what stops a file left over from before the move — which
+ * is exactly the file most likely to still hold a live token — from being
+ * handed to a browser.
+ */
 const privateGlobalSettingKeys = new Set([
 	"TOKEN",
 	"TESTING_TOKEN",
@@ -370,6 +385,13 @@ export async function initServer(client: CustomClient) {
 					nextResult.data,
 				);
 				reloadSetting();
+				// Fades live in the sidecar, so a saved change has to be
+				// pushed or it would only take effect on the next join. Guilds
+				// that were adjusted from the player controls keep their own
+				// values; this is the default they started from.
+				for (const player of client.player.values()) {
+					player.syncFadesWithSetting();
+				}
 				return res.json(publicGlobalSettings(nextResult.data));
 			} catch (error) {
 				exp.error(`Failed to save global settings: ${error}`);
@@ -469,6 +491,29 @@ export async function initServer(client: CustomClient) {
 				return res.send(JSON.stringify(video));
 			} catch {
 				res.sendStatus(500);
+			}
+		},
+	);
+
+	// Lets the dashboard show what a playlist link holds before queueing it.
+	// A listing costs one InnerTube call per 100 entries, and the same link is
+	// usually previewed and then added — so the caching lives in
+	// getYouTubePlaylist, where the queueing path goes through it too. Cached
+	// here alone, the add would have re-walked every page.
+	app.post(
+		"/api/getPlaylistDetail",
+		jsonParser,
+		auth(Permission.User),
+		basicCheckBuilder(["url"]),
+		async (req, res) => {
+			if (!req.body.url || !isYouTubePlaylist(req.body.url)) {
+				return res.sendStatus(400);
+			}
+			try {
+				return res.json(await getYouTubePlaylist(req.body.url));
+			} catch (error) {
+				exp.error(`Failed to read playlist ${req.body.url}: ${error}`);
+				return res.sendStatus(502);
 			}
 		},
 	);
