@@ -71,7 +71,11 @@ pub enum Event {
 	Closed(String),
 	/// The connection dropped and is being re-established; audio should pause.
 	/// Carries why, because "reconnecting" on its own is unactionable in a log.
-	Reconnecting(String),
+	/// The socket dropped and another attempt is coming. `resumable` says
+	/// whether the voice session survives it: a resumed session keeps its ssrc,
+	/// its keys and its UDP socket, so there is no second session description
+	/// to re-arm anything with.
+	Reconnecting { reason: String, resumable: bool },
 }
 
 /// Commands the owner sends to the gateway task.
@@ -167,7 +171,9 @@ async fn run(info: ConnectionInfo, mut commands: mpsc::Receiver<Command>, events
 					let _ = events.send(Event::Closed(error.to_string())).await;
 					return;
 				}
-				let _ = events.send(Event::Reconnecting(error.to_string())).await;
+				let _ = events
+					.send(Event::Reconnecting { reason: error.to_string(), resumable })
+					.await;
 				resume = resumable;
 				tokio::time::sleep(backoff).await;
 				backoff = (backoff * 2).min(MAX_BACKOFF);

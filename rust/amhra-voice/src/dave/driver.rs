@@ -31,6 +31,13 @@ pub struct Driver {
 	pending: HashMap<u16, u8>,
 	/// The last transition actually applied, for logs.
 	applied: u16,
+	/// The DAVE version in force right now.
+	///
+	/// Zero means the call has been downgraded — a client that cannot do DAVE
+	/// joined, and from the moment that transition executes everyone sends
+	/// under transport encryption alone. Media encrypted anyway would be noise
+	/// to every listener.
+	version: u8,
 }
 
 impl std::fmt::Debug for Driver {
@@ -39,6 +46,7 @@ impl std::fmt::Debug for Driver {
 			.field("session", &self.session)
 			.field("pending", &self.pending.len())
 			.field("applied", &self.applied)
+			.field("version", &self.version)
 			.finish()
 	}
 }
@@ -49,6 +57,7 @@ impl Driver {
 			session: Session::new(protocol_version, user_id, channel_id)?,
 			pending: HashMap::new(),
 			applied: 0,
+			version: protocol_version,
 		})
 	}
 
@@ -72,6 +81,26 @@ impl Driver {
 
 	pub fn is_ready(&self) -> bool {
 		self.session.is_ready()
+	}
+
+	/// The DAVE version in force, zero once the call has downgraded.
+	pub fn version(&self) -> u8 {
+		self.version
+	}
+
+	/// Whether media has to be end-to-end encrypted right now.
+	pub fn encrypting(&self) -> bool {
+		self.version > 0
+	}
+
+	/// Whether frames may go out at all.
+	///
+	/// Either DAVE is off for this call, or the group is live. Sending while a
+	/// group is still forming would produce audio nobody can decrypt, so the
+	/// sender waits — but waiting on a group that will never exist, which is
+	/// what a downgrade leaves behind, is silence with no end to it.
+	pub fn can_send(&self) -> bool {
+		!self.encrypting() || self.session.is_ready()
 	}
 
 	/// Handle one DAVE message. `data` is the JSON body for the JSON opcodes;
@@ -125,6 +154,7 @@ impl Driver {
 				if transition_id == 0 {
 					// Immediate: nothing to acknowledge, it is already in force.
 					self.applied = 0;
+					self.version = version;
 					return Ok(Vec::new());
 				}
 				self.pending.insert(transition_id, version);
@@ -136,7 +166,12 @@ impl Driver {
 
 			Opcode::DaveExecuteTransition => {
 				let transition_id = json_u16(data, "transition_id");
-				self.pending.remove(&transition_id);
+				// The version only moves here, not when the transition was
+				// announced: until the server says execute, everyone else is
+				// still on the old one.
+				if let Some(version) = self.pending.remove(&transition_id) {
+					self.version = version;
+				}
 				self.applied = transition_id;
 				Ok(Vec::new())
 			}
@@ -145,11 +180,30 @@ impl Driver {
 			// scratch: the server wants a fresh key package for it.
 			Opcode::DavePrepareEpoch => {
 				let epoch = data.get("epoch").and_then(serde_json::Value::as_u64).unwrap_or(0);
-				if epoch == 1 {
-					let version = json_u16(data, "protocol_version") as u8;
-					self.session = Session::new(version, self.user_id(), self.channel_id())?;
+				let version = json_u16(data, "protocol_version") as u8;
+				// Epoch 1 is a group that does not exist yet. Anything else is a
+				// version change on the group we are already in, and the
+				// transition opcodes carry that.
+				if epoch != 1 || version == 0 {
+					return Ok(Vec::new());
 				}
-				Ok(Vec::new())
+				let (user, channel) = (self.user_id(), self.channel_id());
+				// The server announces its signing key once per voice session,
+				// not once per epoch. A rebuilt session that dropped it would
+				// refuse the welcome that follows, which is the same dead end
+				// as never rebuilding at all.
+				let carried = self.session.external_sender_payload().map(<[u8]>::to_vec);
+				self.session = Session::new(version, user, channel)?;
+				self.pending.clear();
+				if let Some(payload) = carried {
+					self.session.set_external_sender(&payload)?;
+				}
+				// The rebuilt session has no group, and the server drives the
+				// join off the key package. Without a fresh one it never sends
+				// an external sender or a welcome, so every later proposal
+				// lands on a group we are not in and the sender stays mute for
+				// the rest of the call.
+				self.start()
 			}
 
 			// The server rejected our commit; it will re-drive the join.
@@ -213,6 +267,16 @@ mod tests {
 
 	fn driver() -> Driver {
 		Driver::new(1, USER, CHANNEL).unwrap()
+	}
+
+	/// An `op25` payload shaped like the one the voice server sends.
+	fn external_sender() -> Vec<u8> {
+		use openmls::prelude::*;
+		use tls_codec::Serialize;
+
+		let key: SignaturePublicKey = vec![7u8; 65].into();
+		let credential: Credential = BasicCredential::new(b"discord".to_vec()).into();
+		ExternalSender::new(key, credential).tls_serialize_detached().unwrap()
 	}
 
 	#[test]
@@ -303,9 +367,9 @@ mod tests {
 	}
 
 	#[test]
-	fn epoch_one_restarts_the_session() {
+	fn epoch_one_restarts_the_session_and_offers_a_new_key_package() {
 		let mut driver = driver();
-		driver
+		let actions = driver
 			.handle(
 				Opcode::DavePrepareEpoch,
 				&json!({ "epoch": 1, "protocol_version": 1 }),
@@ -314,5 +378,79 @@ mod tests {
 			.unwrap();
 		// A fresh session is uninitialised until the next external sender.
 		assert_eq!(driver.status(), Status::Uninitialised);
+		// Without the key package the server never drives the join again, and
+		// the group this session is waiting for is never built.
+		let [Action::Binary { opcode, payload }] = actions.as_slice() else {
+			panic!("expected a key package for the new epoch, got {actions:?}");
+		};
+		assert_eq!(*opcode, Opcode::DaveMlsKeyPackage);
+		assert!(payload.len() > 32);
+	}
+
+	#[test]
+	fn a_rebuilt_session_keeps_the_external_sender_it_was_given() {
+		let mut driver = driver();
+		driver
+			.handle(Opcode::DaveMlsExternalSender, &serde_json::Value::Null, &external_sender())
+			.unwrap();
+		assert_eq!(driver.status(), Status::Pending);
+
+		driver
+			.handle(Opcode::DavePrepareEpoch, &json!({ "epoch": 1, "protocol_version": 1 }), &[])
+			.unwrap();
+		// The server does not re-announce its key for the new epoch, so a
+		// session that dropped it could never accept the welcome that follows.
+		assert_eq!(
+			driver.status(),
+			Status::Pending,
+			"the rebuilt session must already be waiting on a welcome, not on an external sender"
+		);
+	}
+
+	#[test]
+	fn a_rebuilt_session_still_blocks_sending_until_the_group_is_live() {
+		let mut driver = driver();
+		driver
+			.handle(Opcode::DavePrepareEpoch, &json!({ "epoch": 1, "protocol_version": 1 }), &[])
+			.unwrap();
+		assert!(driver.encrypting(), "the call is still end-to-end encrypted");
+		assert!(!driver.can_send(), "there is no key to send under yet");
+	}
+
+	#[test]
+	fn a_downgrade_stops_encrypting_and_unblocks_the_sender() {
+		let mut driver = driver();
+		assert!(driver.encrypting());
+		// A client that cannot do DAVE joined: the call moves to version 0.
+		driver
+			.handle(
+				Opcode::DavePrepareTransition,
+				&json!({ "transition_id": 4, "protocol_version": 0 }),
+				&[],
+			)
+			.unwrap();
+		// Announced is not executed — everyone else is still encrypting.
+		assert!(driver.encrypting());
+
+		driver.handle(Opcode::DaveExecuteTransition, &json!({ "transition_id": 4 }), &[]).unwrap();
+		assert!(!driver.encrypting());
+		assert_eq!(driver.version(), 0);
+		// The group will never form now, so waiting on it would be silence
+		// with no end.
+		assert!(driver.can_send());
+	}
+
+	#[test]
+	fn an_immediate_transition_applies_its_version_at_once() {
+		let mut driver = driver();
+		driver
+			.handle(
+				Opcode::DavePrepareTransition,
+				&json!({ "transition_id": 0, "protocol_version": 0 }),
+				&[],
+			)
+			.unwrap();
+		assert_eq!(driver.version(), 0);
+		assert!(driver.can_send());
 	}
 }

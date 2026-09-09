@@ -321,7 +321,9 @@ async fn main() {
 					break;
 				}
 			}
-			Event::Reconnecting(reason) => println!("reconnecting: {reason}"),
+			Event::Reconnecting { reason, resumable } => {
+				println!("reconnecting: {reason} (resumable: {resumable})")
+			}
 			other => println!("{other:?}"),
 		}
 	}

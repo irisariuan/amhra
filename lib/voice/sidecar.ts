@@ -313,7 +313,11 @@ export function stopSidecar() {
  * events that answer it. Reusing it means the sidecar never needs a gateway
  * connection of its own, and the bot's existing shard handles everything.
  */
-export function joinVoiceViaSidecar(channel: VoiceBasedChannel, deaf = true) {
+export function joinVoiceViaSidecar(
+	channel: VoiceBasedChannel,
+	deaf = true,
+	onLibraryDestroy?: () => void,
+) {
 	const guild: Guild = channel.guild;
 	const client = guild.client;
 	const userId = client.user?.id;
@@ -330,10 +334,25 @@ export function joinVoiceViaSidecar(channel: VoiceBasedChannel, deaf = true) {
 		 */
 		let joining = false;
 		let settled = false;
+		/** Set while the old voice state is being stood down before joining. */
+		let leaving = false;
+		let leaveTimer: ReturnType<typeof setTimeout> | undefined;
 
 		const adapter = guild.voiceAdapterCreator({
 			onVoiceStateUpdate: (state) => {
-				if (state.user_id !== userId || !joining) return;
+				if (state.user_id !== userId) return;
+				if (!joining) {
+					// The leave landed. Waiting for this rather than for a fixed
+					// delay is what makes the rejoin reliable: the gateway only
+					// mints a token for a session it considers new, and how long
+					// it takes to forget the old one is not ours to guess.
+					if (leaving && !state.channel_id) {
+						leaving = false;
+						clearTimeout(leaveTimer);
+						join();
+					}
+					return;
+				}
 				sessionId = state.session_id ?? undefined;
 				ready();
 			},
@@ -344,6 +363,9 @@ export function joinVoiceViaSidecar(channel: VoiceBasedChannel, deaf = true) {
 				ready();
 			},
 			destroy: () => {
+				// The caller decides, because by the time this fires the guild
+				// may belong to a newer join than this one.
+				if (onLibraryDestroy) return onLibraryDestroy();
 				sidecar().send({ type: "disconnect", guildId: guild.id });
 			},
 		});
@@ -363,6 +385,7 @@ export function joinVoiceViaSidecar(channel: VoiceBasedChannel, deaf = true) {
 
 		const timer = setTimeout(() => {
 			settled = true;
+			clearTimeout(leaveTimer);
 			// Whatever half a session is left behind would wedge every later
 			// attempt the same way, so this stands the guild back down before
 			// giving up on it.
@@ -427,8 +450,14 @@ export function joinVoiceViaSidecar(channel: VoiceBasedChannel, deaf = true) {
 		// completes. Standing the old session down first is what makes the
 		// token arrive.
 		if (guild.members.me?.voice.channelId) {
+			leaving = true;
 			leave();
-			setTimeout(join, VOICE_STATE_RESET_MS);
+			// The state update is the signal; this is only the backstop for a
+			// leave the gateway never reports.
+			leaveTimer = setTimeout(() => {
+				leaving = false;
+				join();
+			}, VOICE_STATE_RESET_MS);
 		} else {
 			join();
 		}
