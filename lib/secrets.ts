@@ -22,6 +22,12 @@ export const SECRET_NAMES = {
 	TESTING_TOKEN: "TESTING_TOKEN",
 	/** OAuth2 client secret, exchanged for user tokens by the dashboard. */
 	OAUTH_TOKEN: "OAUTH_TOKEN",
+	/**
+	 * Postgres connection string. A credential like the rest since Prisma 7 —
+	 * the client now takes it as a value through the driver adapter rather than
+	 * resolving `env("DATABASE_URL")` out of the schema on its own.
+	 */
+	DATABASE_URL: "DATABASE_URL",
 } as const;
 
 export type SecretName = keyof typeof SECRET_NAMES;
