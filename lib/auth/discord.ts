@@ -1,5 +1,4 @@
 import NodeCache from "node-cache";
-import { client } from "../client";
 import { prisma } from "../db/core";
 import { createWebAccount } from "../db/account";
 import { requireSecret } from "../secrets";
@@ -180,7 +179,13 @@ export async function getLinkedUserGuilds(
 	return guilds;
 }
 
-export function getAllPlayingGuilds() {
+export async function getAllPlayingGuilds() {
+	// Loaded here rather than at the top of the file. `lib/client` builds its
+	// command map while it is being imported, and that map loads every command
+	// module — one of which reaches this file. Importing the client up here
+	// closes that circle: whichever of the two is loaded first sees the other
+	// half-built, and the command that started it has no `default` yet.
+	const { client } = await import("../client.js");
 	return Promise.all(
 		Array.from(client.player.keys()).map(async v => ({
 			id: v,
