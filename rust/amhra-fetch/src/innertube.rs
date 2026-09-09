@@ -342,7 +342,7 @@ mod tests {
 		assert!(!profiles.is_empty());
 		// The ladder is ordered: token-free clients must come first, or every
 		// fetch pays a wasted round trip before it succeeds.
-		assert_eq!(profiles[0].name, "android_vr");
+		assert_eq!(profiles[0].name, "visionos");
 		assert!(!profiles[0].needs_player_js);
 
 		// Every token-free profile has to precede every descrambling one, or a

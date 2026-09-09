@@ -85,6 +85,12 @@ export function nativeFetch(
 	const binary = nativeFetchBin.path();
 	const args = [id, "--cache-dir", `${process.cwd()}/cache`];
 	if (force) args.push("--force");
+	// The client ladder is compiled into the binary, so a client YouTube
+	// retires would otherwise need a rebuild to replace. Handing the fetcher an
+	// operator file when one exists makes that a JSON edit and a restart, which
+	// is the difference between fixing playback now and waiting on a release.
+	const clients = `${process.cwd()}/data/youtube-clients.json`;
+	if (existsSync(clients)) args.push("--profiles", clients);
 
 	dcb.log(`Native fetch: ${id}`);
 	const child = spawn(binary, args, { stdio: ["ignore", "pipe", "pipe"] });

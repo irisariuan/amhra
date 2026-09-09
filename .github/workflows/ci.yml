@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A superseded run tells us nothing the newer one won't, and the mini only ever
+# deploys the tip of main.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - name: Clippy
+        run: cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --manifest-path rust/Cargo.toml --locked
+
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      # test/sidecar.test.ts talks to the real binary and skips itself when it is
+      # missing. Build it, or that whole file silently no-ops in CI.
+      - name: Build the sidecar
+        run: cargo build --manifest-path rust/Cargo.toml --locked --release -p amhra-sidecar
+      # No bun lockfile is committed (see .gitignore), so this resolves fresh.
+      - name: Install
+        run: bun install
+      # data/setting.json is written by the setup tool and gitignored, but
+      # readSetting() throws without it and the tests reach it through
+      # lib/voice/nativeBinary.ts. Defaults are all the tests need.
+      - name: Seed settings
+        run: echo '{}' > data/setting.json
+      # Nothing connects to a database here; generate only parses the URL.
+      - name: Generate the Prisma client
+        run: bunx prisma generate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+      - name: Typecheck
+        run: bunx tsc --noEmit
+      - name: Test
+        run: bun test test/

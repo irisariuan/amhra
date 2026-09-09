@@ -102,6 +102,23 @@ export async function unlinkDiscord(accountId: string): Promise<void> {
 		.catch(() => {});
 }
 
+/**
+ * The account a Discord user is linked to, or null if they never linked one.
+ *
+ * Linking is what makes a Discord identity usable for anything privileged: the
+ * permission bits live on the account, not on the Discord user, so a command
+ * that wants an admin has to come through here rather than trust a user ID.
+ */
+export async function getAccountByDiscordId(
+	discordId: string,
+): Promise<Account | null> {
+	const identity = await prisma.discordIdentity.findUnique({
+		where: { discordId },
+		include: { account: true },
+	});
+	return identity?.account ?? null;
+}
+
 async function refreshDiscordToken(
 	discordId: string,
 ): Promise<string | null> {
