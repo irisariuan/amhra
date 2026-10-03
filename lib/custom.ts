@@ -109,7 +109,6 @@ export class CustomClient extends Client {
 	}
 	clearPlayers() {
 		for (const player of this.player.values()) {
-			player.clearVoiceStateTimeouts();
 			player.cleanStop();
 		}
 		this.player.clear();
@@ -171,7 +170,13 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 */
 	startTime: number;
 
-	voiceStateTimeoutArray: NodeJS.Timeout[];
+	/**
+	 * When this player was first seen idle, and when the bot was first seen
+	 * alone in its channel. Both are owned by the leave sweep (lib/voice/leave.ts)
+	 * — null means the corresponding clock is not running.
+	 */
+	idleSince: number | null;
+	aloneSince: number | null;
 	songSegmentsTimeoutArray: NodeJS.Timeout[];
 
 	channel: Channel | null;
@@ -247,7 +252,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.pauseTimestamp = 0;
 		this.playCounter = 0;
 
-		this.voiceStateTimeoutArray = [];
+		this.idleSince = null;
+		this.aloneSince = null;
 		this.songSegmentsTimeoutArray = [];
 		this.channel = channel;
 		this.activeSkipMessage = null;
@@ -328,11 +334,23 @@ export class CustomAudioPlayer extends AudioPlayer {
 		return false;
 	}
 
-	clearVoiceStateTimeouts() {
-		for (const id of this.voiceStateTimeoutArray) {
-			clearInterval(id);
-		}
-		this.voiceStateTimeoutArray = [];
+	/**
+	 * Stop because the queue ran out, rather than because someone asked.
+	 *
+	 * Deliberately narrower than `cleanStop`: it ends playback and clears the
+	 * sidecar's slots, but leaves the queue, the history and `customSetting`
+	 * alone. Those outlive a track ending — the history is what radio mode
+	 * excludes from its suggestions, and wiping `customSetting` would silently
+	 * turn off the loop or radio the listener had switched on.
+	 *
+	 * The end-of-queue path used to call `cleanStop` here and get away with it
+	 * only by accident: it zeroed `isPlaying` first, so `hardStop`'s
+	 * `wasPlaying` came back false and the reset never ran.
+	 */
+	endPlayback() {
+		this.hardStop();
+		this.resetPlaying();
+		this.isPaused = false;
 	}
 
 	toggleLoop(): boolean {
@@ -393,7 +411,6 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.startFrom = resource.startFrom ?? 0;
 		this.updateStartTime();
 		if (!replay) this.history.push(resource.url);
-		this.clearVoiceStateTimeouts();
 
 		if (this.nativePlayback) {
 			this.startNative(this.nativePlayback, resource);
@@ -672,12 +689,6 @@ export class CustomAudioPlayer extends AudioPlayer {
 			repeating,
 			url: link,
 		});
-	}
-	newVoiceStateTimeout(callback: () => void, ms: number) {
-		if (ms < 0) return;
-		if (ms === 0) return callback();
-		const id = setTimeout(callback, ms);
-		this.voiceStateTimeoutArray.push(id);
 	}
 	updateSongTimeouts() {
 		const currentPos = this.getCurrentSongPosition();

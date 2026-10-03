@@ -9,6 +9,7 @@ import { readSetting } from "./lib/setting";
 import { watch } from "node:fs";
 import { updateYtdlpVersion } from "./lib/voice/ytdlp";
 import { bindNativeVoice, nativeVoiceActive } from "./lib/voice/native";
+import { startLeaveSweeper } from "./lib/voice/leave";
 
 const setting = readSetting();
 
@@ -75,6 +76,10 @@ const setting = readSetting();
 		console.log(chalk.bgBlue.whiteBright("Voice runs through the Rust sidecar"));
 		bindNativeVoice(client);
 	}
+	// Watches for players to go idle and for channels to empty out. Started
+	// before login so a guild the bot is already in when it reconnects is swept
+	// like any other.
+	startLeaveSweeper(client);
 	const app = await initServer(client);
 	app.listen(setting.PORT, () =>
 		exp.log(

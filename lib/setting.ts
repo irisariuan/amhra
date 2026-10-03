@@ -72,6 +72,11 @@ export interface Setting {
 	NATIVE_VOICE_BIN?: string;
 	SEEK: boolean;
 	AUTO_LEAVE: number;
+	/**
+	 * Time in ms the bot may sit in a voice channel with nobody else in it,
+	 * playing or not. Negative disables it. Defaults to a minute.
+	 */
+	AUTO_LEAVE_ALONE?: number;
 	PREFIX: string;
 	USE_COOKIES: boolean;
 	MAX_CACHE_IN_GB: number;

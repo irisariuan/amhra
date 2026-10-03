@@ -96,32 +96,13 @@ export function disconnectConnection(connection: VoiceHandle) {
 function createAudioPlayer(
 	guildId: string,
 	channel: Channel | null,
-	client: CustomClient,
 	createOpts?: CreateAudioPlayerOptions,
 ) {
 	//create a player and initialize it if there isn't one
 	const player = new CustomAudioPlayer(guildId, channel, createOpts);
 
-	const timeoutDetection = () => {
-		if (player.isPlaying || player.queue.length > 0) {
-			return;
-		}
-		dcb.log(
-			`Auto quitted for inactivity (${player.isPlaying ? "Y" : "N"}_${player.queue.length})`,
-		);
-		player.cleanStop();
-		const connection = getConnection(guildId);
-		destroyAudioPlayer(client, guildId);
-		if (connection) {
-			disconnectConnection(connection);
-		}
-		client.player.delete(guildId);
-	};
-
-	player.newVoiceStateTimeout(
-		timeoutDetection,
-		setting.AUTO_LEAVE ?? 15 * 60 * 1000,
-	);
+	// Nothing arms a leave timer here any more: lib/voice/leave.ts sweeps every
+	// player and decides from the state it finds. See leavePlan.ts for why.
 
 	// will be triggered when player unpaused
 	player.on(AudioPlayerStatus.Playing, () => {
@@ -146,17 +127,9 @@ function createAudioPlayer(
 				dcb.log("Radio mode queued a suggested track");
 			}
 		}
-		if (player.queue.length === 0) {
-			player.newVoiceStateTimeout(
-				timeoutDetection,
-				setting.AUTO_LEAVE ?? 15 * 60 * 1000,
-			);
-		}
-
 		try {
 			dcb.log("Finished music playing");
 			if (player.queue.length > 0) {
-				player.clearVoiceStateTimeouts();
 				const nextUrl = player.getNextQueueItem();
 				if (nextUrl) {
 					const resource = await createResource(nextUrl);
@@ -166,37 +139,23 @@ function createAudioPlayer(
 					event.emit("songInfo", nextUrl);
 					player.playResource(resource);
 					dcb.log("Playing next music");
-					if (resource.segments) {
-						if (player.customSetting.autoSkipSegment) {
-							return await player.skipCurrentSegment();
-						}
+					if (resource.segments && player.customSetting.autoSkipSegment) {
+						await player.skipCurrentSegment();
 						if (!(await sendSkipMessage(player))) {
 							globalApp.warn("Failed to send skip message");
 						}
 					}
 				} else {
 					globalApp.err("No next URL found");
-					player.newVoiceStateTimeout(
-						timeoutDetection,
-						setting.AUTO_LEAVE ?? 15 * 60 * 1000,
-					);
+					player.endPlayback();
 				}
 			} else {
-				player.resetPlaying();
 				dcb.log("Finished playing all music");
-				player.cleanStop();
-				player.newVoiceStateTimeout(
-					timeoutDetection,
-					setting.AUTO_LEAVE ?? 15 * 60 * 1000,
-				);
+				player.endPlayback();
 			}
 		} catch (error) {
 			dcb.log(`Error: ${error}`);
-			player.resetPlaying();
-			player.newVoiceStateTimeout(
-				timeoutDetection,
-				setting.AUTO_LEAVE ?? 15 * 60 * 1000,
-			);
+			player.endPlayback();
 		}
 	});
 	return player;
@@ -216,7 +175,7 @@ export function getAudioPlayer(
 	const player = client.player.get(guildId) ?? null;
 
 	if (!player && option.createPlayer) {
-		const player = createAudioPlayer(guildId, channel, client, {});
+		const player = createAudioPlayer(guildId, channel, {});
 		client.player.set(guildId, player);
 		return player;
 	}
