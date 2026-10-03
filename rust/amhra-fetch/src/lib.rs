@@ -91,6 +91,15 @@ pub async fn fetch(
 		return Ok(FetchResult { elapsed_ms: started.elapsed().as_millis() as u64, ..hit });
 	}
 
+	// Held until this function returns, across the native path and the
+	// fallback alike, so only one process writes `<id>.temp.music` at a time.
+	let (_claim, waited) = claim(&options.cache_dir, &video_id).await?;
+	// Whoever held the claim was downloading this very track. What they left is
+	// as fresh as anything we could fetch, so even `--force` takes it.
+	if waited && let Some(hit) = cache_hit(&video_id, &paths).await? {
+		return Ok(FetchResult { elapsed_ms: started.elapsed().as_millis() as u64, ..hit });
+	}
+
 	let native = match native_fetch(&video_id, &paths, options, &mut on_progress).await {
 		Ok(mut result) => {
 			result.elapsed_ms = started.elapsed().as_millis() as u64;
@@ -249,6 +258,44 @@ async fn cache_hit(
 		elapsed_ms: 0,
 		fallback_reason: None,
 	}))
+}
+
+/// Take the exclusive right to download `video_id`, waiting out any other
+/// process that has it. Returns the held lock and whether it had to wait.
+///
+/// Two fetches of one track used to run side by side — a forced re-fetch
+/// joining one already in flight, or two bot processes sharing a cache — and
+/// both wrote `<id>.temp.music`. The first to finish renamed it away and the
+/// second failed with a bare "No such file or directory" on its own rename.
+///
+/// The temp name itself cannot change: the players stream from it while it
+/// grows. So the lock is a separate file, under `.locks/` so the cache sweep
+/// never mistakes it for a track. It is an OS advisory lock, released when the
+/// process exits however it exits, so a killed fetch never wedges the next.
+/// The file is never deleted: unlinking a lock file another process is
+/// waiting on would let a third lock a fresh inode alongside it.
+async fn claim(cache_dir: &Path, video_id: &str) -> std::io::Result<(std::fs::File, bool)> {
+	let path = cache_dir.join(".locks").join(format!("{video_id}.lock"));
+	tokio::task::spawn_blocking(move || {
+		if let Some(parent) = path.parent() {
+			std::fs::create_dir_all(parent)?;
+		}
+		let file = std::fs::OpenOptions::new()
+			.create(true)
+			.truncate(false)
+			.write(true)
+			.open(&path)?;
+		match file.try_lock() {
+			Ok(()) => Ok((file, false)),
+			Err(std::fs::TryLockError::WouldBlock) => {
+				file.lock()?;
+				Ok((file, true))
+			}
+			Err(std::fs::TryLockError::Error(error)) => Err(error),
+		}
+	})
+	.await
+	.map_err(std::io::Error::other)?
 }
 
 /// Default cache directory, matching the TypeScript side's `cache/`.
