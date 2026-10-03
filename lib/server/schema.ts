@@ -221,6 +221,7 @@ export const GlobalSettingSchema = z
 		SEEK: z.boolean().optional(),
 		VOLUME_MODIFIER: z.number().optional(),
 		AUTO_LEAVE: z.number().optional(),
+		AUTO_LEAVE_ALONE: z.number().optional(),
 		USE_COOKIES: z.boolean().optional(),
 		BANNED_IDS: z.array(z.string()).optional(),
 		MAX_CACHE_IN_GB: z.number().optional(),

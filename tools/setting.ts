@@ -53,6 +53,7 @@ function writeEnv(values: Record<string, string>) {
 		USE_YOUTUBE_DL: false,
 		VOLUME_MODIFIER: 1,
 		AUTO_LEAVE: 15 * 60 * 1000,
+		AUTO_LEAVE_ALONE: 60 * 1000,
 		USE_COOKIES: false,
 		BANNED_IDS: [],
 		MAX_CACHE_IN_GB: 1,
@@ -166,6 +167,15 @@ function writeEnv(values: Record<string, string>) {
 		) *
 		60 *
 		1000;
+	setting.AUTO_LEAVE_ALONE =
+		Number(
+			await input({
+				message:
+					"Set up how long to stay in an empty voice channel, in seconds",
+				validate: (v) => !Number.isNaN(Number(v)) && Number(v) >= 0,
+				default: "60",
+			}),
+		) * 1000;
 	setting.PREFIX = await input({
 		message: "Set up your command prefix",
 		default: "!",

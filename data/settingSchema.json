@@ -104,6 +104,10 @@
    "type": "number",
    "description": "Time in ms before auto leave"
   },
+  "AUTO_LEAVE_ALONE": {
+   "type": "number",
+   "description": "Time in ms before leaving a voice channel nobody else is in (negative disables)"
+  },
   "USE_COOKIES": {
    "type": "boolean",
    "description": "Use cookies while fetching data"

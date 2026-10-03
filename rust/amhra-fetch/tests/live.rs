@@ -81,3 +81,34 @@ async fn a_full_fetch_produces_a_playable_indexed_file() {
 
 	tokio::fs::remove_dir_all(&cache).await.ok();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "talks to YouTube"]
+async fn two_fetches_of_one_track_do_not_trip_over_each_other() {
+	let cache = scratch_dir("race");
+	tokio::fs::create_dir_all(&cache).await.expect("scratch dir");
+
+	// Forced, so both miss the cache and both go for `<id>.temp.music` — the
+	// second used to fail when the first renamed it out from under it.
+	let options = amhra_fetch::FetchOptions {
+		cache_dir: cache.clone(),
+		profiles: None,
+		download: Default::default(),
+		allow_fallback: false,
+		force: true,
+	};
+	let (first, second) = tokio::join!(
+		amhra_fetch::fetch(VIDEO, &options, |_, _| {}),
+		amhra_fetch::fetch(VIDEO, &options, |_, _| {}),
+	);
+	let (first, second) = (first.expect("first fetch"), second.expect("second fetch"));
+
+	// One downloaded; the other waited and took the result as a cache hit.
+	let mut sources = [first.source.as_str(), second.source.as_str()];
+	sources.sort();
+	assert_eq!(sources, ["cache", "innertube"]);
+	assert_eq!(first.bytes, second.bytes);
+	assert!(!cache.join(format!("{VIDEO}.temp.music")).exists());
+
+	tokio::fs::remove_dir_all(&cache).await.ok();
+}
