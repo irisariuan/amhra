@@ -45,7 +45,7 @@ function loadLocale(
 			command.description_localizations[parseLanguageToLocale(lang)] =
 				locale.description;
 		}
-		if (locale.options && command.options) {
+		if (locale.options && "options" in command && command.options) {
 			for (const option of command.options) {
 				const localeOption = locale.options[option.name];
 				if (!localeOption) continue;

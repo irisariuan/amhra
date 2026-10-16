@@ -62,10 +62,6 @@ export async function deleteSession(token: string): Promise<void> {
 		.catch(() => {});
 }
 
-export async function deleteAllSessions(accountId: string): Promise<void> {
-	await prisma.session.deleteMany({ where: { accountId } });
-}
-
 /** Removes expired sessions and challenges; call periodically. */
 export async function collectGarbage(): Promise<void> {
 	const now = new Date();

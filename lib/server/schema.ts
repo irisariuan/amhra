@@ -233,5 +233,9 @@ export const GlobalSettingSchema = z
 		// plausible track would never finish before the next one started.
 		CROSSFADE_IN_MS: z.number().int().min(0).max(15_000).optional(),
 		SKIP_FADE_IN_MS: z.number().int().min(0).max(5_000).optional(),
+		USE_NATIVE_FETCH: z.boolean().optional(),
+		NATIVE_FETCH_BIN: z.string().optional(),
+		USE_RUST_VOICE: z.boolean().optional(),
+		NATIVE_VOICE_BIN: z.string().optional(),
 	})
 	.passthrough();

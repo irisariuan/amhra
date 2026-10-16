@@ -65,10 +65,6 @@ export function killNativeFetches() {
 	}
 }
 
-export function isFetching(id: string) {
-	return inFlight.has(id);
-}
-
 /**
  * Start (or join) a download of `id`.
  *

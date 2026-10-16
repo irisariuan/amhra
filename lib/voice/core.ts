@@ -29,7 +29,6 @@ import {
 	getYouTubeVideoId,
 	getYouTubeVideoInfo,
 	isYouTubePlaylist,
-	isYouTubeUrl,
 	isYouTubeVideo,
 	type YouTubeVideoInfo,
 } from "../youtube";
@@ -441,10 +440,6 @@ export function getBotVoiceChannel(
 			channel.members.has(client.user.id)
 		);
 	});
-}
-
-export function isYoutube(query: string) {
-	return isYouTubeUrl(query);
 }
 
 export function isVideo(link: string) {

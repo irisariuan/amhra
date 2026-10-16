@@ -1,1 +1,0 @@
-npx tailwindcss -i ./express/main.css -o ./express/compiled.css --watch
