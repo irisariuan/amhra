@@ -74,6 +74,17 @@
 	"SKIP_LABEL": "Skip",
 	"QUEUE_LABEL": "Queue",
 	"QUEUE_FOOTER": "Showing songs {minShowingSong}-{maxShowingSong} of {totalSong}",
+	"LYRICS_NO_SONG": "Nothing is playing — give me a song to search for with `search`",
+	"LYRICS_FAILED": "The lyrics service is unavailable right now, try again later",
+	"LYRICS_NOT_FOUND": "Couldn't find lyrics for **{title}**, try `/lyrics search:` with the song name",
+	"LYRICS_INSTRUMENTAL": "This track is instrumental",
+	"LYRICS_SOURCE": "Lyrics from LRCLIB",
+	"LYRICS_PAGE": "Page {page}/{total}",
+	"LYRICS_PREVIOUS": "Previous",
+	"LYRICS_NEXT": "Next",
+	"LYRICS_FOLLOW": "Follow along",
+	"LYRICS_FULL": "Full lyrics",
+	"LYRICS_SONG_CHANGED": "The song changed, run /lyrics again for the new one",
 	"commands": {
 		"play": {
 			"description": "Play a song or playlist from YouTube",
@@ -190,6 +201,14 @@
 			"options": {
 				"enabled": {
 					"description": "Set auto-skip non-music mode"
+				}
+			}
+		},
+		"lyrics": {
+			"description": "Show the lyrics of the song playing, or search for some",
+			"options": {
+				"search": {
+					"description": "Search for lyrics instead of using the song playing"
 				}
 			}
 		}

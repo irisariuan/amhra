@@ -74,6 +74,17 @@
 	"SKIP_LABEL": "跳過",
 	"QUEUE_LABEL": "播放清單",
 	"QUEUE_FOOTER": "顯示歌曲 {minShowingSong}-{maxShowingSong}，共 {totalSong} 首",
+	"LYRICS_NO_SONG": "目前沒有播放歌曲，請使用 `search` 輸入要搜尋的歌曲",
+	"LYRICS_FAILED": "歌詞服務暫時無法使用，請稍後再試",
+	"LYRICS_NOT_FOUND": "找不到 **{title}** 的歌詞，試試用 `/lyrics search:` 輸入歌名",
+	"LYRICS_INSTRUMENTAL": "這首歌是純音樂",
+	"LYRICS_SOURCE": "歌詞來自 LRCLIB",
+	"LYRICS_PAGE": "第 {page}/{total} 頁",
+	"LYRICS_PREVIOUS": "上一頁",
+	"LYRICS_NEXT": "下一頁",
+	"LYRICS_FOLLOW": "同步歌詞",
+	"LYRICS_FULL": "完整歌詞",
+	"LYRICS_SONG_CHANGED": "歌曲已切換，請再次使用 /lyrics 查看新歌曲",
 	"commands": {
 		"play": {
 			"name": "播放",
@@ -224,6 +235,14 @@
 				"enabled": {
 					"name": "啟用",
 					"description": "設定自動跳過非音樂模式"
+				}
+			}
+		},
+		"lyrics": {
+			"description": "顯示正在播放歌曲的歌詞，或搜尋歌詞",
+			"options": {
+				"search": {
+					"description": "搜尋歌詞，而不是使用正在播放的歌曲"
 				}
 			}
 		}

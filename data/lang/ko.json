@@ -74,6 +74,17 @@
 	"SKIP_LABEL": "건너뛰기",
 	"QUEUE_LABEL": "대기열",
 	"QUEUE_FOOTER": "총 {totalSong}곡 중 {minShowingSong}-{maxShowingSong}곡 표시 중",
+	"LYRICS_NO_SONG": "재생 중인 곡이 없습니다. `search`로 검색할 곡을 입력하세요",
+	"LYRICS_FAILED": "가사 서비스를 지금 사용할 수 없습니다. 잠시 후 다시 시도하세요",
+	"LYRICS_NOT_FOUND": "**{title}**의 가사를 찾을 수 없습니다. `/lyrics search:`에 곡 이름을 입력해 보세요",
+	"LYRICS_INSTRUMENTAL": "이 곡은 연주곡입니다",
+	"LYRICS_SOURCE": "가사 제공: LRCLIB",
+	"LYRICS_PAGE": "{page}/{total} 페이지",
+	"LYRICS_PREVIOUS": "이전",
+	"LYRICS_NEXT": "다음",
+	"LYRICS_FOLLOW": "실시간 가사",
+	"LYRICS_FULL": "전체 가사",
+	"LYRICS_SONG_CHANGED": "곡이 바뀌었습니다. 새 곡은 /lyrics를 다시 실행하세요",
 	"commands": {
 		"play": {
 			"name": "재생",
@@ -213,6 +224,14 @@
 				"enabled": {
 					"name": "활성화",
 					"description": "음악 외 모드 자동 건너뛰기 설정"
+				}
+			}
+		},
+		"lyrics": {
+			"description": "재생 중인 곡의 가사를 보여주거나 가사를 검색합니다",
+			"options": {
+				"search": {
+					"description": "재생 중인 곡 대신 가사를 검색합니다"
 				}
 			}
 		}
