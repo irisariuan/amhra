@@ -36,7 +36,6 @@ export type ExpressEventDetail = {
 
 export enum ActionType {
 	Exit = "exit",
-	AddAuth = "addAuth",
 	ReloadCommands = "reload",
 	ReloadSetting = "reloadSetting",
 }

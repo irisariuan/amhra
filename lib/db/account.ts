@@ -73,15 +73,4 @@ export async function createWebAccount(
 	});
 }
 
-export function getAccountById(id: string): Promise<Account | null> {
-	return prisma.account.findUnique({ where: { id } });
-}
-
-export async function anonymousAccountCanAccessGuild(
-	account: Account,
-	guildId: string,
-): Promise<boolean> {
-	return account.type === "anonymous" && account.guildScope.includes(guildId);
-}
-
 export type { Account, AccountType };

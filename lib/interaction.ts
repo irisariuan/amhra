@@ -1,7 +1,6 @@
 import {
 	ChatInputCommandInteraction,
 	ContextMenuCommandBuilder,
-	GuildMember,
 	Locale,
 	SlashCommandBuilder,
 	UserContextMenuCommandInteraction,
@@ -29,10 +28,4 @@ export interface Command<
 > {
 	data: T;
 	execute: (params: InteractionReactParams<T>) => unknown | Promise<unknown>;
-}
-
-export function hasVoice(
-	interaction: ChatInputCommandInteraction,
-): interaction is ChatInputCommandInteraction & { member: GuildMember } {
-	return !!(interaction.member && "voice" in interaction.member);
 }

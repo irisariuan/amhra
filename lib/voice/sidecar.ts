@@ -306,6 +306,11 @@ export function stopSidecar() {
  * `voiceAdapterCreator` sends the op 4 voice state update and reports the two
  * events that answer it. Reusing it means the sidecar never needs a gateway
  * connection of its own, and the bot's existing shard handles everything.
+ *
+ * The same holds for leaving. The sidecar can close its voice socket, but the
+ * bot's seat in the channel belongs to the gateway, and only an op 4 with no
+ * channel gives it up — so `leave` is returned beside the handshake for
+ * whoever ends the session to call.
  */
 export function joinVoiceViaSidecar(
 	channel: VoiceBasedChannel,
@@ -317,7 +322,8 @@ export function joinVoiceViaSidecar(
 	const userId = client.user?.id;
 	if (!userId) throw new Error("The client is not logged in yet");
 
-	return new Promise<void>((resolve, reject) => {
+	let leaveGateway = () => {};
+	const connected = new Promise<void>((resolve, reject) => {
 		let sessionId: string | undefined;
 		let endpoint: string | undefined;
 		let token: string | undefined;
@@ -455,5 +461,25 @@ export function joinVoiceViaSidecar(
 		} else {
 			join();
 		}
+
+		leaveGateway = () => {
+			clearTimeout(timer);
+			clearTimeout(leaveTimer);
+			leaving = false;
+			leave();
+			adapter.destroy();
+			if (!settled) {
+				settled = true;
+				reject(new LeftVoiceError(guild.id));
+			}
+		};
 	});
+	return { connected, leave: () => leaveGateway() };
+}
+
+/** A join abandoned on purpose, which is not worth logging as a failure. */
+export class LeftVoiceError extends Error {
+	constructor(guildId: string) {
+		super(`Left voice in ${guildId} before the join completed`);
+	}
 }

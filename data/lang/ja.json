@@ -74,6 +74,17 @@
 	"SKIP_LABEL": "スキップ",
 	"QUEUE_LABEL": "キュー",
 	"QUEUE_FOOTER": "全{totalSong}曲中{minShowingSong}～{maxShowingSong}曲を表示",
+	"LYRICS_NO_SONG": "再生中の曲がありません。`search` で検索する曲を指定してください",
+	"LYRICS_FAILED": "歌詞サービスが現在利用できません。しばらくしてからもう一度お試しください",
+	"LYRICS_NOT_FOUND": "**{title}** の歌詞が見つかりませんでした。`/lyrics search:` で曲名を指定してみてください",
+	"LYRICS_INSTRUMENTAL": "この曲はインストゥルメンタルです",
+	"LYRICS_SOURCE": "歌詞提供: LRCLIB",
+	"LYRICS_PAGE": "{page}/{total} ページ",
+	"LYRICS_PREVIOUS": "前へ",
+	"LYRICS_NEXT": "次へ",
+	"LYRICS_FOLLOW": "同期表示",
+	"LYRICS_FULL": "全歌詞",
+	"LYRICS_SONG_CHANGED": "曲が変わりました。新しい曲は /lyrics をもう一度実行してください",
 	"commands": {
 		"play": {
 			"name": "再生",
@@ -224,6 +235,14 @@
 				"enabled": {
 					"name": "有効",
 					"description": "音楽以外のモードの自動スキップを設定"
+				}
+			}
+		},
+		"lyrics": {
+			"description": "再生中の曲の歌詞を表示、または歌詞を検索",
+			"options": {
+				"search": {
+					"description": "再生中の曲の代わりに歌詞を検索"
 				}
 			}
 		}

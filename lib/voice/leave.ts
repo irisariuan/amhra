@@ -86,6 +86,47 @@ export function sweepLeave(client: CustomClient, now = Date.now()) {
 		}
 		leave(client, guildId, plan.reason);
 	}
+	sweepOrphans(client, current, now);
+}
+
+/**
+ * Guilds where the bot is seated in voice with no player and no connection
+ * behind it: a restart while it was in a channel, or a session that dropped
+ * under it. Nothing can play there, so these only ever wait out the limits.
+ */
+const orphans = new Map<string, { idleSince: number | null; aloneSince: number | null }>();
+
+function sweepOrphans(client: CustomClient, current: LeaveLimits, now: number) {
+	const seen = new Set<string>();
+	for (const [guildId, guild] of client.guilds.cache) {
+		if (!guild.members.me?.voice.channelId) continue;
+		if (client.player.has(guildId) || getConnection(guildId)) continue;
+		seen.add(guildId);
+		const carried = orphans.get(guildId);
+		const plan = planLeave(
+			{
+				busy: false,
+				listeners: listenersIn(client, guildId),
+				idleSince: carried?.idleSince ?? null,
+				aloneSince: carried?.aloneSince ?? null,
+			},
+			current,
+			now,
+		);
+		if (plan.action === "wait") {
+			orphans.set(guildId, { idleSince: plan.idleSince, aloneSince: plan.aloneSince });
+			continue;
+		}
+		dcb.log(`Leaving ${guildId}: seated in voice with nothing playing`);
+		orphans.delete(guildId);
+		guild.shard.send({
+			op: 4,
+			d: { guild_id: guildId, channel_id: null, self_mute: false, self_deaf: false },
+		});
+	}
+	for (const guildId of orphans.keys()) {
+		if (!seen.has(guildId)) orphans.delete(guildId);
+	}
 }
 
 /**

@@ -7,8 +7,6 @@ import { existsSync } from "node:fs";
 import { Language } from "./interaction";
 import { languageText } from "./language";
 
-export const errorMessage = "An error occurred during running this command";
-
 export async function addLogLine(data: string, logCategory: string) {
 	if (!existsSync(`${process.cwd()}/data/log/${logCategory}.log`)) {
 		await writeFile(`${process.cwd()}/data/log/${logCategory}.log`, "");

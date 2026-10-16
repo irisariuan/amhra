@@ -27,6 +27,7 @@ import {
 } from "../auth/webauthn";
 import { createSession, deleteSession, collectGarbage } from "../db/session";
 import { getSuggestions } from "../voice/suggest";
+import { lyricsForQuery, lyricsForTrack } from "../lyrics";
 import { load } from "../log/load";
 import { exp, globalApp, misc } from "../misc";
 import { readSetting, reloadSetting, writeJsonSync } from "../setting";
@@ -523,18 +524,20 @@ export async function initServer(client: CustomClient) {
 		"/api/suggestions/:guildId",
 		auth(Permission.User),
 		async (req, res) => {
+			// Express 5 types every param as string | string[] for the sake of *splat
+			const guildId = req.params.guildId as string;
 			const account = getRequestAccount(res);
 			if (
 				!account ||
 				!(await accountCanAccessGuild(
 					client,
 					account,
-					req.params.guildId,
+					guildId,
 				))
 			) {
 				return res.sendStatus(403);
 			}
-			const player = client.player.get(req.params.guildId);
+			const player = client.player.get(guildId);
 			const seed =
 				player?.nowPlaying?.url ?? player?.history.at(-1) ?? null;
 			if (!seed) return res.json({ content: [] });
@@ -542,6 +545,38 @@ export async function initServer(client: CustomClient) {
 			return res.json({ content });
 		},
 	);
+
+	// Lyrics for a guild's current track. `link` says which track they belong
+	// to, so a dashboard polling across a song change can tell a stale answer
+	// from a fresh one. `?q=` replaces the automatic match with a search, for
+	// when the title was read wrong.
+	app.get("/api/lyrics/:guildId", auth(Permission.User), async (req, res) => {
+		const guildId = req.params.guildId as string;
+		const account = getRequestAccount(res);
+		if (
+			!account ||
+			!(await accountCanAccessGuild(client, account, guildId))
+		) {
+			return res.sendStatus(403);
+		}
+		const player = client.player.get(guildId);
+		const track = player?.isPlaying ? player.nowPlaying : null;
+		const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+		if (!track && !query) return res.json({ link: null, content: null });
+		try {
+			const content = query
+				? await lyricsForQuery(query, track?.details.durationInSec)
+				: await lyricsForTrack({
+						url: track!.url,
+						title: track!.details.title,
+						channel: track!.channel.name,
+						durationInSec: track!.details.durationInSec,
+					});
+			return res.json({ link: track?.url ?? null, content });
+		} catch {
+			return res.sendStatus(502);
+		}
+	});
 
 	app.post(
 		"/api/live",
@@ -602,18 +637,19 @@ export async function initServer(client: CustomClient) {
 		"/api/song/get/:guildId",
 		auth(Permission.User),
 		async (req, res) => {
+				const guildId = req.params.guildId as string;
 			const account = getRequestAccount(res);
 			if (
 				!account ||
 				!(await accountCanAccessGuild(
 					client,
 					account,
-					req.params.guildId,
+					guildId,
 				))
 			) {
 				return res.sendStatus(403);
 			}
-			const data = client.player.get(req.params.guildId)?.getData();
+			const data = client.player.get(guildId)?.getData();
 			return res.send(JSON.stringify(data ?? null));
 		},
 	);

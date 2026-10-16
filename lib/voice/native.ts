@@ -7,6 +7,7 @@ import { nativeFetchBin } from "./nativeFetch";
 import { planArm } from "./nativePlan";
 import {
 	joinVoiceViaSidecar,
+	LeftVoiceError,
 	sidecar,
 	sidecarBin,
 	type SidecarCommand,
@@ -67,11 +68,19 @@ export class NativeConnection {
 	 * that a cached track can easily beat.
 	 */
 	readonly connected: Promise<void>;
+	/** Give up the bot's seat in the channel, which the sidecar cannot do. */
+	private readonly leaveGateway: () => void;
 
-	constructor(guildId: string, channelId: string, connected: Promise<void>) {
+	constructor(
+		guildId: string,
+		channelId: string,
+		connected: Promise<void>,
+		leaveGateway: () => void,
+	) {
 		this.guildId = guildId;
 		this.channelId = channelId;
 		this.connected = connected;
+		this.leaveGateway = leaveGateway;
 	}
 
 	/**
@@ -93,7 +102,21 @@ export class NativeConnection {
 		}
 		connections.delete(this.guildId);
 		sidecar().send({ type: "disconnect", guildId: this.guildId });
+		// Closing the voice socket alone leaves the bot sitting in the channel:
+		// the gateway still has it there until it is told otherwise.
+		this.leaveGateway();
 		return true;
+	}
+
+	/**
+	 * The sidecar's session is already gone, so only the gateway half is left
+	 * to undo. Sending `disconnect` as well would only draw an answer about a
+	 * guild it no longer has.
+	 */
+	dropped() {
+		if (connections.get(this.guildId) !== this) return;
+		connections.delete(this.guildId);
+		this.leaveGateway();
 	}
 
 	/**
@@ -125,13 +148,16 @@ export function joinVoiceNative(channel: VoiceBasedChannel) {
 	const existing = connections.get(guildId);
 	if (existing && existing.channelId === channel.id) return existing;
 
-	const connected = joinVoiceViaSidecar(channel, false, () => {
+	const join = joinVoiceViaSidecar(channel, false, () => {
 		// discord.js tells the adapter it is finished with the guild. Only the
 		// connection that still owns it may act on that; a stale one would be
 		// disconnecting whoever replaced it.
 		if (connections.get(guildId) === connection) connection.disconnect();
-	}).catch((error: Error) => {
-		globalApp.err(`Failed to join voice via the sidecar in ${guildId}`, error);
+	});
+	const connected = join.connected.catch((error: Error) => {
+		if (!(error instanceof LeftVoiceError)) {
+			globalApp.err(`Failed to join voice via the sidecar in ${guildId}`, error);
+		}
 		// Leaving a connection registered that never came up would make every
 		// later command believe the bot is in the channel.
 		if (connections.get(guildId) === connection) connections.delete(guildId);
@@ -141,7 +167,7 @@ export function joinVoiceNative(channel: VoiceBasedChannel) {
 	// process down; the commands gated on it handle their own failure.
 	connected.catch(() => {});
 
-	const connection = new NativeConnection(guildId, channel.id, connected);
+	const connection = new NativeConnection(guildId, channel.id, connected, join.leave);
 	connections.set(guildId, connection);
 	return connection;
 }
@@ -315,7 +341,14 @@ export function bindNativeVoice(client: CustomClient) {
 	});
 
 	bus.on("disconnected", (payload: { guildId: string; reason: string }) => {
-		connections.delete(payload.guildId);
+		// The answer to our own `disconnect`, which already cleaned up here. By
+		// the time it lands the guild may have been joined again, and acting on
+		// it would tear the new connection down.
+		if (payload.reason === "asked to leave") return;
+		// The voice session dropped for good. Without this the bot would stay
+		// seated in the channel, silent, with nothing left that could make it
+		// leave.
+		connections.get(payload.guildId)?.dropped();
 		const player = playerFor(payload.guildId);
 		if (!player?.nativePlayback) return;
 		globalApp.warn(`Voice disconnected in ${payload.guildId}: ${payload.reason}`);

@@ -1,5 +1,4 @@
 import { readFile } from 'node:fs/promises'
-import { readdirSync } from 'node:fs'
 import { globalApp } from '../misc'
 
 export enum TypeRef {
@@ -14,10 +13,6 @@ export interface Log {
     time: number
     type: LogType
     message: string
-}
-
-export async function loadAll() {
-    return (await Promise.all(readdirSync(`${process.cwd()}/data/log`).filter(x => x.endsWith('.log')).map(v => load(v)))).flat()
 }
 
 export async function load(...filepaths: string[]) {
