@@ -218,15 +218,17 @@ export async function sendInteractionSkipMessage(
  * @returns Whether the skip message was sent or not
  */
 export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
+	// Most songs have no non-music segments, and a seek asks after every one:
+	// nothing to announce is the normal answer, not something to warn about.
 	if (
 		!player.isPlaying ||
 		!player.nowPlaying?.segments ||
-		player.nowPlaying.segments.length <= 0 ||
-		!player.channel?.isSendable()
+		player.nowPlaying.segments.length <= 0
 	) {
-		globalApp.warn(
-			`isPlaying: ${player.isPlaying}, segments: ${player.nowPlaying?.segments?.length ?? "UNDEFINED"}, channel: ${player.channel?.isSendable()}`,
-		);
+		return false;
+	}
+	if (!player.channel?.isSendable()) {
+		globalApp.warn("Cannot send the skip message: the player's channel is not sendable");
 		return false;
 	}
 

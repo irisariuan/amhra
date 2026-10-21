@@ -19,8 +19,8 @@ use amhra_audio::{CacheReader, packet_info};
 
 use crate::dsp::Crossfader;
 
-/// How often a standby track is refreshed while it waits, in ticks. Once a
-/// second is enough to keep its buffer warm without stat-ing on every frame.
+/// How often a track still downloading is refreshed, in ticks. Once a second
+/// is enough to keep its buffer warm without stat-ing on every frame.
 const STANDBY_REFRESH_TICKS: u32 = 50;
 
 /// What the caller should do with this tick.
@@ -201,12 +201,20 @@ impl Player {
 	/// Produce this tick's audio.
 	pub fn tick(&mut self) -> Tick<'_> {
 		self.ticks = self.ticks.wrapping_add(1);
-		// Keep the next track's buffer warm so the switch never lands on an
-		// empty reader.
-		if self.ticks.is_multiple_of(STANDBY_REFRESH_TICKS)
-			&& let Some(standby) = self.standby.as_mut()
-		{
-			let _ = standby.reader.refresh();
+		if self.ticks.is_multiple_of(STANDBY_REFRESH_TICKS) {
+			// Keep the next track's buffer warm so the switch never lands on
+			// an empty reader.
+			if let Some(standby) = self.standby.as_mut() {
+				let _ = standby.reader.refresh();
+			}
+			// And notice the playing track's download finishing before its
+			// end, not at it: a crossfade has to know where the end is while
+			// there is still time to start one.
+			if let Some(active) = self.active.as_mut()
+				&& !active.reader.is_complete()
+			{
+				let _ = active.reader.refresh();
+			}
 		}
 
 		if self.active.is_none() {
@@ -496,6 +504,42 @@ mod tests {
 		file.sync_data().unwrap();
 		assert!(matches!(player.tick(), Tick::Frame { .. }), "playback should resume");
 		std::fs::remove_file(&path).ok();
+	}
+
+	/// The common case, not an edge one: a track starts playing from its
+	/// temp file a moment after the download begins. When the download is
+	/// renamed into place the track has to end normally, or playback goes
+	/// silent at its end and the queue never moves on.
+	#[test]
+	fn a_track_started_mid_download_finishes_once_the_download_does() {
+		let mut dir = std::env::temp_dir();
+		dir.push(format!("amhra-player-published-{}", std::process::id()));
+		std::fs::create_dir_all(&dir).unwrap();
+		let temp = dir.join("song.temp.music");
+		let whole = webm(10, 0x5a);
+		let part = whole.len() * 2 / 3;
+		std::fs::write(&temp, &whole[..part]).unwrap();
+
+		let mut player = Player::new();
+		player.play("song", CacheReader::open(&dir, "song").unwrap());
+		while matches!(player.tick(), Tick::Frame { .. }) {}
+
+		let mut file = std::fs::OpenOptions::new().append(true).open(&temp).unwrap();
+		file.write_all(&whole[part..]).unwrap();
+		file.sync_data().unwrap();
+		drop(file);
+		std::fs::rename(&temp, dir.join("song.music")).unwrap();
+
+		let mut ended = false;
+		for _ in 0..20 {
+			if matches!(player.tick(), Tick::Idle) {
+				ended = true;
+				break;
+			}
+		}
+		assert!(ended, "the track should end, not wait for a download that is done");
+		assert!(player.drain_events().contains(&Event::Finished("song".to_owned())));
+		std::fs::remove_dir_all(&dir).ok();
 	}
 
 	#[test]

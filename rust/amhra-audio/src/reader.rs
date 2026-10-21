@@ -183,10 +183,19 @@ impl CacheReader {
 		self.frames[self.cursor].timestamp_ms
 	}
 
-	/// Pick up whatever has been appended since the last call.
+	/// Pick up whatever has been appended since the last call, and whether the
+	/// download has since finished.
 	///
-	/// Cheap when nothing has changed: one `stat`, no remap, no parsing.
+	/// Cheap when nothing has changed: one `stat`, no remap, no parsing — plus
+	/// two more while a temp file is still open, which is only ever a track
+	/// that is still arriving.
 	pub fn refresh(&mut self) -> Result<bool, ReaderError> {
+		// Checked before the length is read: the fetcher renames only after
+		// its last write is synced, so once the rename is seen, the length
+		// read next is the whole file.
+		if !self.complete && self.download_published() {
+			self.complete = true;
+		}
 		let length = self.file.metadata()?.len();
 		if length <= self.map.len() as u64 {
 			return Ok(false);
@@ -197,6 +206,21 @@ impl CacheReader {
 		let _ = self.map.advise(memmap2::Advice::WillNeed);
 		self.demux_available()?;
 		Ok(true)
+	}
+
+	/// Whether the temp file this reader opened has been renamed into place.
+	///
+	/// The open handle follows the file through the rename, so the bytes are
+	/// already ours; what the rename adds is the one thing the bytes cannot
+	/// say, that there will be no more of them. Both download paths rename
+	/// only on success, and a failed one deletes the temp file without
+	/// publishing anything, so that does not count.
+	fn download_published(&self) -> bool {
+		let Some(name) = self.path.file_name().and_then(|name| name.to_str()) else {
+			return false;
+		};
+		let Some(id) = name.strip_suffix(".temp.music") else { return false };
+		!self.path.exists() && self.path.with_file_name(format!("{id}.music")).exists()
 	}
 
 	/// Demux everything in the mapping that has not been demuxed yet.
@@ -388,6 +412,60 @@ mod tests {
 		assert!(reader.is_drained());
 		assert!(!reader.is_complete());
 		std::fs::remove_file(&path).ok();
+	}
+
+	/// A track starts playing from the temp file while it downloads. When the
+	/// download finishes and the file is renamed into place, the open reader
+	/// must learn the track is whole, or the player waits at the end of it
+	/// forever and the queue never moves on.
+	#[test]
+	fn a_download_finishing_under_an_open_reader_completes_it() {
+		let mut dir = std::env::temp_dir();
+		dir.push(format!("amhra-reader-rename-{}", std::process::id()));
+		std::fs::create_dir_all(&dir).unwrap();
+		let temp = dir.join("track.temp.music");
+		let whole = webm(4, 50);
+		let half = whole.len() / 2;
+		std::fs::write(&temp, &whole[..half]).unwrap();
+
+		let mut reader = CacheReader::open(&dir, "track").unwrap();
+		assert!(!reader.is_complete());
+		while reader.next_frame().is_some() {}
+
+		// The fetcher writes the rest, then renames as its very last step.
+		let mut file = std::fs::OpenOptions::new().append(true).open(&temp).unwrap();
+		file.write_all(&whole[half..]).unwrap();
+		file.sync_data().unwrap();
+		drop(file);
+		std::fs::rename(&temp, dir.join("track.music")).unwrap();
+
+		assert!(reader.refresh().unwrap(), "the rest of the audio should be picked up");
+		assert!(reader.is_complete(), "the rename means the download is done");
+		let mut rest = 0;
+		while reader.next_frame().is_some() {
+			rest += 1;
+		}
+		assert_eq!(reader.frame_count(), 200, "nothing written before the rename is lost");
+		assert!(rest > 0);
+		std::fs::remove_dir_all(&dir).ok();
+	}
+
+	#[test]
+	fn a_temp_file_that_vanishes_without_a_rename_is_not_complete() {
+		// A failed download deletes its temp file and publishes nothing; that
+		// must not read as the track having finished.
+		let mut dir = std::env::temp_dir();
+		dir.push(format!("amhra-reader-failed-{}", std::process::id()));
+		std::fs::create_dir_all(&dir).unwrap();
+		let temp = dir.join("track.temp.music");
+		let whole = webm(4, 50);
+		std::fs::write(&temp, &whole[..whole.len() / 2]).unwrap();
+
+		let mut reader = CacheReader::open(&dir, "track").unwrap();
+		std::fs::remove_file(&temp).unwrap();
+		reader.refresh().unwrap();
+		assert!(!reader.is_complete());
+		std::fs::remove_dir_all(&dir).ok();
 	}
 
 	#[test]
