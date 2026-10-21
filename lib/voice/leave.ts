@@ -7,6 +7,7 @@ import {
 	getConnection,
 } from "./core";
 import { type LeaveLimits, type LeaveReason, planLeave } from "./leavePlan";
+import { hasSchedule } from "./schedule";
 
 /**
  * Asks every player whether the bot should still be in its voice channel.
@@ -75,6 +76,7 @@ export function sweepLeave(client: CustomClient, now = Date.now()) {
 				listeners: listenersIn(client, guildId),
 				idleSince: player.idleSince,
 				aloneSince: player.aloneSince,
+				scheduled: hasSchedule(guildId),
 			},
 			current,
 			now,

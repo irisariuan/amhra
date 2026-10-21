@@ -86,6 +86,24 @@
 	"LYRICS_FULL": "完整歌詞",
 	"LYRICS_SONG_CHANGED": "歌曲已切換，請再次使用 /lyrics 查看新歌曲",
 	"commands": {
+		"schedule": {
+			"name": "預約",
+			"description": "預約影片在指定時間插播",
+			"options": {
+				"add": {
+					"name": "新增",
+					"description": "預約影片插播，首播會自動設定時間"
+				},
+				"list": {
+					"name": "列表",
+					"description": "顯示所有預約"
+				},
+				"cancel": {
+					"name": "取消",
+					"description": "取消預約播放"
+				}
+			}
+		},
 		"play": {
 			"name": "播放",
 			"description": "播放來自 YouTube 的歌曲或播放清單",
@@ -250,5 +268,29 @@
 	"SEARCH_PICK": "不是想要的歌嗎？可以從下面選擇其他搜尋結果。",
 	"SEARCH_PICK_PLACEHOLDER": "切換到其他搜尋結果",
 	"SEARCH_PICK_SWITCHED": "已切換至 {title} ({url})",
-	"SEARCH_PICK_GONE": "該歌曲已不在播放中，也不在佇列裡"
+	"SEARCH_PICK_GONE": "該歌曲已不在播放中，也不在佇列裡",
+	"SCHEDULE_WARNING_CUT": "⏰ **{title}** 將於{relative}插播。按下按鈕即可避免打斷目前的歌曲。",
+	"SCHEDULE_WARNING_START": "⏰ **{title}** 將於{relative}開始播放。",
+	"SCHEDULE_PREVENT_LABEL": "不要插播",
+	"SCHEDULE_CANCEL_LABEL": "取消",
+	"SCHEDULE_QUEUE_LABEL": "改為下一首播放",
+	"SCHEDULE_CANCELLED": "已取消 **{title}** 的預約播放（{by}）",
+	"SCHEDULE_QUEUED": "**{title}** 將改為下一首播放，不會插播（{by}）",
+	"SCHEDULE_PLAYING": "▶️ 正在播放預約的 **{title}**",
+	"SCHEDULE_PLAYING_RESUME": "▶️ 正在播放預約的 **{title}**，被打斷的歌曲會在之後繼續播放",
+	"SCHEDULE_FAILED": "無法播放預約的 **{title}**",
+	"SCHEDULE_CLEARED_LEFT": "由於我已離開語音頻道，已取消 **{title}** 的預約播放",
+	"SCHEDULE_ADDED": "已預約 **[{title}]({url})** 於 {time}（{relative}）插播",
+	"SCHEDULE_PREMIERE_ADDED": "**[{title}]({url})** 將於{relative}首播，會在 {time} 自動插播",
+	"SCHEDULE_BAD_TIME": "無法讀取該時間，請試試 `10m`、`1h30m`、`21:30`、`2026-10-22 21:30` 或 Discord 時間戳記",
+	"SCHEDULE_PAST_TIME": "該時間已經過去了",
+	"SCHEDULE_NEED_TIME": "請提供時間以預約此影片，只有尚未開始的首播可以不指定時間",
+	"SCHEDULE_VIDEO_ONLY": "只能預約單一影片，不能預約播放清單",
+	"SCHEDULE_NOT_FOUND_VIDEO": "找不到該影片",
+	"SCHEDULE_EMPTY": "沒有任何預約",
+	"SCHEDULE_LIST_HEADER": "預約播放：",
+	"SCHEDULE_LIST_ITEM": "`{index}.` **[{title}]({url})** {time}（{relative}）{premiere}",
+	"SCHEDULE_PREMIERE_TAG": " · 首播",
+	"SCHEDULE_NOT_FOUND": "沒有第 {index} 個預約播放",
+	"SCHEDULE_FROM_DASHBOARD": "來自控制台"
 }

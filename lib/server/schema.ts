@@ -7,6 +7,7 @@ import { Language } from "../interaction";
 export const QueueItemSchema = z.object({
 	url: z.url(),
 	repeating: z.boolean(),
+	seek: z.number().nonnegative().optional(),
 });
 
 // Actions without meaningful detail (you pass {}):
@@ -186,6 +187,25 @@ export const SongEditRequestSchema = z.discriminatedUnion("action", [
 // Inferred Type
 export type SongEditRequest = z.infer<typeof SongEditRequestSchema>;
 
+/**
+ * A video to cut in at `at` (epoch milliseconds). Without `at`, only an
+ * upcoming premiere is accepted, timed to its start.
+ */
+export const ScheduleAddSchema = z.object({
+	...Base,
+	url: z
+		.string()
+		.refine((u) => isYouTubeVideo(u), "Must be a valid YouTube video URL"),
+	at: z.number().int().positive().optional(),
+});
+
+/** Answer a pending schedule: drop it, or queue it next instead of cutting in. */
+export const ScheduleRespondSchema = z.object({
+	...Base,
+	id: z.string().min(1),
+	action: z.enum(["cancel", "queue"]),
+});
+
 export const UserSettingUploadSchema = z.object({
 	loop: z.boolean().optional(),
 	language: z.enum(Language).optional(),
@@ -237,5 +257,6 @@ export const GlobalSettingSchema = z
 		NATIVE_FETCH_BIN: z.string().optional(),
 		USE_RUST_VOICE: z.boolean().optional(),
 		NATIVE_VOICE_BIN: z.string().optional(),
+		AUTO_SCHEDULE_PREMIERES: z.boolean().optional(),
 	})
 	.passthrough();

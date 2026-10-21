@@ -137,6 +137,10 @@
   "VOICE_LOGGING": {
    "type": "boolean",
    "description": "Enable voice state logging"
+  },
+  "AUTO_SCHEDULE_PREMIERES": {
+   "type": "boolean",
+   "description": "Schedule an upcoming premiere to cut in when it starts instead of refusing it when played (default true)"
   }
  },
  "required": [

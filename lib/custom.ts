@@ -118,6 +118,11 @@ export class CustomClient extends Client {
 export interface QueueItem {
 	url: string;
 	repeating: boolean;
+	/**
+	 * Seconds to start from. Set on a track a scheduled play cut in over, so it
+	 * picks up where it was interrupted rather than from the top.
+	 */
+	seek?: number;
 }
 
 export interface AudioPlayerSetting {
@@ -384,17 +389,57 @@ export class CustomAudioPlayer extends AudioPlayer {
 		}
 	}
 
-	getNextQueueItem() {
-		if (this.queue.length === 0) return null;
+	/** Take the head of the queue, re-appending it if it repeats. */
+	shiftQueue(): QueueItem | null {
 		const item = this.queue.shift();
 		if (!item) return null;
 		if (item.repeating) {
+			// The repeat starts from the top; only this play resumes
 			this.queue.push({
 				repeating: true,
 				url: item.url,
 			});
 		}
-		return item.url;
+		return item;
+	}
+
+	getNextQueueItem() {
+		return this.shiftQueue()?.url ?? null;
+	}
+
+	/**
+	 * Cut a track in over whatever is playing.
+	 *
+	 * The interrupted track goes back to the head of the queue with its
+	 * position, so it resumes once this one ends. A livestream has no position
+	 * worth returning to, and is dropped instead.
+	 *
+	 * Replacing the resource directly is the same move a seek that cannot be
+	 * done in place makes: on @discordjs/voice the old resource is swapped out
+	 * without an idle state, and the sidecar treats a `play` as replacing its
+	 * active slot, so neither path advances the queue for the track cut off.
+	 */
+	interruptWith(resource: Resource) {
+		const current = this.isPlaying ? this.nowPlaying : null;
+		const position = this.getCurrentSongPosition();
+		const resumed = !!(
+			current &&
+			position !== null &&
+			current.details.durationInSec > 0
+		);
+		if (resumed && current && position !== null) {
+			this.queue.unshift({
+				url: current.url,
+				repeating: false,
+				seek: Math.floor(position / 1000),
+			});
+		}
+		const wasPaused = this.isPaused;
+		this.playResource(resource);
+		// A cut-in is meant to be heard. The discord.js player starts the new
+		// resource regardless; the sidecar keeps a guild's pause across tracks.
+		if (wasPaused && this.nativePlayback) nativeResume(this.guildId);
+		return resumed;
 	}
 
 	playResource(resource: Resource, replay = false) {

@@ -86,6 +86,24 @@
 	"LYRICS_FULL": "全歌詞",
 	"LYRICS_SONG_CHANGED": "曲が変わりました。新しい曲は /lyrics をもう一度実行してください",
 	"commands": {
+		"schedule": {
+			"name": "予約",
+			"description": "指定した時間に動画を割り込み再生するよう予約します",
+			"options": {
+				"add": {
+					"name": "追加",
+					"description": "動画の割り込み再生を予約します。プレミアは自動で時間が設定されます"
+				},
+				"list": {
+					"name": "一覧",
+					"description": "予約の一覧を表示します"
+				},
+				"cancel": {
+					"name": "キャンセル",
+					"description": "予約再生をキャンセルします"
+				}
+			}
+		},
 		"play": {
 			"name": "再生",
 			"description": "YouTubeの曲またはプレイリストを再生します",
@@ -250,5 +268,29 @@
 	"SEARCH_PICK": "違う曲でしたか？下から別の検索結果を選べます。",
 	"SEARCH_PICK_PLACEHOLDER": "別の検索結果に切り替える",
 	"SEARCH_PICK_SWITCHED": "{title} ({url}) に切り替えました",
-	"SEARCH_PICK_GONE": "その曲は再生中でもキュー内でもありません"
+	"SEARCH_PICK_GONE": "その曲は再生中でもキュー内でもありません",
+	"SCHEDULE_WARNING_CUT": "⏰ **{title}** が{relative}に割り込み再生される予定です。現在の曲を中断させたくない場合はボタンを押してください。",
+	"SCHEDULE_WARNING_START": "⏰ **{title}** が{relative}に再生開始される予定です。",
+	"SCHEDULE_PREVENT_LABEL": "割り込まない",
+	"SCHEDULE_CANCEL_LABEL": "キャンセル",
+	"SCHEDULE_QUEUE_LABEL": "代わりに次に再生",
+	"SCHEDULE_CANCELLED": "**{title}** の予約再生をキャンセルしました ({by})",
+	"SCHEDULE_QUEUED": "**{title}** は割り込まずに次に再生されます ({by})",
+	"SCHEDULE_PLAYING": "▶️ 予約された **{title}** を再生中",
+	"SCHEDULE_PLAYING_RESUME": "▶️ 予約された **{title}** を再生中、中断された曲はこの後に再開されます",
+	"SCHEDULE_FAILED": "予約された **{title}** を再生できませんでした",
+	"SCHEDULE_CLEARED_LEFT": "ボイスチャンネルから退出したため、**{title}** の予約再生をキャンセルしました",
+	"SCHEDULE_ADDED": "**[{title}]({url})** を {time} ({relative}) に割り込み再生するよう予約しました",
+	"SCHEDULE_PREMIERE_ADDED": "**[{title}]({url})** は{relative}にプレミア公開されます。{time} に自動で割り込み再生します",
+	"SCHEDULE_BAD_TIME": "時間を読み取れませんでした。`10m`、`1h30m`、`21:30`、`2026-10-22 21:30` または Discord のタイムスタンプを試してください",
+	"SCHEDULE_PAST_TIME": "その時間はすでに過ぎています",
+	"SCHEDULE_NEED_TIME": "この動画を予約するには時間を指定してください。時間なしで予約できるのは公開前のプレミアのみです",
+	"SCHEDULE_VIDEO_ONLY": "予約できるのは単一の動画のみで、プレイリストは予約できません",
+	"SCHEDULE_NOT_FOUND_VIDEO": "その動画が見つかりませんでした",
+	"SCHEDULE_EMPTY": "予約はありません",
+	"SCHEDULE_LIST_HEADER": "予約再生:",
+	"SCHEDULE_LIST_ITEM": "`{index}.` **[{title}]({url})** {time} ({relative}){premiere}",
+	"SCHEDULE_PREMIERE_TAG": " · プレミア",
+	"SCHEDULE_NOT_FOUND": "予約再生 #{index} はありません",
+	"SCHEDULE_FROM_DASHBOARD": "ダッシュボードから"
 }

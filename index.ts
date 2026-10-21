@@ -10,6 +10,7 @@ import { watch } from "node:fs";
 import { updateYtdlpVersion } from "./lib/voice/ytdlp";
 import { bindNativeVoice, nativeVoiceActive } from "./lib/voice/native";
 import { startLeaveSweeper } from "./lib/voice/leave";
+import { bindSchedules } from "./lib/voice/schedule";
 
 const setting = readSetting();
 
@@ -80,6 +81,9 @@ const setting = readSetting();
 	// before login so a guild the bot is already in when it reconnects is swept
 	// like any other.
 	startLeaveSweeper(client);
+	// Before login too: the voice state that clears a guild's schedules can
+	// arrive as soon as the gateway is up.
+	bindSchedules(client);
 	const app = await initServer(client);
 	app.listen(setting.PORT, () =>
 		exp.log(

@@ -9,6 +9,8 @@ import {
 } from "../voice/core";
 import { deleteSkipMessage, sendSkipMessage } from "../voice/segment";
 import { getYouTubePlaylist } from "../youtube";
+import { readSetting } from "../setting";
+import { findUpcoming, requestSchedule } from "../voice/schedule";
 import { SongEditType } from "./event";
 import { SongEditRequest } from "./schema";
 
@@ -64,6 +66,28 @@ export async function handleSongInterruption(
 			break;
 		}
 		case SongEditType.AddSong: {
+			// 202 tells the dashboard a premiere was scheduled rather than queued
+			if (readSetting().AUTO_SCHEDULE_PREMIERES !== false) {
+				const upcoming = await findUpcoming(data.detail.url);
+				if (upcoming) {
+					const result = await requestSchedule({
+						guildId,
+						url: data.detail.url,
+						at: null,
+						channelId: player.channel?.id ?? null,
+						createdBy: languageText(
+							"schedule_from_dashboard",
+							player.currentLanguage,
+						),
+						language: player.currentLanguage,
+						upcoming,
+					});
+					if ("entry" in result) {
+						dcb.log("Scheduled premiere from dashboard");
+						return 202;
+					}
+				}
+			}
 			dcb.log("Added song from dashboard to queue");
 			player.addToQueue(data.detail.url);
 			if (!player.isPlaying) {

@@ -86,6 +86,20 @@
 	"LYRICS_FULL": "Full lyrics",
 	"LYRICS_SONG_CHANGED": "The song changed, run /lyrics again for the new one",
 	"commands": {
+		"schedule": {
+			"description": "Schedule a video to cut in at a set time",
+			"options": {
+				"add": {
+					"description": "Schedule a video to cut in, premieres are timed automatically"
+				},
+				"list": {
+					"description": "Show what is scheduled"
+				},
+				"cancel": {
+					"description": "Cancel a scheduled play"
+				}
+			}
+		},
 		"play": {
 			"description": "Play a song or playlist from YouTube",
 			"options": {
@@ -216,5 +230,29 @@
 	"SEARCH_PICK": "Not the right song? Pick another result below.",
 	"SEARCH_PICK_PLACEHOLDER": "Switch to another search result",
 	"SEARCH_PICK_SWITCHED": "Switched to {title} ({url})",
-	"SEARCH_PICK_GONE": "That song is no longer playing or in the queue"
+	"SEARCH_PICK_GONE": "That song is no longer playing or in the queue",
+	"SCHEDULE_WARNING_CUT": "⏰ **{title}** is scheduled to cut in {relative}. Press a button to stop it from interrupting the current song.",
+	"SCHEDULE_WARNING_START": "⏰ **{title}** is scheduled to start {relative}.",
+	"SCHEDULE_PREVENT_LABEL": "Don't cut in",
+	"SCHEDULE_CANCEL_LABEL": "Cancel",
+	"SCHEDULE_QUEUE_LABEL": "Play next instead",
+	"SCHEDULE_CANCELLED": "Cancelled the scheduled play of **{title}** ({by})",
+	"SCHEDULE_QUEUED": "**{title}** will play next instead of cutting in ({by})",
+	"SCHEDULE_PLAYING": "▶️ Now playing scheduled **{title}**",
+	"SCHEDULE_PLAYING_RESUME": "▶️ Now playing scheduled **{title}**, the interrupted song will resume after it",
+	"SCHEDULE_FAILED": "Couldn't play scheduled **{title}**",
+	"SCHEDULE_CLEARED_LEFT": "Cancelled the scheduled play of **{title}** because I left the voice channel",
+	"SCHEDULE_ADDED": "Scheduled **[{title}]({url})** to cut in at {time} ({relative})",
+	"SCHEDULE_PREMIERE_ADDED": "**[{title}]({url})** premieres {relative}, it will cut in automatically at {time}",
+	"SCHEDULE_BAD_TIME": "I couldn't read that time. Try `10m`, `1h30m`, `21:30`, `2026-10-22 21:30` or a Discord timestamp",
+	"SCHEDULE_PAST_TIME": "That time has already passed",
+	"SCHEDULE_NEED_TIME": "Give a time to schedule this video, only upcoming premieres can be scheduled without one",
+	"SCHEDULE_VIDEO_ONLY": "Only a single video can be scheduled, not a playlist",
+	"SCHEDULE_NOT_FOUND_VIDEO": "I couldn't find that video",
+	"SCHEDULE_EMPTY": "Nothing is scheduled",
+	"SCHEDULE_LIST_HEADER": "Scheduled plays:",
+	"SCHEDULE_LIST_ITEM": "`{index}.` **[{title}]({url})** {time} ({relative}){premiere}",
+	"SCHEDULE_PREMIERE_TAG": " · premiere",
+	"SCHEDULE_NOT_FOUND": "There is no scheduled play #{index}",
+	"SCHEDULE_FROM_DASHBOARD": "from the dashboard"
 }

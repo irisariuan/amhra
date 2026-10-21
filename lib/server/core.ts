@@ -42,11 +42,21 @@ import {
 import { ActionType, event } from "./event";
 import {
 	GlobalSettingSchema,
+	ScheduleAddSchema,
+	ScheduleRespondSchema,
 	SongEditRequestSchema,
 	UserSettingUploadSchema,
 } from "./schema";
 import { handleSongInterruption } from "./songEdit";
+import { Language } from "../interaction";
 import editAccountSetting, { getAccountSetting } from "../db/accountSetting";
+import { languageText } from "../language";
+import { getConnection } from "../voice/core";
+import {
+	publicSchedules,
+	requestSchedule,
+	respondToSchedule,
+} from "../voice/schedule";
 
 const setting = readSetting(`${process.cwd()}/data/setting.json`);
 /**
@@ -333,6 +343,76 @@ export async function initServer(client: CustomClient) {
 			return res.sendStatus(
 				await handleSongInterruption(client, parsed.data),
 			);
+		},
+	);
+
+	// ---- Scheduled plays ----
+
+	app.post(
+		"/api/schedule/add",
+		jsonParser,
+		auth(Permission.User),
+		basicCheckBuilder(["guildId", "url"]),
+		checkGuildMiddleware(client),
+		async (req, res) => {
+			const parsed = ScheduleAddSchema.safeParse(req.body);
+			if (!parsed.success) return res.sendStatus(400);
+			const { guildId, url, at } = parsed.data;
+			const player = client.player.get(guildId);
+			// A schedule waits in the bot's voice seat, so there has to be one
+			if (!player || !getConnection(guildId)) return res.sendStatus(409);
+			const account = getRequestAccount(res);
+			const dashboard = languageText(
+				"schedule_from_dashboard",
+				player.currentLanguage,
+			);
+			const result = await requestSchedule({
+				guildId,
+				url,
+				at: at ?? null,
+				channelId: player.channel?.id ?? null,
+				createdBy: account?.displayName
+					? `${account.displayName} (${dashboard})`
+					: dashboard,
+				language: player.currentLanguage,
+			});
+			if ("error" in result) {
+				const status = { not_found: 404, need_time: 422, past: 400 }[
+					result.error
+				];
+				return res.status(status).json({ error: result.error });
+			}
+			return res.json(
+				publicSchedules(guildId).find((e) => e.id === result.entry.id),
+			);
+		},
+	);
+
+	app.post(
+		"/api/schedule/respond",
+		jsonParser,
+		auth(Permission.User),
+		basicCheckBuilder(["guildId", "id", "action"]),
+		checkGuildMiddleware(client),
+		async (req, res) => {
+			const parsed = ScheduleRespondSchema.safeParse(req.body);
+			if (!parsed.success) return res.sendStatus(400);
+			const { guildId, id, action } = parsed.data;
+			const player = client.player.get(guildId);
+			const account = getRequestAccount(res);
+			const dashboard = languageText(
+				"schedule_from_dashboard",
+				player?.currentLanguage ?? Language.English,
+			);
+			const ok = await respondToSchedule(
+				guildId,
+				id,
+				action === "queue" ? "queued" : "cancelled",
+				account?.displayName
+					? `${account.displayName} (${dashboard})`
+					: dashboard,
+			);
+			return res.sendStatus(ok ? 200 : 404);
 		},
 	);
 
@@ -650,7 +730,11 @@ export async function initServer(client: CustomClient) {
 				return res.sendStatus(403);
 			}
 			const data = client.player.get(guildId)?.getData();
-			return res.send(JSON.stringify(data ?? null));
+			return res.send(
+				JSON.stringify(
+					data ? { ...data, schedules: publicSchedules(guildId) } : null,
+				),
+			);
 		},
 	);
 

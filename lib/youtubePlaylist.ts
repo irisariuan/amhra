@@ -13,7 +13,7 @@
 
 import { globalApp } from "./misc";
 
-const BROWSE_ENDPOINT = "https://www.youtube.com/youtubei/v1/browse?prettyPrint=false";
+const INNERTUBE = "https://www.youtube.com/youtubei/v1";
 const WATCH_URL = "https://www.youtube.com/watch?v=";
 
 /** Where a visitor id is minted: the home page embeds one in its `ytcfg` blob. */
@@ -43,6 +43,9 @@ const CLIENTS = [
 		gl: "US",
 	},
 ] as const;
+
+/** The web client on its own, for calls with no fallback worth making. */
+export const WEB_CLIENT = CLIENTS[0];
 
 /** Runaway guard: 100 pages of the web client is 10k entries. */
 const MAX_PAGES = 100;
@@ -299,15 +302,24 @@ export function forgetVisitorData() {
 	visitorMint = null;
 }
 
-async function browse(
-	client: (typeof CLIENTS)[number],
+export type InnerTubeClient = (typeof CLIENTS)[number];
+
+/**
+ * One InnerTube call, carrying this process's visitor id.
+ *
+ * Exported for the other endpoints that need the same treatment — the premiere
+ * lookup asks `player` — so the minting is not repeated per caller.
+ */
+export async function innertube(
+	endpoint: "browse" | "player",
+	client: InnerTubeClient,
 	body: Json,
 ): Promise<Json | null> {
 	// Injected rather than written into CLIENTS: a visitor id is minted per
 	// process and expires, so it is not something to pin in a literal.
 	const visitor = await visitorData();
 	try {
-		const response = await fetch(BROWSE_ENDPOINT, {
+		const response = await fetch(`${INNERTUBE}/${endpoint}?prettyPrint=false`, {
 			method: "POST",
 			headers: {
 				"content-type": "application/json",
@@ -328,10 +340,14 @@ async function browse(
 		return (await response.json()) as Json;
 	} catch (error) {
 		globalApp.err(
-			`InnerTube browse failed (${client.clientName}): ${(error as Error).message}`,
+			`InnerTube ${endpoint} failed (${client.clientName}): ${(error as Error).message}`,
 		);
 		return null;
 	}
+}
+
+function browse(client: InnerTubeClient, body: Json): Promise<Json | null> {
+	return innertube("browse", client, body);
 }
 
 /**

@@ -86,6 +86,24 @@
 	"LYRICS_FULL": "전체 가사",
 	"LYRICS_SONG_CHANGED": "곡이 바뀌었습니다. 새 곡은 /lyrics를 다시 실행하세요",
 	"commands": {
+		"schedule": {
+			"name": "예약",
+			"description": "지정한 시간에 동영상이 끼어들어 재생되도록 예약합니다",
+			"options": {
+				"add": {
+					"name": "추가",
+					"description": "동영상 끼어들기 재생을 예약합니다. 최초 공개는 자동으로 시간이 정해집니다"
+				},
+				"list": {
+					"name": "목록",
+					"description": "예약 목록을 표시합니다"
+				},
+				"cancel": {
+					"name": "취소",
+					"description": "예약 재생을 취소합니다"
+				}
+			}
+		},
 		"play": {
 			"name": "재생",
 			"description": "YouTube에서 노래 또는 재생 목록을 재생합니다",
@@ -239,5 +257,29 @@
 	"SEARCH_PICK": "원하는 곡이 아닌가요? 아래에서 다른 검색 결과를 선택하세요.",
 	"SEARCH_PICK_PLACEHOLDER": "다른 검색 결과로 전환",
 	"SEARCH_PICK_SWITCHED": "{title} ({url}) (으)로 전환했습니다",
-	"SEARCH_PICK_GONE": "해당 곡은 더 이상 재생 중이거나 대기열에 없습니다"
+	"SEARCH_PICK_GONE": "해당 곡은 더 이상 재생 중이거나 대기열에 없습니다",
+	"SCHEDULE_WARNING_CUT": "⏰ **{title}** 이(가) {relative} 끼어들어 재생될 예정입니다. 현재 곡을 중단하지 않으려면 버튼을 누르세요.",
+	"SCHEDULE_WARNING_START": "⏰ **{title}** 이(가) {relative} 재생을 시작할 예정입니다.",
+	"SCHEDULE_PREVENT_LABEL": "끼어들지 않기",
+	"SCHEDULE_CANCEL_LABEL": "취소",
+	"SCHEDULE_QUEUE_LABEL": "대신 다음에 재생",
+	"SCHEDULE_CANCELLED": "**{title}** 의 예약 재생을 취소했습니다 ({by})",
+	"SCHEDULE_QUEUED": "**{title}** 은(는) 끼어들지 않고 다음에 재생됩니다 ({by})",
+	"SCHEDULE_PLAYING": "▶️ 예약된 **{title}** 재생 중",
+	"SCHEDULE_PLAYING_RESUME": "▶️ 예약된 **{title}** 재생 중, 중단된 곡은 이후에 이어서 재생됩니다",
+	"SCHEDULE_FAILED": "예약된 **{title}** 을(를) 재생하지 못했습니다",
+	"SCHEDULE_CLEARED_LEFT": "음성 채널을 나가서 **{title}** 의 예약 재생을 취소했습니다",
+	"SCHEDULE_ADDED": "**[{title}]({url})** 을(를) {time} ({relative}) 에 끼어들어 재생하도록 예약했습니다",
+	"SCHEDULE_PREMIERE_ADDED": "**[{title}]({url})** 은(는) {relative} 최초 공개됩니다. {time} 에 자동으로 끼어들어 재생합니다",
+	"SCHEDULE_BAD_TIME": "시간을 읽을 수 없습니다. `10m`, `1h30m`, `21:30`, `2026-10-22 21:30` 또는 Discord 타임스탬프를 사용해 보세요",
+	"SCHEDULE_PAST_TIME": "이미 지난 시간입니다",
+	"SCHEDULE_NEED_TIME": "이 동영상을 예약하려면 시간을 지정하세요. 시간 없이 예약할 수 있는 것은 공개 예정인 최초 공개뿐입니다",
+	"SCHEDULE_VIDEO_ONLY": "재생목록이 아닌 단일 동영상만 예약할 수 있습니다",
+	"SCHEDULE_NOT_FOUND_VIDEO": "해당 동영상을 찾을 수 없습니다",
+	"SCHEDULE_EMPTY": "예약된 항목이 없습니다",
+	"SCHEDULE_LIST_HEADER": "예약 재생:",
+	"SCHEDULE_LIST_ITEM": "`{index}.` **[{title}]({url})** {time} ({relative}){premiere}",
+	"SCHEDULE_PREMIERE_TAG": " · 최초 공개",
+	"SCHEDULE_NOT_FOUND": "예약 재생 #{index} 이(가) 없습니다",
+	"SCHEDULE_FROM_DASHBOARD": "대시보드에서"
 }

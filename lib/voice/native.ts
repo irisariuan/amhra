@@ -262,7 +262,13 @@ export function armNext(player: CustomAudioPlayer) {
 	const playback = player.nativePlayback;
 	if (!playback || !player.isPlaying) return;
 	const next = player.queue.at(0);
-	const plan = planArm(next ? cachedTrackId(next.url) : null, playback.armed);
+	// A track resuming from a position cannot be armed: the sidecar would
+	// promote it from the top at the seam, then be told to seek a moment later.
+	// Left unarmed, it starts with an ordinary `play` at the right place.
+	const plan = planArm(
+		next && !next.seek ? cachedTrackId(next.url) : null,
+		playback.armed,
+	);
 	const guildId = player.guildId;
 
 	switch (plan.action) {

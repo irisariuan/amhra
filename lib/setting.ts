@@ -89,4 +89,9 @@ export interface Setting {
 	BANNED_IDS: string[];
 	MESSAGE_LOGGING?: boolean;
 	VOICE_LOGGING?: boolean;
+	/**
+	 * Schedule an upcoming premiere to cut in when it starts, instead of
+	 * refusing it, when one is played. Defaults to on.
+	 */
+	AUTO_SCHEDULE_PREMIERES?: boolean;
 }

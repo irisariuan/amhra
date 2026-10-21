@@ -20,6 +20,14 @@ import {
 } from "../../lib/voice/core";
 import { sendInteractionSkipMessage } from "../../lib/voice/segment";
 import { sendSearchAlternatives } from "../../lib/voice/searchPick";
+import {
+	discordTime,
+	findUpcoming,
+	requestSchedule,
+} from "../../lib/voice/schedule";
+import { readSetting } from "../../lib/setting";
+
+const setting = readSetting();
 
 export default {
 	data: new SlashCommandBuilder()
@@ -143,6 +151,32 @@ export default {
 			);
 			resultUrl = playlist.url;
 		} else if (isVideo(input)) {
+			// A premiere cannot be played before it starts, so rather than
+			// queueing something that will fail, it is set to cut in when it does
+			const upcoming =
+				setting.AUTO_SCHEDULE_PREMIERES !== false
+					? await findUpcoming(input)
+					: null;
+			if (upcoming) {
+				const result = await requestSchedule({
+					guildId: interaction.guild.id,
+					url: input,
+					at: null,
+					channelId: interaction.channelId,
+					createdBy: interaction.user.displayName,
+					language,
+					upcoming,
+				});
+				if ("entry" in result) {
+					return interaction.editReply({
+						content: languageText("schedule_premiere_added", language, {
+							title: result.entry.title,
+							url: result.entry.url,
+							...discordTime(result.entry.at),
+						}),
+					});
+				}
+			}
 			resultUrl = input;
 			player.addToQueue(resultUrl, false, next ? 0 : undefined);
 

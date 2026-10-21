@@ -164,3 +164,35 @@ describe("leaving an empty channel", () => {
 		).toEqual({ action: "leave", reason: "alone" });
 	});
 });
+
+describe("waiting for a scheduled play", () => {
+	test("stays however long the player has been idle", () => {
+		expect(
+			planLeave(
+				state({ scheduled: true, idleSince: now - limits.inactivityMs * 4 }),
+				limits,
+				now,
+			),
+		).toEqual({ action: "wait", idleSince: null, aloneSince: null });
+	});
+
+	test("stays however long it has been alone", () => {
+		expect(
+			planLeave(
+				state({ scheduled: true, listeners: 0, aloneSince: now - limits.aloneMs * 4 }),
+				limits,
+				now,
+			),
+		).toEqual({ action: "wait", idleSince: null, aloneSince: null });
+	});
+
+	test("starts the clocks fresh once nothing is scheduled", () => {
+		// Carrying the old timestamps through would leave the moment the
+		// schedule cleared, before anyone heard what it played.
+		expect(planLeave(state({ scheduled: false, listeners: 0 }), limits, now)).toEqual({
+			action: "wait",
+			idleSince: now,
+			aloneSince: now,
+		});
+	});
+});

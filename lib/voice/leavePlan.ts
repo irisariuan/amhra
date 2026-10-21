@@ -39,6 +39,11 @@ export interface LeaveState {
 	idleSince: number | null;
 	/** When the bot was first seen alone. Carried between sweeps. */
 	aloneSince: number | null;
+	/**
+	 * Something is scheduled to cut in here. The bot stays for it however long
+	 * it sits idle or alone — leaving would clear the schedule with it.
+	 */
+	scheduled?: boolean;
 }
 
 export interface LeaveLimits {
@@ -62,6 +67,9 @@ export function planLeave(
 	limits: LeaveLimits,
 	now: number,
 ): LeavePlan {
+	// Both clocks start over rather than pausing: the wait for a premiere says
+	// nothing about how long the channel has been quiet once it has played.
+	if (state.scheduled) return { action: "wait", idleSince: null, aloneSince: null };
 	const idleSince = state.busy ? null : (state.idleSince ?? now);
 	// Only a channel we can see into and that has nobody in it starts this
 	// clock. Treating an unreadable channel as empty would disconnect the bot

@@ -129,9 +129,10 @@ function createAudioPlayer(
 		try {
 			dcb.log("Finished music playing");
 			if (player.queue.length > 0) {
-				const nextUrl = player.getNextQueueItem();
+				const next = player.shiftQueue();
+				const nextUrl = next?.url;
 				if (nextUrl) {
-					const resource = await createResource(nextUrl);
+					const resource = await createResource(nextUrl, next.seek);
 					if (!resource) {
 						return globalApp.err("Failed to create resource");
 					}
