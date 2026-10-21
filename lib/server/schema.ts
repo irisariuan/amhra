@@ -326,5 +326,6 @@ export const GlobalSettingSchema = z
 		USE_RUST_VOICE: z.boolean().optional(),
 		NATIVE_VOICE_BIN: z.string().optional(),
 		AUTO_SCHEDULE_PREMIERES: z.boolean().optional(),
+		LYRICS_DELAY_MS: z.number().int().min(-10_000).max(10_000).optional(),
 	})
 	.passthrough();

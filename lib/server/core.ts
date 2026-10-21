@@ -27,7 +27,12 @@ import {
 } from "../auth/webauthn";
 import { createSession, deleteSession, collectGarbage } from "../db/session";
 import { getSuggestions } from "../voice/suggest";
-import { lyricsForQuery, lyricsForTrack } from "../lyrics";
+import {
+	delayLyrics,
+	lyricsDelayMs,
+	lyricsForQuery,
+	lyricsForTrack,
+} from "../lyrics";
 import { load } from "../log/load";
 import { exp, globalApp, misc } from "../misc";
 import { readSetting, reloadSetting, writeJsonSync } from "../setting";
@@ -629,7 +634,8 @@ export async function initServer(client: CustomClient) {
 	// Lyrics for a guild's current track. `link` says which track they belong
 	// to, so a dashboard polling across a song change can tell a stale answer
 	// from a fresh one. `?q=` replaces the automatic match with a search, for
-	// when the title was read wrong.
+	// when the title was read wrong. Synced times already include the global
+	// LYRICS_DELAY_MS, which is echoed as `delayMs` for display.
 	app.get("/api/lyrics/:guildId", auth(Permission.User), async (req, res) => {
 		const guildId = req.params.guildId as string;
 		const account = getRequestAccount(res);
@@ -652,7 +658,12 @@ export async function initServer(client: CustomClient) {
 						channel: track!.channel.name,
 						durationInSec: track!.details.durationInSec,
 					});
-			return res.json({ link: track?.url ?? null, content });
+			const delayMs = lyricsDelayMs();
+			return res.json({
+				link: track?.url ?? null,
+				content: content && delayLyrics(content, delayMs),
+				delayMs,
+			});
 		} catch {
 			return res.sendStatus(502);
 		}

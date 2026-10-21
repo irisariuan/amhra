@@ -94,4 +94,9 @@ export interface Setting {
 	 * refusing it, when one is played. Defaults to on.
 	 */
 	AUTO_SCHEDULE_PREMIERES?: boolean;
+	/**
+	 * Shift applied to every synced lyric line, in milliseconds. Positive shows
+	 * lines later, negative sooner. Defaults to zero.
+	 */
+	LYRICS_DELAY_MS?: number;
 }

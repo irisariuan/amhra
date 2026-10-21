@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
 	cleanChannel,
+	delayLyrics,
 	findLyrics,
 	forgetLyrics,
 	guessTitle,
@@ -81,6 +82,35 @@ describe("lineIndexAt", () => {
 		expect(lineIndexAt(lines, 2500)).toBe(1);
 		expect(lineIndexAt(lines, 99999)).toBe(2);
 		expect(lineIndexAt([], 1000)).toBe(-1);
+	});
+});
+
+describe("delayLyrics", () => {
+	const lyrics = {
+		id: 1,
+		trackName: "Lemon",
+		artistName: "米津玄師",
+		albumName: null,
+		duration: 255,
+		instrumental: false,
+		plain: "a\nb",
+		synced: parseLrc("[00:01.00]a\n[00:03.00]b"),
+	};
+
+	test("moves every line later for a positive delay", () => {
+		const delayed = delayLyrics(lyrics, 500);
+		expect(delayed.synced?.map((l) => l.time)).toEqual([1500, 3500]);
+		expect(lineIndexAt(delayed.synced!, 1200)).toBe(-1);
+	});
+
+	test("moves lines sooner for a negative delay, not before the start", () => {
+		expect(delayLyrics(lyrics, -2000).synced?.map((l) => l.time)).toEqual([0, 1000]);
+	});
+
+	test("leaves the cached lyrics untouched", () => {
+		delayLyrics(lyrics, 500);
+		expect(lyrics.synced.map((l) => l.time)).toEqual([1000, 3000]);
+		expect(delayLyrics(lyrics, 0)).toBe(lyrics);
 	});
 });
 

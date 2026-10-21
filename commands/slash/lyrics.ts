@@ -9,7 +9,9 @@ import {
 import type { Command } from "../../lib/interaction";
 import { languageText } from "../../lib/language";
 import {
+	delayLyrics,
 	lineIndexAt,
+	lyricsDelayMs,
 	lyricsForQuery,
 	lyricsForTrack,
 	type LyricLine,
@@ -133,7 +135,7 @@ export default {
 		}
 
 		const pages = paginate(text);
-		const synced = lyrics.synced;
+		const synced = delayLyrics(lyrics, lyricsDelayMs()).synced;
 		// Following only means something for the track the bot is playing
 		const canFollow = Boolean(synced && track && player && !query);
 		const playCount = player?.playCounter;

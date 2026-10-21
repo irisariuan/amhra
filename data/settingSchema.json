@@ -141,6 +141,12 @@
   "AUTO_SCHEDULE_PREMIERES": {
    "type": "boolean",
    "description": "Schedule an upcoming premiere to cut in when it starts instead of refusing it when played (default true)"
+  },
+  "LYRICS_DELAY_MS": {
+   "type": "integer",
+   "minimum": -10000,
+   "maximum": 10000,
+   "description": "Shift synced lyrics by this many milliseconds; positive shows each line later, negative sooner (default 0)"
   }
  },
  "required": [

@@ -1,5 +1,6 @@
 import z from "zod";
 import { globalApp } from "./misc";
+import { readSetting } from "./setting";
 
 /**
  * Lyrics from LRCLIB (https://lrclib.net), a free, keyless lyrics database
@@ -109,6 +110,28 @@ export function lineIndexAt(lines: LyricLine[], ms: number): number {
 		}
 	}
 	return found;
+}
+
+/**
+ * The lyrics with every synced line moved `delayMs` later (sooner when
+ * negative). Returns a copy: the cached lyrics stay as LRCLIB has them, so a
+ * change to the delay takes effect on the next read instead of the next fetch.
+ */
+export function delayLyrics(lyrics: Lyrics, delayMs: number): Lyrics {
+	if (!delayMs || !lyrics.synced) return lyrics;
+	return {
+		...lyrics,
+		synced: lyrics.synced.map((line) => ({
+			...line,
+			time: Math.max(0, line.time + delayMs),
+		})),
+	};
+}
+
+/** The bot-wide lyrics delay from LYRICS_DELAY_MS, read fresh each time. */
+export function lyricsDelayMs(): number {
+	const delay = readSetting().LYRICS_DELAY_MS;
+	return typeof delay === "number" && Number.isFinite(delay) ? delay : 0;
 }
 
 // ---- Reading a YouTube title ----
