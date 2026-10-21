@@ -26,6 +26,7 @@ use amhra_voice::dsp::Volume;
 use amhra_voice::player::{Event as PlayerEvent, FadeSettings, Player, Tick};
 use amhra_voice::{SILENCE_FRAME, Session};
 
+use crate::listen::{self, ListenHandle, ListenSetup};
 use crate::protocol::Event;
 
 /// One audio frame's worth of time.
@@ -37,11 +38,13 @@ const STACK_SIZE: usize = 512 * 1024;
 
 /// What the main thread tells a guild worker to do.
 pub enum WorkerCommand {
-	/// The voice connection is up; here is everything needed to send on it.
+	/// The voice connection is up; here is everything needed to send on it,
+	/// and, when listening, to hear it.
 	Attach {
 		socket: std::net::UdpSocket,
 		session: Box<Session>,
 		dave: Option<Arc<Mutex<Driver>>>,
+		listen: Option<ListenSetup>,
 	},
 	/// The connection dropped; stop sending until another `Attach`.
 	Detach,
@@ -123,6 +126,9 @@ struct Attachment {
 	socket: std::net::UdpSocket,
 	session: Session,
 	dave: Option<Arc<Mutex<Driver>>>,
+	/// The receive thread on this same socket, if listening. Held only to be
+	/// dropped: a detach or a re-attach ends it along with the connection.
+	_listener: Option<ListenHandle>,
 }
 
 fn run(
@@ -311,8 +317,25 @@ fn apply(
 	events: &Sender<Event>,
 ) {
 	match command {
-		WorkerCommand::Attach { socket, session, dave } => {
-			*attachment = Some(Attachment { socket, session: *session, dave });
+		WorkerCommand::Attach { socket, session, dave, listen } => {
+			// The old attachment, and its receive thread, go first: two
+			// threads reading one socket would each get half the packets.
+			*attachment = None;
+			let listener = listen.and_then(|setup| {
+				let started = socket.try_clone().and_then(|clone| {
+					// Phase B's voice activity detection plugs in here. Until
+					// then what is heard is decoded, counted and let go.
+					listen::spawn(guild_id, clone, setup, dave.clone(), Box::new(|_frame| {}))
+				});
+				match started {
+					Ok(handle) => Some(handle),
+					Err(error) => {
+						report(events, guild_id, format!("could not start listening: {error}"));
+						None
+					}
+				}
+			});
+			*attachment = Some(Attachment { socket, session: *session, dave, _listener: listener });
 		}
 		WorkerCommand::Detach => *attachment = None,
 		WorkerCommand::Play { track_id, mut reader, start_ms } => {

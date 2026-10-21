@@ -82,10 +82,13 @@ dependencies = [
 name = "amhra-voice"
 version = "0.1.0"
 dependencies = [
+ "aes",
  "aes-gcm",
  "amhra-audio",
  "chacha20poly1305",
+ "ctr",
  "futures-util",
+ "ghash",
  "hmac",
  "openmls",
  "openmls_basic_credential",
@@ -97,6 +100,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "subtle",
  "thiserror 2.0.20",
  "tls_codec",
  "tokio",

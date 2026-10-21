@@ -7,7 +7,7 @@ independently revertable; the TypeScript bot keeps working throughout.
 | --- | --- | --- |
 | `amhra-audio` | WebM/Opus demuxing, Opus TOC parsing, `.idx` index, cache reader | 1, 3 ✅ |
 | `amhra-fetch` | InnerTube extraction, ranged download, yt-dlp fallback | 1 ✅ |
-| `amhra-voice` | gateway v8, UDP/RTP/AEAD, DAVE, player, volume, crossfade | 2, 3 ✅ |
+| `amhra-voice` | gateway v8, UDP/RTP/AEAD, DAVE, player, volume, crossfade, receive | 2, 3 ✅ |
 | `amhra-sidecar` | the long-lived process: RPC, per-guild playback | 4 |
 
 ## Build
@@ -203,3 +203,38 @@ cargo run --release -p amhra-voice --example play_file -- \
 
 which seeks near the end of the first track, blends into the second, and
 reports `Started(second)` before `Finished(first)` — the overlap, in the log.
+
+## Receiving
+
+The first step towards voice commands: hearing the channel. Off unless the
+sidecar is started with `--listen`, and nothing consumes what it hears yet.
+
+```text
+UDP ─▶ transport open ─▶ SSRC → user ─▶ DAVE decrypt ─▶ Opus decode ─▶ 16 kHz mono PCM
+        (crypto.rs)       (op 5)        (dave/decryptor.rs)            (receive.rs)
+```
+
+- **Attribution.** The server's `speaking (5)` is the only thing that ties an
+  SSRC to a user, and it is sent when they start talking — so their first
+  packets can arrive before it. Those are held for a second rather than
+  dropped, which is what keeps the first word.
+- **Transport.** Other clients send a header extension. Under the `_rtpsize`
+  modes its 4-byte preamble is cleartext AAD and its body is encrypted with the
+  payload, so it is cut off after decryption, along with any RTP padding.
+- **DAVE.** Every member's key is exported from the group on each epoch change.
+  The previous epoch, and a sender's previous generation, stay usable for ten
+  seconds so frames in flight still open; replays are refused. DAVE truncates
+  its GCM tag to 8 bytes, below what `aes-gcm` accepts, so the receive side
+  builds GCM from `ctr` and `ghash` and checks the tag in constant time.
+- **Decoding.** One decoder per SSRC, at 16 kHz mono, with loss concealment for
+  gaps up to 100ms. No jitter buffer: a packet behind the stream is dropped.
+
+Check it against a real channel, with someone talking in it:
+
+```bash
+cargo run --release -p amhra-voice --example record_users -- \
+  --guild <GUILD_ID> --channel <VOICE_CHANNEL_ID> --seconds 30 --out recordings
+```
+
+with `DEV_TOKEN` in the environment. One `<user id>.wav` per speaker, plus
+per-user counters of anything that failed.

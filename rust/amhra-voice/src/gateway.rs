@@ -75,6 +75,13 @@ pub enum Event {
 	/// A DAVE control message. JSON opcodes carry `data`; MLS opcodes carry
 	/// `payload`.
 	Dave { opcode: Opcode, data: Value, payload: Vec<u8> },
+	/// Another user's SSRC, from the server's `speaking (5)`. Required before
+	/// anything they send can be attributed — or, under DAVE, decrypted.
+	Speaking { user_id: u64, ssrc: u32, flags: u8 },
+	/// Users who joined the call.
+	ClientsConnect { user_ids: Vec<u64> },
+	/// A user who left it; their SSRC is free to be reassigned.
+	ClientDisconnect { user_id: u64 },
 	Resumed,
 	/// The connection ended and will not come back on its own.
 	Closed(String),
@@ -344,6 +351,11 @@ async fn session(
 							Opcode::Resumed => {
 								let _ = events.send(Event::Resumed).await;
 							}
+							Opcode::Speaking | Opcode::ClientsConnect | Opcode::ClientDisconnect => {
+								if let Some(event) = membership_event(opcode, frame.d) {
+									let _ = events.send(event).await;
+								}
+							}
 							Opcode::DavePrepareTransition
 							| Opcode::DaveExecuteTransition
 							| Opcode::DavePrepareEpoch
@@ -396,6 +408,35 @@ fn classify_close(frame: Option<&CloseFrame>) -> GatewayError {
 	}
 }
 
+/// Turn the three opcodes that say who is in the call into events.
+///
+/// User ids arrive as strings, like every snowflake. One that does not parse is
+/// dropped rather than mapped to zero: a zero user id would collect every
+/// unattributable packet under one fake speaker.
+fn membership_event(opcode: Opcode, data: Value) -> Option<Event> {
+	match opcode {
+		Opcode::Speaking => {
+			let speaking = serde_json::from_value::<wire::ServerSpeaking>(data).ok()?;
+			Some(Event::Speaking {
+				user_id: speaking.user_id.parse().ok()?,
+				ssrc: speaking.ssrc,
+				flags: speaking.speaking,
+			})
+		}
+		Opcode::ClientsConnect => {
+			let connect = serde_json::from_value::<wire::ClientsConnect>(data).ok()?;
+			Some(Event::ClientsConnect {
+				user_ids: connect.user_ids.iter().filter_map(|id| id.parse().ok()).collect(),
+			})
+		}
+		Opcode::ClientDisconnect => {
+			let disconnect = serde_json::from_value::<wire::ClientDisconnect>(data).ok()?;
+			Some(Event::ClientDisconnect { user_id: disconnect.user_id.parse().ok()? })
+		}
+		_ => None,
+	}
+}
+
 /// Heartbeat nonce. Any changing number works; the server echoes it back.
 fn nonce_now() -> u64 {
 	std::time::SystemTime::now()
@@ -424,6 +465,43 @@ mod tests {
 		// A voice server crash is resumable.
 		assert!(matches!(close(4015), GatewayError::Closed(_)));
 		assert!(matches!(classify_close(None), GatewayError::Closed(_)));
+	}
+
+	#[test]
+	fn speaking_maps_an_ssrc_to_its_user() {
+		let data = json!({ "user_id": "956459806691065856", "ssrc": 4242, "speaking": 1 });
+		let Some(Event::Speaking { user_id, ssrc, flags }) =
+			membership_event(Opcode::Speaking, data)
+		else {
+			panic!("expected a speaking event");
+		};
+		assert_eq!(user_id, 956_459_806_691_065_856);
+		assert_eq!(ssrc, 4242);
+		assert_eq!(flags, 1);
+
+		// A missing flag field still maps the SSRC; only the id and ssrc matter.
+		assert!(matches!(
+			membership_event(Opcode::Speaking, json!({ "user_id": "1", "ssrc": 2 })),
+			Some(Event::Speaking { user_id: 1, ssrc: 2, flags: 0 })
+		));
+	}
+
+	#[test]
+	fn membership_changes_become_events() {
+		let Some(Event::ClientsConnect { user_ids }) =
+			membership_event(Opcode::ClientsConnect, json!({ "user_ids": ["1", "x", "3"] }))
+		else {
+			panic!("expected clients connect");
+		};
+		// The unparseable id is dropped, not turned into user zero.
+		assert_eq!(user_ids, vec![1, 3]);
+
+		assert!(matches!(
+			membership_event(Opcode::ClientDisconnect, json!({ "user_id": "7" })),
+			Some(Event::ClientDisconnect { user_id: 7 })
+		));
+		assert!(membership_event(Opcode::ClientDisconnect, json!({ "user_id": "nope" })).is_none());
+		assert!(membership_event(Opcode::Speaking, json!({ "ssrc": 2 })).is_none());
 	}
 
 	#[test]

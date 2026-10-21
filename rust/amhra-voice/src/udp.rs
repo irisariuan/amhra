@@ -98,6 +98,14 @@ impl VoiceUdp {
 		Ok(socket)
 	}
 
+	/// Wait for one datagram from the voice server.
+	///
+	/// For callers that read on the runtime, like the examples. The sidecar
+	/// reads from a blocking clone on its own thread instead.
+	pub async fn recv(&self, buffer: &mut [u8]) -> Result<usize, UdpError> {
+		Ok(self.socket.recv(buffer).await?)
+	}
+
 	pub async fn send(&self, packet: &[u8]) -> Result<(), UdpError> {
 		self.socket.send(packet).await?;
 		Ok(())

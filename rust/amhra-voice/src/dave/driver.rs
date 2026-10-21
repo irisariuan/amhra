@@ -11,9 +11,24 @@
 //! when the server sends `dave_execute_transition (22)`.
 
 use std::collections::HashMap;
+use std::time::Instant;
 
+use super::decryptor::{DecryptError, Decrypted, KEY_EXPIRY};
 use super::session::{Session, SessionError, Status};
+use crate::crypto::SILENCE_FRAME;
 use crate::wire::Opcode;
+
+/// Whether frames without DAVE's trailer may be accepted from other members.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Passthrough {
+	/// Everyone is encrypting; cleartext is refused.
+	Off,
+	/// The call just upgraded. Clients that are a moment behind may still send
+	/// cleartext, and that stops being acceptable at this instant.
+	Until(Instant),
+	/// The call is downgrading or downgraded.
+	On,
+}
 
 /// What the driver wants sent back to the gateway.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,6 +53,7 @@ pub struct Driver {
 	/// under transport encryption alone. Media encrypted anyway would be noise
 	/// to every listener.
 	version: u8,
+	passthrough: Passthrough,
 }
 
 impl std::fmt::Debug for Driver {
@@ -47,6 +63,7 @@ impl std::fmt::Debug for Driver {
 			.field("pending", &self.pending.len())
 			.field("applied", &self.applied)
 			.field("version", &self.version)
+			.field("passthrough", &self.passthrough)
 			.finish()
 	}
 }
@@ -58,6 +75,7 @@ impl Driver {
 			pending: HashMap::new(),
 			applied: 0,
 			version: protocol_version,
+			passthrough: Passthrough::Off,
 		})
 	}
 
@@ -154,8 +172,13 @@ impl Driver {
 				if transition_id == 0 {
 					// Immediate: nothing to acknowledge, it is already in force.
 					self.applied = 0;
-					self.version = version;
+					self.change_version(version);
 					return Ok(Vec::new());
+				}
+				// A coming downgrade opens passthrough now, not at execute:
+				// some clients stop encrypting as soon as they hear of it.
+				if version == 0 {
+					self.passthrough = Passthrough::On;
 				}
 				self.pending.insert(transition_id, version);
 				Ok(vec![Action::Transition {
@@ -170,7 +193,7 @@ impl Driver {
 				// announced: until the server says execute, everyone else is
 				// still on the old one.
 				if let Some(version) = self.pending.remove(&transition_id) {
-					self.version = version;
+					self.change_version(version);
 				}
 				self.applied = transition_id;
 				Ok(Vec::new())
@@ -242,6 +265,54 @@ impl Driver {
 
 	pub fn status(&self) -> Status {
 		self.session.status()
+	}
+
+	/// Move to a DAVE version, opening or closing passthrough to match.
+	///
+	/// Leaving version 0 does not close it at once: other clients execute the
+	/// same transition a little apart, and the ones still behind send
+	/// cleartext for a moment. They get [`KEY_EXPIRY`] to catch up.
+	fn change_version(&mut self, version: u8) {
+		let previous = std::mem::replace(&mut self.version, version);
+		if version == 0 {
+			self.passthrough = Passthrough::On;
+		} else if previous == 0 || self.passthrough == Passthrough::On {
+			self.passthrough = Passthrough::Until(Instant::now() + KEY_EXPIRY);
+		}
+	}
+
+	fn allows_passthrough(&self, now: Instant) -> bool {
+		match self.passthrough {
+			Passthrough::Off => false,
+			Passthrough::Until(at) => now <= at,
+			Passthrough::On => true,
+		}
+	}
+
+	/// Decrypt a frame `user_id` sent, into `out`.
+	///
+	/// Silence frames are never encrypted, and a downgraded call encrypts
+	/// nothing, so both come back as they arrived. Everything else goes to
+	/// that member's keys.
+	pub fn decrypt(
+		&mut self,
+		user_id: u64,
+		frame: &[u8],
+		out: &mut Vec<u8>,
+		now: Instant,
+	) -> Result<Decrypted, DecryptError> {
+		if frame == SILENCE_FRAME {
+			out.clear();
+			out.extend_from_slice(frame);
+			return Ok(Decrypted::Silence);
+		}
+		if !self.encrypting() {
+			out.clear();
+			out.extend_from_slice(frame);
+			return Ok(Decrypted::Passthrough);
+		}
+		let passthrough = self.allows_passthrough(now);
+		self.session.decrypt(user_id, frame, out, now, passthrough)
 	}
 }
 
@@ -316,6 +387,91 @@ mod tests {
 		// Acknowledging transition 0 would be answering a question nobody asked.
 		assert!(actions.is_empty());
 		assert!(driver.pending.is_empty());
+	}
+
+	fn transition(driver: &mut Driver, transition_id: u16, version: u8) {
+		driver
+			.handle(
+				Opcode::DavePrepareTransition,
+				&json!({ "transition_id": transition_id, "protocol_version": version }),
+				&[],
+			)
+			.unwrap();
+		if transition_id != 0 {
+			driver
+				.handle(Opcode::DaveExecuteTransition, &json!({ "transition_id": transition_id }), &[])
+				.unwrap();
+		}
+	}
+
+	#[test]
+	fn silence_and_unknown_senders_before_the_group_forms() {
+		let mut driver = driver();
+		let now = Instant::now();
+		let mut out = Vec::new();
+		assert_eq!(driver.decrypt(42, &SILENCE_FRAME, &mut out, now), Ok(Decrypted::Silence));
+
+		// Nobody's keys exist yet: encrypted frames cannot open, and cleartext
+		// is refused because the call is meant to be encrypted.
+		let mut frame = Vec::new();
+		super::super::frame::Encryptor::new(vec![1u8; 16]).encrypt_opus(&[0xfc, 1], &mut frame).unwrap();
+		assert_eq!(driver.decrypt(42, &frame, &mut out, now), Err(DecryptError::NoDecryptor(42)));
+		assert_eq!(
+			driver.decrypt(42, &[0xfc, 1], &mut out, now),
+			Err(DecryptError::UnencryptedWhenPassthroughDisabled)
+		);
+	}
+
+	#[test]
+	fn a_downgrade_opens_passthrough_as_soon_as_it_is_announced() {
+		let mut driver = driver();
+		let now = Instant::now();
+		let mut out = Vec::new();
+		driver
+			.handle(
+				Opcode::DavePrepareTransition,
+				&json!({ "transition_id": 5, "protocol_version": 0 }),
+				&[],
+			)
+			.unwrap();
+		// Still version 1, but someone who already stopped encrypting is heard.
+		assert!(driver.encrypting());
+		assert_eq!(driver.decrypt(42, &[0xfc, 1], &mut out, now), Ok(Decrypted::Passthrough));
+
+		driver
+			.handle(Opcode::DaveExecuteTransition, &json!({ "transition_id": 5 }), &[])
+			.unwrap();
+		assert!(!driver.encrypting());
+		assert_eq!(driver.decrypt(42, &[0xfc, 2], &mut out, now), Ok(Decrypted::Passthrough));
+		assert_eq!(out, [0xfc, 2]);
+	}
+
+	#[test]
+	fn an_upgrade_tolerates_cleartext_for_a_few_seconds() {
+		let mut driver = driver();
+		transition(&mut driver, 5, 0);
+		transition(&mut driver, 6, 1);
+		assert!(driver.encrypting());
+
+		let now = Instant::now();
+		let mut out = Vec::new();
+		assert_eq!(driver.decrypt(42, &[0xfc, 1], &mut out, now), Ok(Decrypted::Passthrough));
+		let later = now + KEY_EXPIRY + std::time::Duration::from_secs(1);
+		assert_eq!(
+			driver.decrypt(42, &[0xfc, 1], &mut out, later),
+			Err(DecryptError::UnencryptedWhenPassthroughDisabled)
+		);
+	}
+
+	#[test]
+	fn an_immediate_downgrade_passes_everything_through() {
+		let mut driver = driver();
+		transition(&mut driver, 0, 0);
+		let mut out = Vec::new();
+		// Even a frame that looks encrypted: nobody is encrypting any more.
+		let mut frame = Vec::new();
+		super::super::frame::Encryptor::new(vec![1u8; 16]).encrypt_opus(&[0xfc], &mut frame).unwrap();
+		assert_eq!(driver.decrypt(42, &frame, &mut out, Instant::now()), Ok(Decrypted::Passthrough));
 	}
 
 	#[test]

@@ -15,6 +15,9 @@
 //!
 //! Losing stdin means the bot is gone, which is the shutdown signal: there is
 //! nothing left to play for.
+//!
+//! `--listen` also decodes what everyone else in the channel says (see
+//! `listen.rs`). It is off by default and, for now, goes nowhere.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -28,9 +31,11 @@ use amhra_sidecar::protocol::{Command, Event, PROTOCOL_VERSION, SessionState};
 use amhra_sidecar::worker::{Worker, WorkerCommand};
 use amhra_voice::dave::driver::{Action, Driver};
 use amhra_voice::gateway::{self, ConnectionInfo, Event as GatewayEvent};
+use amhra_sidecar::listen::ListenSetup;
 use amhra_voice::player::FadeSettings;
+use amhra_voice::receive::Membership;
 use amhra_voice::wire::EncryptionMode;
-use amhra_voice::{Session, VoiceUdp};
+use amhra_voice::{Opener, Session, VoiceUdp};
 
 /// How often the gateway task checks whether the audio thread wants the
 /// speaking flag changed. The flag is a courtesy to the client's UI, not part
@@ -83,6 +88,10 @@ async fn main() {
 		.nth(1)
 		.unwrap_or_else(|| "cache".to_owned());
 	let cache_dir = std::path::PathBuf::from(cache_dir);
+	let listen = std::env::args().any(|argument| argument == "--listen");
+	if listen {
+		eprintln!("listening: other members' audio will be decrypted and decoded");
+	}
 
 	// Events are written by one thread so frames from the audio threads and the
 	// gateway tasks cannot interleave halfway through.
@@ -138,7 +147,7 @@ async fn main() {
 		if matches!(command, Command::Shutdown) {
 			break;
 		}
-		dispatch(command, &mut guilds, &events, &cache_dir).await;
+		dispatch(command, &mut guilds, &events, &cache_dir, listen).await;
 	}
 
 	eprintln!("shutting down {} guild(s)", guilds.len());
@@ -152,6 +161,7 @@ async fn dispatch(
 	guilds: &mut HashMap<String, GuildSession>,
 	events: &Sender<Event>,
 	cache_dir: &std::path::Path,
+	listen: bool,
 ) {
 	match command {
 		Command::Connect { guild_id, channel_id, user_id, session_id, endpoint, token } => {
@@ -193,6 +203,7 @@ async fn dispatch(
 				worker.command_sender(),
 				worker.speaking_flag(),
 				alive.clone(),
+				listen,
 			));
 
 			guilds.insert(
@@ -360,8 +371,14 @@ async fn drive_connection(
 	worker: Sender<WorkerCommand>,
 	speaking: Arc<std::sync::atomic::AtomicBool>,
 	alive: Arc<AtomicBool>,
+	listen: bool,
 ) {
 	let mut ssrc = 0u32;
+	// Who owns which SSRC, as far as this connection has been told. Kept here
+	// as well as in the receive thread because `speaking` can arrive before
+	// the keys do, and a receive thread started later still needs to know.
+	let mut speakers: HashMap<u32, u64> = HashMap::new();
+	let mut membership: Option<std::sync::mpsc::Sender<Membership>> = None;
 	let mut udp: Option<VoiceUdp> = None;
 	let mut dave: Option<Arc<Mutex<Driver>>> = None;
 	// DAVE frames that arrived before the keys did. The driver cannot exist
@@ -492,10 +509,18 @@ async fn drive_connection(
 							early.clear();
 						}
 
+						let listen = if listen {
+							listen_setup(&mut membership, &speakers, mode, &secret_key, ssrc)
+								.map_err(|error| fail(&events, &guild_id, error))
+								.ok()
+						} else {
+							None
+						};
 						let _ = worker.send(WorkerCommand::Attach {
 							socket,
 							session: Box::new(session),
 							dave: dave.clone(),
+							listen,
 						});
 						let _ = events.send(Event::Ready {
 							guild_id: guild_id.clone(),
@@ -517,6 +542,24 @@ async fn drive_connection(
 						feed_dave(driver, &handle, &events, &guild_id, opcode, &data, &payload).await;
 					}
 
+					GatewayEvent::Speaking { user_id, ssrc: theirs, flags: _ } => {
+						speakers.insert(theirs, user_id);
+						if let Some(membership) = &membership {
+							let _ = membership.send(Membership::Speaking { user_id, ssrc: theirs });
+						}
+					}
+
+					GatewayEvent::ClientDisconnect { user_id } => {
+						speakers.retain(|_, speaker| *speaker != user_id);
+						if let Some(membership) = &membership {
+							let _ = membership.send(Membership::Disconnect { user_id });
+						}
+					}
+
+					// Joining tells us nothing a receiver can use: SSRCs only
+					// arrive with `speaking`.
+					GatewayEvent::ClientsConnect { .. } => {}
+
 					GatewayEvent::Reconnecting { reason, resumable } => {
 						// Only a session that is starting over gets a new socket
 						// and new keys, and only that one is worth detaching for.
@@ -531,6 +574,9 @@ async fn drive_connection(
 							// driver of a call that no longer exists.
 							dave = None;
 							early.clear();
+							// A new session hands out new SSRCs.
+							speakers.clear();
+							membership = None;
 						}
 						let _ = events
 							.send(Event::Reconnecting { guild_id: guild_id.clone(), reason });
@@ -548,6 +594,27 @@ async fn drive_connection(
 			}
 		}
 	}
+}
+
+/// Everything the worker needs to start a receive thread for this session.
+///
+/// The membership channel is new each time — the previous receive thread ends
+/// with its attachment — and is primed with every SSRC already announced.
+fn listen_setup(
+	membership: &mut Option<std::sync::mpsc::Sender<Membership>>,
+	speakers: &HashMap<u32, u64>,
+	mode: EncryptionMode,
+	secret_key: &[u8],
+	own_ssrc: u32,
+) -> Result<ListenSetup, String> {
+	let opener =
+		Opener::new(mode, secret_key).map_err(|error| format!("listen: bad session key: {error}"))?;
+	let (sender, receiver) = std::sync::mpsc::channel();
+	for (&ssrc, &user_id) in speakers {
+		let _ = sender.send(Membership::Speaking { user_id, ssrc });
+	}
+	*membership = Some(sender);
+	Ok(ListenSetup { opener, own_ssrc, membership: receiver })
 }
 
 /// Hand one DAVE frame to the driver and send back whatever it answers with.

@@ -177,6 +177,150 @@ impl Session {
 	}
 }
 
+/// Why an inbound packet was not turned into a payload.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum OpenError {
+	#[error("packet is too short to be RTP")]
+	TooShort,
+	/// RTCP and anything else that shares the socket. Expected, not an error
+	/// worth counting against anyone.
+	#[error("not an RTP opus packet")]
+	NotOpus,
+	#[error("header extension runs past the payload")]
+	BadExtension,
+	#[error("transport decryption failed")]
+	Decrypt,
+}
+
+/// What a receiver needs from an inbound RTP header.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RtpHeader {
+	pub sequence: u16,
+	pub timestamp: u32,
+	pub ssrc: u32,
+}
+
+/// RTP header bits a receiver must honour that a sender here never sets.
+const RTP_PADDING: u8 = 0x20;
+const RTP_EXTENSION: u8 = 0x10;
+const RTP_CSRC_COUNT: u8 = 0x0f;
+/// The extension preamble: a profile id and a length in 32-bit words.
+const EXTENSION_PREAMBLE_LEN: usize = 4;
+
+/// Transport decryption for inbound packets.
+///
+/// Separate from [`Session`] because the two never live on the same thread:
+/// the session belongs to the audio thread and mutates on every send, while
+/// this is stateless — the nonce travels in each packet — and belongs to
+/// whoever reads the socket.
+///
+/// Inbound packets are not shaped like ours. Other clients send a one-byte
+/// header extension (`0xBEDE`) and sometimes CSRCs, and the `_rtpsize` modes
+/// split the extension down the middle: its 4-byte preamble is part of the
+/// cleartext header and so of the AAD, while its body is encrypted along with
+/// the Opus payload and has to be cut off the front after decryption.
+///
+/// ```text
+/// [ header 12 ‖ csrc 4×CC ‖ ext preamble 4 ]  [ AEAD(ext body ‖ opus ‖ padding) ‖ tag 16 ]  [ nonce 4 ]
+///   ^^^^^^^^^^^^^^ AAD, cleartext ^^^^^^^^
+/// ```
+pub struct Opener {
+	cipher: Cipher,
+	mode: EncryptionMode,
+}
+
+impl std::fmt::Debug for Opener {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("Opener").field("mode", &self.mode.as_str()).finish_non_exhaustive()
+	}
+}
+
+impl Opener {
+	pub fn new(mode: EncryptionMode, secret_key: &[u8]) -> Result<Self, CryptoError> {
+		if secret_key.len() != 32 {
+			return Err(CryptoError::BadKeyLength(secret_key.len()));
+		}
+		let cipher = match mode {
+			EncryptionMode::AeadAes256GcmRtpSize => {
+				Cipher::Aes(Box::new(Aes256Gcm::new(AesKey::<Aes256Gcm>::from_slice(secret_key))))
+			}
+			EncryptionMode::AeadXChaCha20Poly1305RtpSize => Cipher::XChaCha(Box::new(
+				XChaCha20Poly1305::new(secret_key.into()),
+			)),
+		};
+		Ok(Self { cipher, mode })
+	}
+
+	/// Read the SSRC without decrypting, to decide whether a packet is worth
+	/// the work. `None` for anything too short to have one.
+	pub fn peek_ssrc(packet: &[u8]) -> Option<u32> {
+		let bytes = packet.get(8..RTP_HEADER_LEN)?;
+		Some(u32::from_be_bytes(bytes.try_into().ok()?))
+	}
+
+	/// Decrypt one inbound packet, leaving the bare payload in `out` — Opus,
+	/// or a DAVE frame wrapping Opus.
+	pub fn open(&self, packet: &[u8], out: &mut Vec<u8>) -> Result<RtpHeader, OpenError> {
+		if packet.len() < RTP_HEADER_LEN + TAG_LEN + NONCE_SUFFIX_LEN {
+			return Err(OpenError::TooShort);
+		}
+		let flags = packet[0];
+		if flags >> 6 != 2 || packet[1] & 0x7f != RTP_OPUS_PAYLOAD_TYPE {
+			return Err(OpenError::NotOpus);
+		}
+
+		let mut aad_len = RTP_HEADER_LEN + 4 * (flags & RTP_CSRC_COUNT) as usize;
+		let has_extension = flags & RTP_EXTENSION != 0;
+		if has_extension {
+			aad_len += EXTENSION_PREAMBLE_LEN;
+		}
+		let body_end = packet.len() - NONCE_SUFFIX_LEN;
+		if aad_len + TAG_LEN > body_end {
+			return Err(OpenError::TooShort);
+		}
+		// Read before decrypting: the body length is in the cleartext preamble.
+		let extension_len = if has_extension {
+			4 * u16::from_be_bytes([packet[aad_len - 2], packet[aad_len - 1]]) as usize
+		} else {
+			0
+		};
+
+		let aad = &packet[..aad_len];
+		let mut nonce = [0u8; 24];
+		nonce[..NONCE_SUFFIX_LEN].copy_from_slice(&packet[body_end..]);
+		let nonce = &nonce[..self.mode.nonce_len()];
+
+		out.clear();
+		out.extend_from_slice(&packet[aad_len..body_end]);
+		match &self.cipher {
+			Cipher::Aes(cipher) => cipher.decrypt_in_place(nonce.into(), aad, out),
+			Cipher::XChaCha(cipher) => cipher.decrypt_in_place(nonce.into(), aad, out),
+		}
+		.map_err(|_| OpenError::Decrypt)?;
+
+		// Padding first, while its count is still the last byte. It is
+		// authenticated, so a count that makes no sense is the sender's bug
+		// rather than an attack, and the packet is kept whole like
+		// discord.js does.
+		if flags & RTP_PADDING != 0
+			&& let Some(&padding) = out.last()
+			&& (padding as usize) < out.len()
+		{
+			out.truncate(out.len() - padding as usize);
+		}
+		if extension_len > out.len() {
+			return Err(OpenError::BadExtension);
+		}
+		out.drain(..extension_len);
+
+		Ok(RtpHeader {
+			sequence: u16::from_be_bytes([packet[2], packet[3]]),
+			timestamp: u32::from_be_bytes([packet[4], packet[5], packet[6], packet[7]]),
+			ssrc: u32::from_be_bytes([packet[8], packet[9], packet[10], packet[11]]),
+		})
+	}
+}
+
 /// Adapts the tail of the output packet to the in-place AEAD interface, so the
 /// ciphertext is written where it belongs instead of into a scratch allocation.
 struct InPlace<'a> {
@@ -330,6 +474,174 @@ mod tests {
 		// A 60ms SILK frame is 2880 samples, not 960.
 		session.advance(2880);
 		assert_eq!(session.timestamp(), 8840);
+	}
+
+	/// Build a packet the way another client does: optional CSRCs, an optional
+	/// header extension whose body is encrypted, optional padding.
+	fn foreign_packet(
+		mode: EncryptionMode,
+		csrcs: &[u32],
+		extension: Option<&[u8]>,
+		payload: &[u8],
+		padding: u8,
+		counter: u32,
+	) -> Vec<u8> {
+		let mut flags = 0x80 | csrcs.len() as u8;
+		if extension.is_some() {
+			flags |= RTP_EXTENSION;
+		}
+		if padding > 0 {
+			flags |= RTP_PADDING;
+		}
+		let mut packet = vec![flags, RTP_OPUS_PAYLOAD_TYPE];
+		packet.extend_from_slice(&321u16.to_be_bytes());
+		packet.extend_from_slice(&9876u32.to_be_bytes());
+		packet.extend_from_slice(&0x0102_0304u32.to_be_bytes());
+		for csrc in csrcs {
+			packet.extend_from_slice(&csrc.to_be_bytes());
+		}
+		let mut body = Vec::new();
+		if let Some(extension) = extension {
+			assert_eq!(extension.len() % 4, 0, "extension bodies are whole words");
+			packet.extend_from_slice(&[0xbe, 0xde]);
+			packet.extend_from_slice(&((extension.len() / 4) as u16).to_be_bytes());
+			body.extend_from_slice(extension);
+		}
+		body.extend_from_slice(payload);
+		if padding > 0 {
+			body.extend(std::iter::repeat_n(0, padding as usize - 1));
+			body.push(padding);
+		}
+
+		let mut nonce = [0u8; 24];
+		nonce[..4].copy_from_slice(&counter.to_be_bytes());
+		let nonce = &nonce[..mode.nonce_len()];
+		let sealed = match mode {
+			EncryptionMode::AeadAes256GcmRtpSize => Aes256Gcm::new(AesKey::<Aes256Gcm>::from_slice(&KEY))
+				.encrypt(nonce.into(), Payload { msg: &body, aad: &packet })
+				.unwrap(),
+			EncryptionMode::AeadXChaCha20Poly1305RtpSize => {
+				use chacha20poly1305::aead::Aead as _;
+				XChaCha20Poly1305::new((&KEY).into())
+					.encrypt(nonce.into(), chacha20poly1305::aead::Payload { msg: &body, aad: &packet })
+					.unwrap()
+			}
+		};
+		packet.extend_from_slice(&sealed);
+		packet.extend_from_slice(&counter.to_be_bytes());
+		packet
+	}
+
+	#[test]
+	fn our_own_packets_open_back_to_the_payload() {
+		for mode in
+			[EncryptionMode::AeadAes256GcmRtpSize, EncryptionMode::AeadXChaCha20Poly1305RtpSize]
+		{
+			let mut session = session(mode);
+			let opener = Opener::new(mode, &KEY).unwrap();
+			let mut packet = Vec::new();
+			let mut out = Vec::new();
+			for frame in [&b"first frame"[..], &b"second"[..]] {
+				session.seal(frame, &mut packet).unwrap();
+				let header = opener.open(&packet, &mut out).unwrap();
+				assert_eq!(out, frame, "{}", mode.as_str());
+				assert_eq!(header.ssrc, 0xdead_beef);
+				assert_eq!(header.sequence, session.sequence());
+				session.advance(960);
+			}
+		}
+	}
+
+	#[test]
+	fn the_extension_body_is_decrypted_then_cut_off() {
+		for mode in
+			[EncryptionMode::AeadAes256GcmRtpSize, EncryptionMode::AeadXChaCha20Poly1305RtpSize]
+		{
+			let extension = [0x10, 0xff, 0x00, 0x00, 0x21, 0x01, 0x02, 0x00];
+			let packet = foreign_packet(mode, &[], Some(&extension), b"opus!", 0, 7);
+			let mut out = Vec::new();
+			let header = Opener::new(mode, &KEY).unwrap().open(&packet, &mut out).unwrap();
+			assert_eq!(out, b"opus!", "{}", mode.as_str());
+			assert_eq!(header, RtpHeader { sequence: 321, timestamp: 9876, ssrc: 0x0102_0304 });
+		}
+	}
+
+	#[test]
+	fn csrcs_and_padding_are_accounted_for() {
+		let mode = EncryptionMode::AeadAes256GcmRtpSize;
+		let opener = Opener::new(mode, &KEY).unwrap();
+		let mut out = Vec::new();
+
+		let packet = foreign_packet(mode, &[11, 22], None, b"payload", 0, 1);
+		opener.open(&packet, &mut out).unwrap();
+		assert_eq!(out, b"payload", "CSRCs belong to the AAD, not the payload");
+
+		let packet = foreign_packet(mode, &[], Some(&[1, 2, 3, 4]), b"padded", 5, 2);
+		opener.open(&packet, &mut out).unwrap();
+		assert_eq!(out, b"padded", "padding and the extension both come off");
+	}
+
+	#[test]
+	fn tampering_and_strangers_are_refused() {
+		let mode = EncryptionMode::AeadAes256GcmRtpSize;
+		let opener = Opener::new(mode, &KEY).unwrap();
+		let mut out = Vec::new();
+
+		let mut packet = foreign_packet(mode, &[], Some(&[0; 4]), b"payload", 0, 3);
+		// The extension preamble is authenticated even though it is cleartext.
+		packet[13] ^= 1;
+		assert_eq!(opener.open(&packet, &mut out), Err(OpenError::Decrypt));
+
+		let mut packet = foreign_packet(mode, &[], None, b"payload", 0, 3);
+		let last = packet.len() - 5;
+		packet[last] ^= 1;
+		assert_eq!(opener.open(&packet, &mut out), Err(OpenError::Decrypt));
+
+		// An RTCP receiver report shares the socket and must not count as a
+		// failed decryption.
+		let mut rtcp = vec![0x81, 0xc9];
+		rtcp.resize(40, 0);
+		assert_eq!(opener.open(&rtcp, &mut out), Err(OpenError::NotOpus));
+		assert_eq!(opener.open(&[0x80, 0x78, 0, 1], &mut out), Err(OpenError::TooShort));
+
+		// A wrong key is a decryption failure, not a panic.
+		let other = Opener::new(mode, &[9u8; 32]).unwrap();
+		let packet = foreign_packet(mode, &[], None, b"payload", 0, 4);
+		assert_eq!(other.open(&packet, &mut out), Err(OpenError::Decrypt));
+	}
+
+	#[test]
+	fn an_extension_longer_than_the_payload_is_refused() {
+		let mode = EncryptionMode::AeadAes256GcmRtpSize;
+		// A preamble claiming four words over a one-word body.
+		let mut flags_packet = foreign_packet(mode, &[], Some(&[0; 4]), b"", 0, 5);
+		flags_packet[14..16].copy_from_slice(&4u16.to_be_bytes());
+		// Re-seal so the lie is authenticated and only the length check can
+		// catch it.
+		let header = flags_packet[..16].to_vec();
+		let mut nonce = [0u8; 12];
+		nonce[..4].copy_from_slice(&5u32.to_be_bytes());
+		let sealed = Aes256Gcm::new(AesKey::<Aes256Gcm>::from_slice(&KEY))
+			.encrypt(&nonce.into(), Payload { msg: &[0u8; 4], aad: &header })
+			.unwrap();
+		let mut packet = header;
+		packet.extend_from_slice(&sealed);
+		packet.extend_from_slice(&5u32.to_be_bytes());
+
+		let mut out = Vec::new();
+		assert_eq!(
+			Opener::new(mode, &KEY).unwrap().open(&packet, &mut out),
+			Err(OpenError::BadExtension)
+		);
+	}
+
+	#[test]
+	fn the_ssrc_can_be_read_without_the_key() {
+		let mut session = session(EncryptionMode::AeadAes256GcmRtpSize);
+		let mut packet = Vec::new();
+		session.seal(b"x", &mut packet).unwrap();
+		assert_eq!(Opener::peek_ssrc(&packet), Some(0xdead_beef));
+		assert_eq!(Opener::peek_ssrc(&packet[..8]), None);
 	}
 
 	#[test]
