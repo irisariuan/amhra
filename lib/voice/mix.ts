@@ -1,9 +1,10 @@
+import type { CustomAudioPlayer } from "../custom";
 import { globalApp } from "../misc";
 import { getYouTubeVideoId } from "../youtube";
 import { updateLastUsed } from "./cache";
-import { getVideoInfo, isVideo } from "./core";
+import { createResource, getVideoInfo, isVideo } from "./core";
 import type { MixLayer } from "./mixPlan";
-import { getMix, nativeAddLayer } from "./native";
+import { getMix, nativeAddLayer, nativeSwapLayer } from "./native";
 import { nativeFetchReady } from "./nativeFetch";
 
 export type AddLayerResult =
@@ -21,6 +22,7 @@ export async function addLayerFromInput(
 	guildId: string,
 	url: string,
 	volume: number,
+	startMs = 0,
 ): Promise<AddLayerResult> {
 	const trackId = isVideo(url) ? getYouTubeVideoId(url) : null;
 	if (!trackId) return { error: "not_found" };
@@ -39,11 +41,62 @@ export async function addLayerFromInput(
 	// Marked as used so the cache sweep does not delete a file being played.
 	await updateLastUsed([trackId]).catch(() => {});
 
-	const layer = nativeAddLayer(guildId, {
-		trackId,
-		title: info.video_details.title,
-		url: info.video_details.url,
-		volume,
-	});
+	const layer = nativeAddLayer(
+		guildId,
+		{
+			trackId,
+			title: info.video_details.title,
+			url: info.video_details.url,
+			volume,
+		},
+		startMs,
+	);
 	return layer ? { layer } : { error: "full" };
+}
+
+export type SwapResult =
+	/** `layer` is what the layer holds now: the queue's former song. */
+	| { layer: MixLayer; playing: MixLayer }
+	| { error: "nothing_playing" | "failed" };
+
+/**
+ * Make a mixed-in song the queue's song, and the queue's song a mixed-in one.
+ *
+ * Inaudible: each keeps its place and its volume. What changes is which one
+ * the queue controls — skip, seek, segment skips, lyrics and now playing all
+ * follow the swapped-in song, and when it ends the queue moves on as usual.
+ * The swapped-out song plays on in the mix until it ends.
+ */
+export async function swapLayerWithMain(
+	player: CustomAudioPlayer,
+	layer: MixLayer,
+): Promise<SwapResult> {
+	const guildId = player.guildId;
+	if (!player.nativePlayback || !player.isPlaying || !player.nowPlaying) {
+		return { error: "nothing_playing" };
+	}
+	// Built first, so the queue's view can change the moment the sidecar
+	// reports the swap rather than a network round trip later.
+	const resource = await createResource(layer.url).catch(() => null);
+	if (!resource) return { error: "failed" };
+
+	const swapped = await nativeSwapLayer(guildId, layer.id);
+	if (!swapped) return { error: "failed" };
+
+	// Read after the waits: the queue may have moved on in the meantime, and
+	// the sidecar's report says which track actually went into the mix.
+	const outgoing = player.nowPlaying;
+	const main =
+		outgoing?.videoId === swapped.layerTrackId
+			? { trackId: swapped.layerTrackId, title: outgoing.title, url: outgoing.url }
+			: {
+					trackId: swapped.layerTrackId,
+					title: swapped.layerTrackId,
+					url: `https://youtu.be/${swapped.layerTrackId}`,
+				};
+	const before = getMix(guildId).swap(layer.id, main);
+	player.adoptSwapped(resource, swapped.positionMs);
+	const now = getMix(guildId).list().find((l) => l.id === layer.id);
+	if (!before || !now) return { error: "failed" };
+	return { layer: now, playing: before };
 }

@@ -24,6 +24,8 @@ export enum SongEditType {
 	RemoveLayer = "removeLayer",
 	SetLayerVolume = "setLayerVolume",
 	SetMainVolume = "setMainVolume",
+	SwapLayer = "swapLayer",
+	MixFromQueue = "mixFromQueue",
 }
 
 export type ExpressEventDetail = {

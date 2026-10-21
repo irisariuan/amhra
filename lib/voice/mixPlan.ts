@@ -66,6 +66,21 @@ export class GuildMix {
 		return this.layers.length !== before;
 	}
 
+	/**
+	 * Record a layer trading places with the queue's track: the layer now
+	 * holds `main`, and the two volumes swap too, because each song kept its
+	 * own level through the exchange. Returns what the layer held before, or
+	 * null if it is not listed.
+	 */
+	swap(id: string, main: Omit<MixLayer, "id" | "volume">): MixLayer | null {
+		const layer = this.layers.find((layer) => layer.id === id);
+		if (!layer) return null;
+		const before = { ...layer };
+		Object.assign(layer, main, { volume: this.mainVolume });
+		this.mainVolume = before.volume;
+		return before;
+	}
+
 	setVolume(id: string, volume: number): boolean {
 		const layer = this.layers.find((layer) => layer.id === id);
 		if (!layer) return false;

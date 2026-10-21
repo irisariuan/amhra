@@ -68,6 +68,15 @@ const event = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("layerFinished"), guildId: z.string(), layerId: z.string() }),
 	z.object({ type: z.literal("layerStarved"), guildId: z.string(), layerId: z.string() }),
 	z.object({
+		type: z.literal("layerSwapped"),
+		guildId: z.string(),
+		layerId: z.string(),
+		trackId: z.string(),
+		positionMs: z.number(),
+		layerTrackId: z.string(),
+		layerPositionMs: z.number(),
+	}),
+	z.object({
 		type: z.literal("position"),
 		guildId: z.string(),
 		trackId: z.string(),

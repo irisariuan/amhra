@@ -200,6 +200,31 @@ const SetMainVolumeSchema = z.object({
 	detail: z.object({ volume: MixVolume }),
 });
 
+/**
+ * Trade a layer with the queue's song. Inaudible: each keeps its place and
+ * volume, and the queue then controls the swapped-in song.
+ */
+const SwapLayerSchema = z.object({
+	action: z.literal(SongEditType.SwapLayer),
+	guildId: z.string(),
+	detail: z.object({ id: z.string().min(1) }),
+});
+
+/**
+ * Take a queued song out of the queue and mix it in now. `url`, when given,
+ * is what the caller saw at `index`; a queue reordered in the meantime is
+ * searched for it instead of mixing whatever moved into that place.
+ */
+const MixFromQueueSchema = z.object({
+	action: z.literal(SongEditType.MixFromQueue),
+	guildId: z.string(),
+	detail: z.object({
+		index: z.number().int().nonnegative(),
+		url: z.string().optional(),
+		volume: MixVolume.default(1),
+	}),
+});
+
 // Discriminated union on action
 export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	PauseSchema,
@@ -223,6 +248,8 @@ export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	RemoveLayerSchema,
 	SetLayerVolumeSchema,
 	SetMainVolumeSchema,
+	SwapLayerSchema,
+	MixFromQueueSchema,
 ]);
 
 // Inferred Type

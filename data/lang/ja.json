@@ -287,6 +287,10 @@
 				"list": {
 					"name": "一覧",
 					"description": "ミックス中の曲を表示します"
+				},
+				"swap": {
+					"name": "入れ替え",
+					"description": "ミックス中の曲をキューの曲と入れ替えます"
 				}
 			}
 		}
@@ -331,5 +335,8 @@
 	"MIX_MAIN_SET": "ミックス内のキューの曲の音量を {volume}% に設定しました",
 	"MIX_NO_LAYER": "ミックス中の曲 #{index} はありません",
 	"MIX_REMOVED": "**[{title}]({url})** のミックスを停止しました",
-	"MIX_VOLUME_SET": "**[{title}]({url})** の音量を {volume}% に設定しました"
+	"MIX_VOLUME_SET": "**[{title}]({url})** の音量を {volume}% に設定しました",
+	"MIX_SWAPPED": "入れ替えました: **[{title}]({url})** がキューの曲になり、**[{mixed}]({mixedUrl})** はミックスで再生を続けます",
+	"MIX_SWAP_NOTHING_PLAYING": "入れ替えるキューの曲が再生されていません",
+	"MIX_SWAP_FAILED": "入れ替えできませんでした。少し待ってからもう一度お試しください"
 }

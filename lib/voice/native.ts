@@ -12,6 +12,7 @@ import {
 	sidecar,
 	sidecarBin,
 	type SidecarCommand,
+	type SidecarEvent,
 } from "./sidecar";
 
 /**
@@ -270,6 +271,7 @@ export function hasLayers(guildId: string) {
 export function nativeAddLayer(
 	guildId: string,
 	track: Omit<MixLayer, "id">,
+	startMs = 0,
 ): MixLayer | null {
 	const layer = getMix(guildId).add(track);
 	if (!layer) return null;
@@ -279,7 +281,7 @@ export function nativeAddLayer(
 		layerId: layer.id,
 		trackId: layer.trackId,
 		gain: gainFromPercent(layer.volume),
-		startMs: 0,
+		startMs: Math.max(0, Math.round(startMs)),
 	});
 	return layer;
 }
@@ -289,6 +291,43 @@ export function nativeRemoveLayer(guildId: string, layer: MixLayer) {
 	// next already reflects what they asked for.
 	getMix(guildId).forget(layer.id);
 	send(guildId, { type: "removeLayer", guildId, layerId: layer.id });
+}
+
+/** How long to wait for the sidecar to confirm a swap before giving up on it. */
+const SWAP_TIMEOUT_MS = 3_000;
+
+export type LayerSwap = Extract<SidecarEvent, { type: "layerSwapped" }>;
+
+/**
+ * Ask the sidecar to trade a layer with the queue's track, and wait for it to
+ * say it has. Null when it refused — nothing playing on the queue, or a fade
+ * in progress — which it reports as an error for the guild.
+ *
+ * Waited on rather than assumed, because the bot's view of what is playing
+ * must only move once the audio has: a refused swap followed by an optimistic
+ * one here would leave every later report about the wrong track.
+ */
+export function nativeSwapLayer(guildId: string, layerId: string) {
+	if (!connections.has(guildId)) return Promise.resolve(null);
+	const bus = sidecar();
+	return new Promise<LayerSwap | null>((resolve) => {
+		const finish = (result: LayerSwap | null) => {
+			clearTimeout(timer);
+			bus.off("layerSwapped", onSwapped);
+			bus.off("error", onError);
+			resolve(result);
+		};
+		const onSwapped = (payload: LayerSwap) => {
+			if (payload.guildId === guildId && payload.layerId === layerId) finish(payload);
+		};
+		const onError = (payload: { guildId: string | null }) => {
+			if (payload.guildId === guildId) finish(null);
+		};
+		const timer = setTimeout(() => finish(null), SWAP_TIMEOUT_MS);
+		bus.on("layerSwapped", onSwapped);
+		bus.on("error", onError);
+		send(guildId, { type: "swapLayer", guildId, layerId });
+	});
 }
 
 export function nativeSetLayerVolume(guildId: string, layer: MixLayer, volume: number) {

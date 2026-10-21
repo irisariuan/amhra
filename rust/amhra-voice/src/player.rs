@@ -148,6 +148,26 @@ impl Player {
 		self.promote();
 	}
 
+	/// Exchange the active track with `id` and `reader` in place, without
+	/// either one ending.
+	///
+	/// For a track that was already audible elsewhere — a mix layer becoming
+	/// the queue's track — so the incoming one counts as started and neither
+	/// side reports finishing. Afterwards `id` and `reader` hold the outgoing
+	/// track. False, with both untouched, when there is nothing to exchange
+	/// with or a fade holds both slots.
+	pub fn swap_active(&mut self, id: &mut String, reader: &mut CacheReader) -> bool {
+		if self.fade.is_some() {
+			return false;
+		}
+		let Some(slot) = self.active.as_mut() else { return false };
+		std::mem::swap(&mut slot.id, id);
+		std::mem::swap(&mut slot.reader, reader);
+		slot.started = true;
+		self.starving = false;
+		true
+	}
+
 	pub fn stop(&mut self) {
 		if let Some(finished) = self.active.take() {
 			self.events.push(Event::Finished(finished.id));
@@ -607,6 +627,39 @@ mod tests {
 		assert!(!player.is_fading());
 		std::fs::remove_file(&first_path).ok();
 		std::fs::remove_file(&second_path).ok();
+	}
+
+	#[test]
+	fn swapping_the_active_track_plays_the_new_one_without_events() {
+		let (first, first_path) = reader("swap-a", 10, 0x01);
+		let (second, second_path) = reader("swap-b", 10, 0x02);
+		let mut player = Player::new();
+		player.play("a", first);
+		player.tick();
+		player.drain_events();
+
+		let (mut id, mut track) = ("b".to_owned(), second);
+		assert!(player.swap_active(&mut id, &mut track));
+		assert_eq!(id, "a");
+		assert_eq!(track.position_ms(), 20, "the outgoing track keeps its place");
+		assert_eq!(player.current_id(), Some("b"));
+
+		let Tick::Frame { bytes, .. } = player.tick() else { panic!("expected a frame") };
+		assert_eq!(bytes[1], 0x02);
+		assert!(player.drain_events().is_empty(), "a swap is neither a start nor an ending");
+		std::fs::remove_file(&first_path).ok();
+		std::fs::remove_file(&second_path).ok();
+	}
+
+	#[test]
+	fn swapping_with_nothing_playing_hands_the_track_back() {
+		let (track, path) = reader("swap-idle", 2, 0x01);
+		let mut player = Player::new();
+		let (mut id, mut track) = ("b".to_owned(), track);
+		assert!(!player.swap_active(&mut id, &mut track));
+		assert_eq!(id, "b");
+		assert!(player.is_idle());
+		std::fs::remove_file(&path).ok();
 	}
 
 	#[test]

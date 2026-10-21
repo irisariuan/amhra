@@ -85,6 +85,12 @@ pub enum Command {
 	RemoveLayer { guild_id: String, layer_id: String },
 	#[serde(rename_all = "camelCase")]
 	SetLayerVolume { guild_id: String, layer_id: String, gain: f32 },
+	/// Exchange a layer with the queue's track, on one tick and inaudibly:
+	/// each keeps its place and its own gain. The layer keeps its id, now
+	/// naming what was the queue's track. Answered by `LayerSwapped`, or an
+	/// `Error` when the queue has nothing playing or is mid-fade.
+	#[serde(rename_all = "camelCase")]
+	SwapLayer { guild_id: String, layer_id: String },
 	#[serde(rename_all = "camelCase")]
 	SetFades { guild_id: String, crossfade_ms: u16, skip_fade_ms: u16 },
 	/// Ask for one `Sessions` event. Used after the bot restarts, to find out
@@ -122,6 +128,18 @@ pub enum Event {
 	/// A layer stalled waiting for its download. The rest of the mix plays on.
 	#[serde(rename_all = "camelCase")]
 	LayerStarved { guild_id: String, layer_id: String },
+	/// A layer and the queue's track traded places.
+	#[serde(rename_all = "camelCase")]
+	LayerSwapped {
+		guild_id: String,
+		layer_id: String,
+		/// What the queue is playing now: the layer's former track.
+		track_id: String,
+		position_ms: u32,
+		/// What the layer is playing now: the queue's former track.
+		layer_track_id: String,
+		layer_position_ms: u32,
+	},
 	/// Where playback is, emitted about once a second.
 	#[serde(rename_all = "camelCase")]
 	Position { guild_id: String, track_id: String, position_ms: u32 },
@@ -179,6 +197,7 @@ impl Command {
 			| Self::AddLayer { guild_id, .. }
 			| Self::RemoveLayer { guild_id, .. }
 			| Self::SetLayerVolume { guild_id, .. }
+			| Self::SwapLayer { guild_id, .. }
 			| Self::SetFades { guild_id, .. } => Some(guild_id),
 			Self::ListSessions | Self::Shutdown => None,
 		}
@@ -259,6 +278,7 @@ mod tests {
 			r#"{"type":"addLayer","guildId":"g","layerId":"l","trackId":"t","gain":1}"#,
 			r#"{"type":"removeLayer","guildId":"g","layerId":"l"}"#,
 			r#"{"type":"setLayerVolume","guildId":"g","layerId":"l","gain":0.2}"#,
+			r#"{"type":"swapLayer","guildId":"g","layerId":"l"}"#,
 		];
 		for json in commands {
 			let command: Command = serde_json::from_str(json).unwrap();

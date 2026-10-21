@@ -12,12 +12,20 @@ trackId: string, startMs: number, } | { "type": "setNext", guildId: string, trac
  * Chosen by the bot, and how every later layer command and event
  * names this one.
  */
-layerId: string, trackId: string, gain: number, startMs: number, } | { "type": "removeLayer", guildId: string, layerId: string, } | { "type": "setLayerVolume", guildId: string, layerId: string, gain: number, } | { "type": "setFades", guildId: string, crossfadeMs: number, skipFadeMs: number, } | { "type": "listSessions" } | { "type": "shutdown" };
+layerId: string, trackId: string, gain: number, startMs: number, } | { "type": "removeLayer", guildId: string, layerId: string, } | { "type": "setLayerVolume", guildId: string, layerId: string, gain: number, } | { "type": "swapLayer", guildId: string, layerId: string, } | { "type": "setFades", guildId: string, crossfadeMs: number, skipFadeMs: number, } | { "type": "listSessions" } | { "type": "shutdown" };
 
 /**
  * What this process reports back.
  */
-export type Event = { "type": "hello", version: number, pid: number, } | { "type": "ready", guildId: string, daveVersion: number, } | { "type": "started", guildId: string, trackId: string, } | { "type": "finished", guildId: string, trackId: string, } | { "type": "starved", guildId: string, trackId: string, } | { "type": "layerStarted", guildId: string, layerId: string, } | { "type": "layerFinished", guildId: string, layerId: string, } | { "type": "layerStarved", guildId: string, layerId: string, } | { "type": "position", guildId: string, trackId: string, positionMs: number, } | { "type": "idle", guildId: string, } | { "type": "reconnecting", guildId: string, reason: string, } | { "type": "disconnected", guildId: string, reason: string, } | { "type": "error", guildId: string | null, message: string, } | { "type": "sessions", guilds: Array<SessionState>, };
+export type Event = { "type": "hello", version: number, pid: number, } | { "type": "ready", guildId: string, daveVersion: number, } | { "type": "started", guildId: string, trackId: string, } | { "type": "finished", guildId: string, trackId: string, } | { "type": "starved", guildId: string, trackId: string, } | { "type": "layerStarted", guildId: string, layerId: string, } | { "type": "layerFinished", guildId: string, layerId: string, } | { "type": "layerStarved", guildId: string, layerId: string, } | { "type": "layerSwapped", guildId: string, layerId: string, 
+/**
+ * What the queue is playing now: the layer's former track.
+ */
+trackId: string, positionMs: number, 
+/**
+ * What the layer is playing now: the queue's former track.
+ */
+layerTrackId: string, layerPositionMs: number, } | { "type": "position", guildId: string, trackId: string, positionMs: number, } | { "type": "idle", guildId: string, } | { "type": "reconnecting", guildId: string, reason: string, } | { "type": "disconnected", guildId: string, reason: string, } | { "type": "error", guildId: string | null, message: string, } | { "type": "sessions", guilds: Array<SessionState>, };
 
 /**
  * One guild's state, for a bot that has just restarted and lost its own.

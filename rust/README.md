@@ -202,6 +202,9 @@ encoded once per frame. Every gain change slides across one frame instead of
 stepping, so layers join, leave and change level without clicks. The sum
 saturates instead of limiting, so two loud tracks at full gain will clip, and
 turning one down fixes it. `stop` silences the layers along with the queue.
+`swapLayer` trades a layer with the queue's track on one tick: gain, position
+and decoder state each go with their track, so nothing audible changes, only
+which track the queue controls.
 
 Verified live end to end:
 

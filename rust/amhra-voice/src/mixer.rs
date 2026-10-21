@@ -58,10 +58,14 @@ pub enum MixerError {
 	Full,
 	#[error("no layer {0}")]
 	NoSuchLayer(String),
+	#[error("nothing is playing on the queue to swap with")]
+	NothingToSwap,
 }
 
 struct Layer {
 	id: String,
+	/// The cache id of what it is playing, which a swap hands to the player.
+	track_id: String,
 	reader: CacheReader,
 	gain: f32,
 	/// Effective gain (own × master) the last mixed frame ended at.
@@ -85,9 +89,10 @@ enum Pull {
 }
 
 impl Layer {
-	fn new(id: String, reader: CacheReader, gain: f32) -> Self {
+	fn new(id: String, track_id: String, reader: CacheReader, gain: f32) -> Self {
 		Self {
 			id,
+			track_id,
 			reader,
 			gain,
 			// From silence, so joining is a fade-in rather than a cut.
@@ -142,6 +147,7 @@ impl std::fmt::Debug for Layer {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("Layer")
 			.field("id", &self.id)
+			.field("track_id", &self.track_id)
 			.field("gain", &self.gain)
 			.field("leaving", &self.leaving)
 			.finish_non_exhaustive()
@@ -224,10 +230,11 @@ impl Mixer {
 	pub fn add_layer(
 		&mut self,
 		id: impl Into<String>,
+		track_id: impl Into<String>,
 		reader: CacheReader,
 		gain: f32,
 	) -> Result<(), MixerError> {
-		let layer = Layer::new(id.into(), reader, gain.max(0.0));
+		let layer = Layer::new(id.into(), track_id.into(), reader, gain.max(0.0));
 		if let Some(existing) = self.layers.iter_mut().find(|existing| existing.id == layer.id) {
 			*existing = layer;
 			return Ok(());
@@ -249,6 +256,43 @@ impl Mixer {
 	pub fn set_layer_gain(&mut self, id: &str, gain: f32) -> Result<(), MixerError> {
 		self.layer_mut(id)?.gain = gain.max(0.0);
 		Ok(())
+	}
+
+	/// Exchange a layer with the main track.
+	///
+	/// `swap` is given the layer's track id and reader to exchange in place
+	/// with the main track's, returning false if the main side has nothing to
+	/// exchange. Gain, ramp position and decoder state each travel with their
+	/// track, so the listener hears no change at all — only which track the
+	/// queue controls. The layer keeps its id, now naming what was the main
+	/// track.
+	pub fn swap_with_main<F>(&mut self, id: &str, swap: F) -> Result<(), MixerError>
+	where
+		F: FnOnce(&mut String, &mut CacheReader) -> bool,
+	{
+		let Self { layers, main_gain, main_applied, main_decoder, .. } = self;
+		let layer = layers
+			.iter_mut()
+			.find(|layer| layer.id == id && !layer.leaving)
+			.ok_or_else(|| MixerError::NoSuchLayer(id.to_owned()))?;
+		if !swap(&mut layer.track_id, &mut layer.reader) {
+			return Err(MixerError::NothingToSwap);
+		}
+		std::mem::swap(&mut layer.gain, main_gain);
+		std::mem::swap(&mut layer.applied, main_applied);
+		std::mem::swap(&mut layer.decoder, main_decoder);
+		// It has been audible all along, as the main track.
+		layer.started = true;
+		layer.starving = false;
+		Ok(())
+	}
+
+	/// What a layer is playing and where it is, by layer id.
+	pub fn layer_track(&self, id: &str) -> Option<(&str, u32)> {
+		self.layers
+			.iter()
+			.find(|layer| layer.id == id)
+			.map(|layer| (layer.track_id.as_str(), layer.reader.position_ms()))
 	}
 
 	/// Fade every layer out.
@@ -495,7 +539,7 @@ mod tests {
 	fn a_layer_plays_with_nothing_on_the_main_track() {
 		let (layer, path) = reader("mixer-solo", &vec![tone_packet(8_000); 5]);
 		let mut mixer = Mixer::new();
-		mixer.add_layer("rain", layer, 1.0).unwrap();
+		mixer.add_layer("rain", "track", layer, 1.0).unwrap();
 
 		let mut frames = 0;
 		while let Some(out) = mixer.mix(None).unwrap() {
@@ -518,7 +562,7 @@ mod tests {
 
 		let (layer, path) = reader("mixer-sum", &vec![tone_packet(6_000); 20]);
 		let mut mixer = Mixer::new();
-		mixer.add_layer("second", layer, 1.0).unwrap();
+		mixer.add_layer("second", "track", layer, 1.0).unwrap();
 		let together = settled_peak(&mut mixer, Some(&main), 10);
 
 		// The same tone twice, in phase, is close to twice the amplitude.
@@ -533,7 +577,7 @@ mod tests {
 	fn each_layer_follows_its_own_gain() {
 		let (layer, path) = reader("mixer-own", &vec![tone_packet(16_000); 40]);
 		let mut mixer = Mixer::new();
-		mixer.add_layer("bed", layer, 1.0).unwrap();
+		mixer.add_layer("bed", "track", layer, 1.0).unwrap();
 		let loud = settled_peak(&mut mixer, None, 10);
 
 		mixer.set_layer_gain("bed", 0.2).unwrap();
@@ -549,7 +593,7 @@ mod tests {
 		let (layer, path) = reader("mixer-mute", &vec![tone_packet(16_000); 20]);
 		let mut mixer = Mixer::new();
 		mixer.set_main_gain(0.0);
-		mixer.add_layer("only", layer, 1.0).unwrap();
+		mixer.add_layer("only", "track", layer, 1.0).unwrap();
 		let peak = settled_peak(&mut mixer, Some(&main), 10);
 		assert!(peak > 8_000, "the layer should still be heard, got {peak}");
 		std::fs::remove_file(&path).ok();
@@ -560,7 +604,7 @@ mod tests {
 		let main = tone_packet(8_000);
 		let (layer, path) = reader("mixer-remove", &vec![tone_packet(8_000); 50]);
 		let mut mixer = Mixer::new();
-		mixer.add_layer("gone", layer, 1.0).unwrap();
+		mixer.add_layer("gone", "track", layer, 1.0).unwrap();
 		mixer.mix(frame(&main)).unwrap();
 
 		mixer.remove_layer("gone").unwrap();
@@ -588,7 +632,7 @@ mod tests {
 
 		let main = tone_packet(8_000);
 		let mut mixer = Mixer::new();
-		mixer.add_layer("slow", partial, 1.0).unwrap();
+		mixer.add_layer("slow", "track", partial, 1.0).unwrap();
 		for _ in 0..20 {
 			assert!(mixer.mix(frame(&main)).unwrap().is_some(), "the main track must keep going");
 		}
@@ -610,9 +654,9 @@ mod tests {
 		let (first, first_path) = reader("mixer-reuse-a", &vec![tone_packet(8_000); 50]);
 		let (second, second_path) = reader("mixer-reuse-b", &vec![tone_packet(8_000); 2]);
 		let mut mixer = Mixer::new();
-		mixer.add_layer("slot", first, 1.0).unwrap();
+		mixer.add_layer("slot", "track", first, 1.0).unwrap();
 		mixer.mix(None).unwrap();
-		mixer.add_layer("slot", second, 0.5).unwrap();
+		mixer.add_layer("slot", "track", second, 0.5).unwrap();
 
 		assert_eq!(mixer.layer_ids().collect::<Vec<_>>(), vec!["slot"]);
 		assert_eq!(mixer.layer_gain("slot"), Some(0.5));
@@ -625,17 +669,60 @@ mod tests {
 	}
 
 	#[test]
+	fn swapping_exchanges_tracks_gains_and_ids() {
+		let (layer, path) = reader("mixer-swap", &vec![tone_packet(8_000); 20]);
+		let mut mixer = Mixer::new();
+		mixer.set_main_gain(0.8);
+		mixer.add_layer("bed", "layer-track", layer, 0.3).unwrap();
+
+		let (main, main_path) =
+			crate::test_support::reader("mixer-swap-main", &vec![tone_packet(8_000); 20]);
+		let mut handed = None;
+		mixer
+			.swap_with_main("bed", |track, reader| {
+				// Stands in for the player's half of the exchange.
+				handed = Some(std::mem::replace(track, "main-track".to_owned()));
+				*reader = main;
+				true
+			})
+			.unwrap();
+
+		assert_eq!(handed.as_deref(), Some("layer-track"));
+		assert_eq!(mixer.main_gain(), 0.3, "the swapped-in track keeps its own level");
+		assert_eq!(mixer.layer_gain("bed"), Some(0.8), "and so does the swapped-out one");
+		assert_eq!(mixer.layer_track("bed").map(|(track, _)| track), Some("main-track"));
+		assert!(mixer.drain_events().is_empty(), "a swap ends nothing");
+		std::fs::remove_file(&path).ok();
+		std::fs::remove_file(&main_path).ok();
+	}
+
+	#[test]
+	fn a_refused_swap_leaves_the_layer_as_it_was() {
+		let (layer, path) = reader("mixer-noswap", &vec![tone_packet(8_000); 5]);
+		let mut mixer = Mixer::new();
+		mixer.add_layer("bed", "layer-track", layer, 0.3).unwrap();
+
+		let result = mixer.swap_with_main("bed", |_, _| false);
+		assert!(matches!(result, Err(MixerError::NothingToSwap)));
+		assert_eq!(mixer.layer_gain("bed"), Some(0.3));
+		assert_eq!(mixer.layer_track("bed").map(|(track, _)| track), Some("layer-track"));
+		assert_eq!(mixer.main_gain(), 1.0);
+		assert!(matches!(mixer.swap_with_main("missing", |_, _| false), Err(MixerError::NoSuchLayer(_))));
+		std::fs::remove_file(&path).ok();
+	}
+
+	#[test]
 	fn the_layer_count_is_capped() {
 		let packets = vec![tone_packet(8_000); 2];
 		let mut paths = Vec::new();
 		let mut mixer = Mixer::new();
 		for index in 0..MAX_LAYERS {
 			let (layer, path) = reader(&format!("mixer-cap-{index}"), &packets);
-			mixer.add_layer(index.to_string(), layer, 1.0).unwrap();
+			mixer.add_layer(index.to_string(), "track", layer, 1.0).unwrap();
 			paths.push(path);
 		}
 		let (extra, path) = reader("mixer-cap-extra", &packets);
-		assert!(matches!(mixer.add_layer("extra", extra, 1.0), Err(MixerError::Full)));
+		assert!(matches!(mixer.add_layer("extra", "track", extra, 1.0), Err(MixerError::Full)));
 		paths.push(path);
 		for path in paths {
 			std::fs::remove_file(&path).ok();

@@ -510,6 +510,31 @@ export class CustomAudioPlayer extends AudioPlayer {
 		armNext(this);
 	}
 
+	/**
+	 * Take a track the sidecar has just swapped in from the mix as the one
+	 * playing, at `positionMs`.
+	 *
+	 * Nothing is sent: the sidecar already made the exchange, inaudibly. This
+	 * only brings the queue's view — now playing, position, segment timers,
+	 * what is armed next — in line with what is being heard.
+	 */
+	adoptSwapped(resource: Resource, positionMs: number) {
+		if (!this.nativePlayback) return;
+		this.playCounter++;
+		this.nowPlaying = resource;
+		this.history.push(resource.url);
+		this.startFrom = positionMs;
+		this.pauseCounter = 0;
+		this.updateStartTime();
+		// The pause, if any, now counts from the swap rather than from when
+		// the outgoing track was paused.
+		if (this.isPaused) this.pauseTimestamp = this.startTime;
+		this.nativePlayback.anchorAt(positionMs, Date.now());
+		this.clearSongTimeouts();
+		this.updateSongTimeouts();
+		armNext(this);
+	}
+
 	setVolume(volume: number) {
 		this.volume = volume;
 		if (this.isPlaying && this.nowPlaying && !this.isMuting) {

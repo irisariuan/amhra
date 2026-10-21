@@ -276,6 +276,10 @@
 				"list": {
 					"name": "목록",
 					"description": "믹스 중인 곡을 표시합니다"
+				},
+				"swap": {
+					"name": "교체",
+					"description": "믹스 중인 곡을 대기열 곡과 교체합니다"
 				}
 			}
 		}
@@ -320,5 +324,8 @@
 	"MIX_MAIN_SET": "믹스 내 대기열 곡 음량을 {volume}% 로 설정했습니다",
 	"MIX_NO_LAYER": "믹스 중인 곡 #{index} 이(가) 없습니다",
 	"MIX_REMOVED": "**[{title}]({url})** 믹스를 중지했습니다",
-	"MIX_VOLUME_SET": "**[{title}]({url})** 음량을 {volume}% 로 설정했습니다"
+	"MIX_VOLUME_SET": "**[{title}]({url})** 음량을 {volume}% 로 설정했습니다",
+	"MIX_SWAPPED": "교체했습니다: **[{title}]({url})** 이(가) 대기열 곡이 되었고, **[{mixed}]({mixedUrl})** 은(는) 믹스에서 계속 재생됩니다",
+	"MIX_SWAP_NOTHING_PLAYING": "교체할 대기열 곡이 재생 중이 아닙니다",
+	"MIX_SWAP_FAILED": "교체하지 못했습니다. 잠시 후 다시 시도하세요"
 }

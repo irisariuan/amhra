@@ -287,6 +287,10 @@
 				"list": {
 					"name": "列表",
 					"description": "顯示混音中的歌曲"
+				},
+				"swap": {
+					"name": "交換",
+					"description": "將混音中的歌曲與佇列歌曲交換"
 				}
 			}
 		}
@@ -331,5 +335,8 @@
 	"MIX_MAIN_SET": "已將混音中佇列歌曲的音量設為 {volume}%",
 	"MIX_NO_LAYER": "沒有第 {index} 首混音歌曲",
 	"MIX_REMOVED": "已停止混入 **[{title}]({url})**",
-	"MIX_VOLUME_SET": "已將 **[{title}]({url})** 的音量設為 {volume}%"
+	"MIX_VOLUME_SET": "已將 **[{title}]({url})** 的音量設為 {volume}%",
+	"MIX_SWAPPED": "已交換：**[{title}]({url})** 現在是佇列歌曲，**[{mixed}]({mixedUrl})** 繼續在混音中播放",
+	"MIX_SWAP_NOTHING_PLAYING": "佇列中沒有正在播放的歌曲可以交換",
+	"MIX_SWAP_FAILED": "無法交換，請稍後再試"
 }

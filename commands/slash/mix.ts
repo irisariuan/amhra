@@ -18,7 +18,7 @@ import {
 	nativeSetMainVolume,
 	nativeVoiceActive,
 } from "../../lib/voice/native";
-import { addLayerFromInput } from "../../lib/voice/mix";
+import { addLayerFromInput, swapLayerWithMain } from "../../lib/voice/mix";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -71,6 +71,18 @@ export default {
 						.setDescription("Its volume (0-500)")
 						.setMinValue(0)
 						.setMaxValue(500)
+						.setRequired(true),
+				),
+		)
+		.addSubcommand((sub) =>
+			sub
+				.setName("swap")
+				.setDescription("Make a mixed-in song the queue's song, and the queue's song mixed in")
+				.addIntegerOption((opt) =>
+					opt
+						.setName("layer")
+						.setDescription("The number shown by /mix list")
+						.setMinValue(1)
 						.setRequired(true),
 				),
 		)
@@ -214,6 +226,34 @@ export default {
 				content: languageText("mix_removed", language, {
 					title: layer.title,
 					url: layer.url,
+				}),
+				flags: ["SuppressEmbeds"],
+			});
+		}
+
+		if (subcommand === "swap") {
+			const player = getAudioPlayer(client, guildId, interaction.channel, language, {
+				createPlayer: false,
+			});
+			if (!player?.isPlaying)
+				return interaction.reply(languageText("mix_swap_nothing_playing", language));
+			await interaction.deferReply();
+			const result = await swapLayerWithMain(player, layer);
+			if ("error" in result)
+				return interaction.editReply(
+					languageText(
+						result.error === "nothing_playing"
+							? "mix_swap_nothing_playing"
+							: "mix_swap_failed",
+						language,
+					),
+				);
+			return interaction.editReply({
+				content: languageText("mix_swapped", language, {
+					title: result.playing.title,
+					url: result.playing.url,
+					mixed: result.layer.title,
+					mixedUrl: result.layer.url,
 				}),
 				flags: ["SuppressEmbeds"],
 			});

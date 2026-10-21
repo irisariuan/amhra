@@ -287,6 +287,7 @@ async fn dispatch(
 			{
 				session.worker.send(WorkerCommand::AddLayer {
 					layer_id,
+					track_id,
 					reader: Box::new(reader),
 					gain,
 					start_ms,
@@ -301,6 +302,11 @@ async fn dispatch(
 		Command::SetLayerVolume { guild_id, layer_id, gain } => {
 			with_guild(guilds, events, &guild_id, |session| {
 				session.worker.send(WorkerCommand::SetLayerVolume { layer_id, gain });
+			})
+		}
+		Command::SwapLayer { guild_id, layer_id } => {
+			with_guild(guilds, events, &guild_id, |session| {
+				session.worker.send(WorkerCommand::SwapLayer(layer_id));
 			})
 		}
 		Command::SetFades { guild_id, crossfade_ms, skip_fade_ms } => {

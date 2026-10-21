@@ -57,9 +57,16 @@ pub enum WorkerCommand {
 	SetVolume(f32),
 	/// The queue track's own gain.
 	SetMainVolume(f32),
-	AddLayer { layer_id: String, reader: Box<CacheReader>, gain: f32, start_ms: u32 },
+	AddLayer {
+		layer_id: String,
+		track_id: String,
+		reader: Box<CacheReader>,
+		gain: f32,
+		start_ms: u32,
+	},
 	RemoveLayer(String),
 	SetLayerVolume { layer_id: String, gain: f32 },
+	SwapLayer(String),
 	SetFades(FadeSettings),
 	Shutdown,
 }
@@ -369,11 +376,11 @@ fn apply(
 		}
 		WorkerCommand::SetVolume(gain) => mixer.set_master(gain),
 		WorkerCommand::SetMainVolume(gain) => mixer.set_main_gain(gain),
-		WorkerCommand::AddLayer { layer_id, mut reader, gain, start_ms } => {
+		WorkerCommand::AddLayer { layer_id, track_id, mut reader, gain, start_ms } => {
 			if start_ms > 0 {
 				reader.seek(start_ms);
 			}
-			if let Err(error) = mixer.add_layer(layer_id, *reader, gain) {
+			if let Err(error) = mixer.add_layer(layer_id, track_id, *reader, gain) {
 				report(events, guild_id, error.to_string());
 			}
 		}
@@ -385,6 +392,25 @@ fn apply(
 		WorkerCommand::SetLayerVolume { layer_id, gain } => {
 			if let Err(error) = mixer.set_layer_gain(&layer_id, gain) {
 				report(events, guild_id, error.to_string());
+			}
+		}
+		WorkerCommand::SwapLayer(layer_id) => {
+			match mixer.swap_with_main(&layer_id, |track, reader| player.swap_active(track, reader)) {
+				Ok(()) => {
+					let (layer_track_id, layer_position_ms) = mixer
+						.layer_track(&layer_id)
+						.map(|(track, position)| (track.to_owned(), position))
+						.expect("the swapped layer is still there");
+					let _ = events.send(Event::LayerSwapped {
+						guild_id: guild_id.to_owned(),
+						layer_id,
+						track_id: player.current_id().unwrap_or_default().to_owned(),
+						position_ms: player.position_ms(),
+						layer_track_id,
+						layer_position_ms,
+					});
+				}
+				Err(error) => report(events, guild_id, format!("cannot swap: {error}")),
 			}
 		}
 		WorkerCommand::SetFades(fades) => player.set_fades(fades),

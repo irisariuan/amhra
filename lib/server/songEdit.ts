@@ -11,7 +11,7 @@ import { deleteSkipMessage, sendSkipMessage } from "../voice/segment";
 import { getYouTubePlaylist } from "../youtube";
 import { readSetting } from "../setting";
 import { findUpcoming, requestSchedule } from "../voice/schedule";
-import { addLayerFromInput } from "../voice/mix";
+import { addLayerFromInput, swapLayerWithMain } from "../voice/mix";
 import {
 	getMix,
 	nativeRemoveLayer,
@@ -292,6 +292,43 @@ export async function handleSongInterruption(
 			const volume = Math.round(data.detail.volume * 100);
 			dcb.log(`Setting mixed-in ${layer.url} to ${volume}% from dashboard`);
 			nativeSetLayerVolume(guildId, layer, volume);
+			break;
+		}
+		case SongEditType.SwapLayer: {
+			const layer = getMix(guildId).list().find((l) => l.id === data.detail.id);
+			if (!layer) return 404;
+			const result = await swapLayerWithMain(player, layer);
+			if ("error" in result) {
+				globalApp.err(`Failed to swap ${layer.url} in from the mix: ${result.error}`);
+				return result.error === "nothing_playing" ? 409 : 502;
+			}
+			dcb.log(`Swapped ${layer.url} in from the mix from dashboard`);
+			break;
+		}
+		case SongEditType.MixFromQueue: {
+			if (!player.native) return 501;
+			if (!getConnection(guildId)) return 409;
+			const { url } = data.detail;
+			let item: (typeof player.queue)[number] | undefined = player.queue[data.detail.index];
+			if (url && item?.url !== url) item = player.queue.find((queued) => queued.url === url);
+			if (!item) return 404;
+			const result = await addLayerFromInput(
+				guildId,
+				item.url,
+				Math.round(data.detail.volume * 100),
+				(item.seek ?? 0) * 1000,
+			);
+			if ("error" in result) {
+				globalApp.err(`Failed to mix in queued ${item.url}: ${result.error}`);
+				return { not_found: 404, full: 422, failed: 502 }[result.error];
+			}
+			// Taken out only once it is playing, so a failed mix leaves the
+			// queue as it was. The queue may have moved during the download,
+			// so the entry is found again rather than trusted to its index.
+			let at = player.queue.indexOf(item);
+			if (at < 0) at = player.queue.findIndex((queued) => queued.url === item.url);
+			if (at >= 0) player.queue.splice(at, 1);
+			dcb.log(`Mixed queued ${item.url} into ${guildId} from dashboard`);
 			break;
 		}
 		case SongEditType.SetMainVolume: {

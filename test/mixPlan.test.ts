@@ -56,6 +56,33 @@ describe("GuildMix", () => {
 		expect(mix.setVolume("missing", 40)).toBe(false);
 	});
 
+	test("a swap trades the songs and their volumes, keeping the layer's id", () => {
+		// The sidecar swaps inaudibly: each song keeps its own level, so the
+		// queue's volume becomes the layer's and the other way round.
+		const mix = new GuildMix();
+		mix.mainVolume = 80;
+		const layer = mix.add({ ...track(1), volume: 30 })!;
+
+		const before = mix.swap(layer.id, {
+			trackId: "queueSong",
+			title: "Queue Song",
+			url: "https://youtu.be/queueSong",
+		});
+		expect(before?.title).toBe("Song 1");
+		expect(before?.volume).toBe(30);
+		expect(mix.mainVolume).toBe(30);
+		expect(mix.list()).toEqual([
+			{
+				id: layer.id,
+				trackId: "queueSong",
+				title: "Queue Song",
+				url: "https://youtu.be/queueSong",
+				volume: 80,
+			},
+		]);
+		expect(mix.swap("missing", before!)).toBeNull();
+	});
+
 	test("starts the queue song at full volume", () => {
 		expect(new GuildMix().mainVolume).toBe(100);
 	});

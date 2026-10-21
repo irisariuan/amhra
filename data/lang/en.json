@@ -243,6 +243,9 @@
 				},
 				"list": {
 					"description": "Show what is mixed in"
+				},
+				"swap": {
+					"description": "Make a mixed-in song the queue's song, and the queue's song mixed in"
 				}
 			}
 		}
@@ -287,5 +290,8 @@
 	"MIX_MAIN_SET": "Set the queue song's volume in the mix to {volume}%",
 	"MIX_NO_LAYER": "There is no mixed-in song #{index}",
 	"MIX_REMOVED": "Stopped mixing in **[{title}]({url})**",
-	"MIX_VOLUME_SET": "Set **[{title}]({url})** to {volume}%"
+	"MIX_VOLUME_SET": "Set **[{title}]({url})** to {volume}%",
+	"MIX_SWAPPED": "Swapped: **[{title}]({url})** is now the queue's song, and **[{mixed}]({mixedUrl})** plays on in the mix",
+	"MIX_SWAP_NOTHING_PLAYING": "Nothing in the queue is playing to swap with",
+	"MIX_SWAP_FAILED": "Couldn't swap, try again in a moment"
 }
