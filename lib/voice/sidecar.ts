@@ -43,6 +43,7 @@ const sessionState = z.object({
 	positionMs: z.number(),
 	paused: z.boolean(),
 	gain: z.number(),
+	mainGain: z.number(),
 });
 
 /**
@@ -63,6 +64,9 @@ const event = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("started"), guildId: z.string(), trackId: z.string() }),
 	z.object({ type: z.literal("finished"), guildId: z.string(), trackId: z.string() }),
 	z.object({ type: z.literal("starved"), guildId: z.string(), trackId: z.string() }),
+	z.object({ type: z.literal("layerStarted"), guildId: z.string(), layerId: z.string() }),
+	z.object({ type: z.literal("layerFinished"), guildId: z.string(), layerId: z.string() }),
+	z.object({ type: z.literal("layerStarved"), guildId: z.string(), layerId: z.string() }),
 	z.object({
 		type: z.literal("position"),
 		guildId: z.string(),

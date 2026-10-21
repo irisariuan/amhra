@@ -7,6 +7,7 @@ import {
 	getConnection,
 } from "./core";
 import { type LeaveLimits, type LeaveReason, planLeave } from "./leavePlan";
+import { hasLayers } from "./native";
 import { hasSchedule } from "./schedule";
 
 /**
@@ -71,8 +72,9 @@ export function sweepLeave(client: CustomClient, now = Date.now()) {
 		const plan = planLeave(
 			{
 				// A paused player is not producing audio, and that is exactly
-				// the case the old timers left running forever.
-				busy: player.isPlaying && !player.isPaused,
+				// the case the old timers left running forever. Layers keep
+				// playing with an empty queue, and pause along with it.
+				busy: !player.isPaused && (player.isPlaying || hasLayers(guildId)),
 				listeners: listenersIn(client, guildId),
 				idleSince: player.idleSince,
 				aloneSince: player.aloneSince,

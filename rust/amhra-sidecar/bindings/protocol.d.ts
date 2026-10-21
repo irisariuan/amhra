@@ -7,14 +7,27 @@ export type Command = { "type": "connect", guildId: string, channelId: string, u
 /**
  * The cache id, not a path: the sidecar owns the cache layout.
  */
-trackId: string, startMs: number, } | { "type": "setNext", guildId: string, trackId: string, } | { "type": "clearNext", guildId: string, } | { "type": "skip", guildId: string, } | { "type": "stop", guildId: string, } | { "type": "pause", guildId: string, } | { "type": "resume", guildId: string, } | { "type": "seek", guildId: string, positionMs: number, } | { "type": "setVolume", guildId: string, gain: number, } | { "type": "setFades", guildId: string, crossfadeMs: number, skipFadeMs: number, } | { "type": "listSessions" } | { "type": "shutdown" };
+trackId: string, startMs: number, } | { "type": "setNext", guildId: string, trackId: string, } | { "type": "clearNext", guildId: string, } | { "type": "skip", guildId: string, } | { "type": "stop", guildId: string, } | { "type": "pause", guildId: string, } | { "type": "resume", guildId: string, } | { "type": "seek", guildId: string, positionMs: number, } | { "type": "setVolume", guildId: string, gain: number, } | { "type": "setMainVolume", guildId: string, gain: number, } | { "type": "addLayer", guildId: string, 
+/**
+ * Chosen by the bot, and how every later layer command and event
+ * names this one.
+ */
+layerId: string, trackId: string, gain: number, startMs: number, } | { "type": "removeLayer", guildId: string, layerId: string, } | { "type": "setLayerVolume", guildId: string, layerId: string, gain: number, } | { "type": "setFades", guildId: string, crossfadeMs: number, skipFadeMs: number, } | { "type": "listSessions" } | { "type": "shutdown" };
 
 /**
  * What this process reports back.
  */
-export type Event = { "type": "hello", version: number, pid: number, } | { "type": "ready", guildId: string, daveVersion: number, } | { "type": "started", guildId: string, trackId: string, } | { "type": "finished", guildId: string, trackId: string, } | { "type": "starved", guildId: string, trackId: string, } | { "type": "position", guildId: string, trackId: string, positionMs: number, } | { "type": "idle", guildId: string, } | { "type": "reconnecting", guildId: string, reason: string, } | { "type": "disconnected", guildId: string, reason: string, } | { "type": "error", guildId: string | null, message: string, } | { "type": "sessions", guilds: Array<SessionState>, };
+export type Event = { "type": "hello", version: number, pid: number, } | { "type": "ready", guildId: string, daveVersion: number, } | { "type": "started", guildId: string, trackId: string, } | { "type": "finished", guildId: string, trackId: string, } | { "type": "starved", guildId: string, trackId: string, } | { "type": "layerStarted", guildId: string, layerId: string, } | { "type": "layerFinished", guildId: string, layerId: string, } | { "type": "layerStarved", guildId: string, layerId: string, } | { "type": "position", guildId: string, trackId: string, positionMs: number, } | { "type": "idle", guildId: string, } | { "type": "reconnecting", guildId: string, reason: string, } | { "type": "disconnected", guildId: string, reason: string, } | { "type": "error", guildId: string | null, message: string, } | { "type": "sessions", guilds: Array<SessionState>, };
 
 /**
  * One guild's state, for a bot that has just restarted and lost its own.
  */
-export type SessionState = { guildId: string, channelId: string, trackId: string | null, positionMs: number, paused: boolean, gain: number, };
+export type SessionState = { guildId: string, channelId: string, trackId: string | null, positionMs: number, paused: boolean, 
+/**
+ * The overall gain.
+ */
+gain: number, 
+/**
+ * The queue track's own gain.
+ */
+mainGain: number, };

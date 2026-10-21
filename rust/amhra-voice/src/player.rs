@@ -384,77 +384,23 @@ enum Step {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::test_support;
 	use std::io::Write;
 	use std::path::PathBuf;
-
-	fn size_vint(value: u64) -> Vec<u8> {
-		for width in 1..=8u32 {
-			let max = (1u64 << (7 * width)) - 1;
-			if value < max {
-				let marked = value | (1u64 << (7 * width));
-				return marked.to_be_bytes()[8 - width as usize..].to_vec();
-			}
-		}
-		unreachable!()
-	}
-
-	fn element(id: &[u8], payload: &[u8]) -> Vec<u8> {
-		let mut out = Vec::new();
-		out.extend_from_slice(id);
-		out.extend_from_slice(&size_vint(payload.len() as u64));
-		out.extend_from_slice(payload);
-		out
-	}
 
 	/// A WebM/Opus file whose every frame is filled with `marker`, so a test
 	/// can tell which track a packet came from.
 	fn webm(frames: usize, marker: u8) -> Vec<u8> {
-		let mut head = Vec::from(*b"OpusHead");
-		head.extend_from_slice(&[1, 2]);
-		head.extend_from_slice(&312u16.to_le_bytes());
-		head.extend_from_slice(&48_000u32.to_le_bytes());
-		head.extend_from_slice(&0i16.to_le_bytes());
-		head.push(0);
-
-		let mut entry = element(&[0xd7], &[1]);
-		entry.extend_from_slice(&element(&[0x86], b"A_OPUS"));
-		entry.extend_from_slice(&element(&[0x63, 0xa2], &head));
-
-		let mut segment = element(&[0x15, 0x49, 0xa9, 0x66], &element(
-			&[0x2a, 0xd7, 0xb1],
-			&1_000_000u32.to_be_bytes(),
-		));
-		segment.extend_from_slice(&element(&[0x16, 0x54, 0xae, 0x6b], &element(&[0xae], &entry)));
-
-		let mut payload = element(&[0xe7], &0u16.to_be_bytes());
-		for frame in 0..frames {
-			let mut block = vec![0x81];
-			block.extend_from_slice(&((frame * 20) as i16).to_be_bytes());
-			block.push(0x80);
-			block.push(0xfc);
-			block.extend_from_slice(&[marker; 19]);
-			payload.extend_from_slice(&element(&[0xa3], &block));
-		}
-		segment.extend_from_slice(&element(&[0x1f, 0x43, 0xb6, 0x75], &payload));
-
-		let mut file = element(&[0x1a, 0x45, 0xdf, 0xa3], &[0x42, 0x86, 0x81, 0x01]);
-		file.extend_from_slice(&element(&[0x18, 0x53, 0x80, 0x67], &segment));
-		file
+		test_support::webm(&vec![test_support::marker_packet(marker); frames])
 	}
 
 	fn temp_path(name: &str) -> PathBuf {
-		let mut path = std::env::temp_dir();
-		path.push(format!("amhra-player-{name}-{}.music", std::process::id()));
-		path
+		test_support::temp_path(&format!("player-{name}"))
 	}
 
 	/// A reader over a finished file.
 	fn reader(name: &str, frames: usize, marker: u8) -> (CacheReader, PathBuf) {
-		let path = temp_path(name);
-		std::fs::write(&path, webm(frames, marker)).unwrap();
-		let mut reader = CacheReader::open_path(&path, None).unwrap();
-		reader.mark_complete();
-		(reader, path)
+		test_support::reader(&format!("player-{name}"), &vec![test_support::marker_packet(marker); frames])
 	}
 
 	#[test]

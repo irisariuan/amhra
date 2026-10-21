@@ -11,6 +11,13 @@ import { deleteSkipMessage, sendSkipMessage } from "../voice/segment";
 import { getYouTubePlaylist } from "../youtube";
 import { readSetting } from "../setting";
 import { findUpcoming, requestSchedule } from "../voice/schedule";
+import { addLayerFromInput } from "../voice/mix";
+import {
+	getMix,
+	nativeRemoveLayer,
+	nativeSetLayerVolume,
+	nativeSetMainVolume,
+} from "../voice/native";
 import { SongEditType } from "./event";
 import { SongEditRequest } from "./schema";
 
@@ -254,6 +261,44 @@ export async function handleSongInterruption(
 				globalApp.err("Failed to skip segment");
 				return 500;
 			}
+			break;
+		}
+		case SongEditType.AddLayer: {
+			// Only the sidecar can play two things at once
+			if (!player.native) return 501;
+			if (!getConnection(guildId)) return 409;
+			const result = await addLayerFromInput(
+				guildId,
+				data.detail.url,
+				Math.round(data.detail.volume * 100),
+			);
+			if ("error" in result) {
+				globalApp.err(`Failed to mix in ${data.detail.url}: ${result.error}`);
+				return { not_found: 404, full: 422, failed: 502 }[result.error];
+			}
+			dcb.log(`Mixed ${result.layer.url} into ${guildId} from dashboard`);
+			break;
+		}
+		case SongEditType.RemoveLayer: {
+			const layer = getMix(guildId).list().find((l) => l.id === data.detail.id);
+			if (!layer) return 404;
+			dcb.log(`Removing mixed-in ${layer.url} from dashboard`);
+			nativeRemoveLayer(guildId, layer);
+			break;
+		}
+		case SongEditType.SetLayerVolume: {
+			const layer = getMix(guildId).list().find((l) => l.id === data.detail.id);
+			if (!layer) return 404;
+			const volume = Math.round(data.detail.volume * 100);
+			dcb.log(`Setting mixed-in ${layer.url} to ${volume}% from dashboard`);
+			nativeSetLayerVolume(guildId, layer, volume);
+			break;
+		}
+		case SongEditType.SetMainVolume: {
+			if (!player.native) return 501;
+			const volume = Math.round(data.detail.volume * 100);
+			dcb.log(`Setting the queue song's mix volume to ${volume}% from dashboard`);
+			nativeSetMainVolume(guildId, volume);
 			break;
 		}
 		default:

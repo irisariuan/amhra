@@ -192,6 +192,17 @@ three second fade is 150 frames of work. `crossfade_ms = 0` keeps the hard cut
 and stays entirely on the passthrough path. Skips use their own, much shorter
 fade, because a skip should feel immediate rather than mixed.
 
+`Mixer` plays several tracks at once. The queue's track stays the *main*
+source, and anything else (a second song, an ambience bed) is a *layer*, added
+with `addLayer` under an id the bot picks. Each source has its own gain
+(`setMainVolume`, `setLayerVolume`), and `setVolume` is the master over the sum.
+With no layers and an overall unity gain, frames still pass through
+byte-for-byte. While anything is layered, every source is decoded, summed and
+encoded once per frame. Every gain change slides across one frame instead of
+stepping, so layers join, leave and change level without clicks. The sum
+saturates instead of limiting, so two loud tracks at full gain will clip, and
+turning one down fixes it. `stop` silences the layers along with the queue.
+
 Verified live end to end:
 
 ```bash

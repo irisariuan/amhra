@@ -18,7 +18,7 @@ use amhra_audio::opus::{CHANNELS, FRAME_SIZE, SAMPLE_RATE};
 
 /// Gains within this of 1.0 are treated as untouched. A listener cannot hear
 /// 0.2% and it is not worth a codec round trip.
-const UNITY_EPSILON: f32 = 0.002;
+pub(crate) const UNITY_EPSILON: f32 = 0.002;
 
 /// Frames over which a mode change is ramped, at 20ms each.
 const RAMP_FRAMES: u32 = 2;
@@ -34,7 +34,7 @@ const RAMP_FRAMES: u32 = 2;
 const ENCODER_COMPLEXITY: i32 = 6;
 
 /// Largest PCM buffer a single Opus packet can decode to: 120ms stereo.
-const MAX_SAMPLES: usize = (SAMPLE_RATE as usize / 1000) * 120 * CHANNELS as usize;
+pub(crate) const MAX_SAMPLES: usize = (SAMPLE_RATE as usize / 1000) * 120 * CHANNELS as usize;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DspError {
@@ -126,13 +126,7 @@ impl Volume {
 
 		if self.codec.is_none() {
 			let decoder = opus::Decoder::new(SAMPLE_RATE, opus::Channels::Stereo)?;
-			let mut encoder =
-				opus::Encoder::new(SAMPLE_RATE, opus::Channels::Stereo, opus::Application::Audio)?;
-			// Match what YouTube's Opus is already encoded at, so a volume
-			// change is not also a quality change.
-			encoder.set_bitrate(opus::Bitrate::Bits(128_000))?;
-			encoder.set_complexity(ENCODER_COMPLEXITY)?;
-			self.codec = Some(Codec { decoder, encoder });
+			self.codec = Some(Codec { decoder, encoder: encoder()? });
 		}
 
 		// Where the gain sits at the start and end of this frame. Outside a
@@ -201,14 +195,10 @@ impl std::fmt::Debug for Crossfader {
 
 impl Crossfader {
 	pub fn new() -> Result<Self, DspError> {
-		let mut encoder =
-			opus::Encoder::new(SAMPLE_RATE, opus::Channels::Stereo, opus::Application::Audio)?;
-		encoder.set_bitrate(opus::Bitrate::Bits(128_000))?;
-		encoder.set_complexity(ENCODER_COMPLEXITY)?;
 		Ok(Self {
 			decoder_a: opus::Decoder::new(SAMPLE_RATE, opus::Channels::Stereo)?,
 			decoder_b: opus::Decoder::new(SAMPLE_RATE, opus::Channels::Stereo)?,
-			encoder,
+			encoder: encoder()?,
 			pcm_a: vec![0; MAX_SAMPLES],
 			pcm_b: vec![0; MAX_SAMPLES],
 			out: vec![0; 4000],
@@ -251,6 +241,18 @@ impl Crossfader {
 		self.written = self.encoder.encode(&self.pcm_a[..filled], &mut self.out)?;
 		Ok(&self.out[..self.written])
 	}
+}
+
+/// The encoder every re-encoding path shares.
+///
+/// Matched to what YouTube's Opus is already encoded at, so a volume change or
+/// a mix is not also a quality change.
+pub(crate) fn encoder() -> Result<opus::Encoder, DspError> {
+	let mut encoder =
+		opus::Encoder::new(SAMPLE_RATE, opus::Channels::Stereo, opus::Application::Audio)?;
+	encoder.set_bitrate(opus::Bitrate::Bits(128_000))?;
+	encoder.set_complexity(ENCODER_COMPLEXITY)?;
+	Ok(encoder)
 }
 
 /// Scale a block of PCM, sliding the gain from `from` to `to` across it.

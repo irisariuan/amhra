@@ -263,6 +263,32 @@
 					"description": "再生中の曲の代わりに歌詞を検索"
 				}
 			}
+		},
+		"mix": {
+			"name": "ミックス",
+			"description": "キューの上に曲を重ねて再生し、それぞれの音量を設定します",
+			"options": {
+				"add": {
+					"name": "追加",
+					"description": "再生中の曲と同時に曲を再生します"
+				},
+				"remove": {
+					"name": "削除",
+					"description": "ミックス中の曲を停止します"
+				},
+				"volume": {
+					"name": "音量",
+					"description": "ミックス中の曲の音量を設定します"
+				},
+				"main": {
+					"name": "メイン",
+					"description": "ミックス内のキューの曲の音量を設定します"
+				},
+				"list": {
+					"name": "一覧",
+					"description": "ミックス中の曲を表示します"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "違う曲でしたか？下から別の検索結果を選べます。",
@@ -292,5 +318,18 @@
 	"SCHEDULE_LIST_ITEM": "`{index}.` **[{title}]({url})** {time} ({relative}){premiere}",
 	"SCHEDULE_PREMIERE_TAG": " · プレミア",
 	"SCHEDULE_NOT_FOUND": "予約再生 #{index} はありません",
-	"SCHEDULE_FROM_DASHBOARD": "ダッシュボードから"
+	"SCHEDULE_FROM_DASHBOARD": "ダッシュボードから",
+	"MIX_NATIVE_ONLY": "曲のミックスには Rust 音声バックエンド（`USE_RUST_VOICE`）が必要です",
+	"MIX_MAIN_VOLUME": "キューの曲の音量: {volume}%",
+	"MIX_LIST_HEADER": "ミックス中:",
+	"MIX_EMPTY": "ミックス中の曲はありません",
+	"MIX_LIST_ITEM": "`{index}.` **[{title}]({url})** · {volume}%",
+	"MIX_VIDEO_ONLY": "ミックスできるのは単一の動画のみで、プレイリストはできません",
+	"MIX_FULL": "ミックスがいっぱいです。先に曲を削除してください",
+	"MIX_NOT_FOUND": "動画が見つかりませんでした",
+	"MIX_ADDED": "**[{title}]({url})** を {volume}% でミックスしました",
+	"MIX_MAIN_SET": "ミックス内のキューの曲の音量を {volume}% に設定しました",
+	"MIX_NO_LAYER": "ミックス中の曲 #{index} はありません",
+	"MIX_REMOVED": "**[{title}]({url})** のミックスを停止しました",
+	"MIX_VOLUME_SET": "**[{title}]({url})** の音量を {volume}% に設定しました"
 }

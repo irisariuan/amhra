@@ -60,9 +60,31 @@ pub enum Command {
 	Resume { guild_id: String },
 	#[serde(rename_all = "camelCase")]
 	Seek { guild_id: String, position_ms: u32 },
-	/// Linear gain. 1.0 keeps the passthrough path, where no codec runs.
+	/// The overall linear gain, applied on top of every track's own. 1.0 with
+	/// nothing layered keeps the passthrough path, where no codec runs.
 	#[serde(rename_all = "camelCase")]
 	SetVolume { guild_id: String, gain: f32 },
+	/// The queue track's own linear gain, under the overall one.
+	#[serde(rename_all = "camelCase")]
+	SetMainVolume { guild_id: String, gain: f32 },
+	/// Play a cached track alongside the queue, mixed in at its own gain.
+	/// Reusing a `layer_id` replaces that layer's track.
+	#[serde(rename_all = "camelCase")]
+	AddLayer {
+		guild_id: String,
+		/// Chosen by the bot, and how every later layer command and event
+		/// names this one.
+		layer_id: String,
+		track_id: String,
+		gain: f32,
+		#[serde(default)]
+		start_ms: u32,
+	},
+	/// Fade a layer out and drop it.
+	#[serde(rename_all = "camelCase")]
+	RemoveLayer { guild_id: String, layer_id: String },
+	#[serde(rename_all = "camelCase")]
+	SetLayerVolume { guild_id: String, layer_id: String, gain: f32 },
 	#[serde(rename_all = "camelCase")]
 	SetFades { guild_id: String, crossfade_ms: u16, skip_fade_ms: u16 },
 	/// Ask for one `Sessions` event. Used after the bot restarts, to find out
@@ -91,6 +113,15 @@ pub enum Event {
 	/// the track resumes when bytes arrive.
 	#[serde(rename_all = "camelCase")]
 	Starved { guild_id: String, track_id: String },
+	/// A layer's audio has begun.
+	#[serde(rename_all = "camelCase")]
+	LayerStarted { guild_id: String, layer_id: String },
+	/// A layer ended, was removed, or failed. Its id is free again.
+	#[serde(rename_all = "camelCase")]
+	LayerFinished { guild_id: String, layer_id: String },
+	/// A layer stalled waiting for its download. The rest of the mix plays on.
+	#[serde(rename_all = "camelCase")]
+	LayerStarved { guild_id: String, layer_id: String },
 	/// Where playback is, emitted about once a second.
 	#[serde(rename_all = "camelCase")]
 	Position { guild_id: String, track_id: String, position_ms: u32 },
@@ -120,7 +151,10 @@ pub struct SessionState {
 	pub track_id: Option<String>,
 	pub position_ms: u32,
 	pub paused: bool,
+	/// The overall gain.
 	pub gain: f32,
+	/// The queue track's own gain.
+	pub main_gain: f32,
 }
 
 /// Bumped when a change would break an older bot talking to a newer sidecar.
@@ -141,6 +175,10 @@ impl Command {
 			| Self::Resume { guild_id }
 			| Self::Seek { guild_id, .. }
 			| Self::SetVolume { guild_id, .. }
+			| Self::SetMainVolume { guild_id, .. }
+			| Self::AddLayer { guild_id, .. }
+			| Self::RemoveLayer { guild_id, .. }
+			| Self::SetLayerVolume { guild_id, .. }
 			| Self::SetFades { guild_id, .. } => Some(guild_id),
 			Self::ListSessions | Self::Shutdown => None,
 		}
@@ -189,6 +227,20 @@ mod tests {
 	}
 
 	#[test]
+	fn a_layer_may_omit_its_start() {
+		let command: Command = serde_json::from_str(
+			r#"{"type":"addLayer","guildId":"1","layerId":"rain","trackId":"x","gain":0.4}"#,
+		)
+		.unwrap();
+		let Command::AddLayer { layer_id, gain, start_ms, .. } = command else {
+			panic!("wrong variant: {command:?}");
+		};
+		assert_eq!(layer_id, "rain");
+		assert_eq!(gain, 0.4);
+		assert_eq!(start_ms, 0);
+	}
+
+	#[test]
 	fn unknown_commands_are_rejected_rather_than_guessed() {
 		assert!(serde_json::from_str::<Command>(r#"{"type":"explode","guildId":"1"}"#).is_err());
 		assert!(serde_json::from_str::<Command>(r#"{"guildId":"1"}"#).is_err());
@@ -203,6 +255,10 @@ mod tests {
 			r#"{"type":"seek","guildId":"g","positionMs":1}"#,
 			r#"{"type":"setVolume","guildId":"g","gain":0.5}"#,
 			r#"{"type":"setFades","guildId":"g","crossfadeMs":0,"skipFadeMs":40}"#,
+			r#"{"type":"setMainVolume","guildId":"g","gain":0.5}"#,
+			r#"{"type":"addLayer","guildId":"g","layerId":"l","trackId":"t","gain":1}"#,
+			r#"{"type":"removeLayer","guildId":"g","layerId":"l"}"#,
+			r#"{"type":"setLayerVolume","guildId":"g","layerId":"l","gain":0.2}"#,
 		];
 		for json in commands {
 			let command: Command = serde_json::from_str(json).unwrap();

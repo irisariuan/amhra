@@ -252,6 +252,32 @@
 					"description": "재생 중인 곡 대신 가사를 검색합니다"
 				}
 			}
+		},
+		"mix": {
+			"name": "믹스",
+			"description": "대기열 위에 곡을 겹쳐 재생하고 각각의 음량을 설정합니다",
+			"options": {
+				"add": {
+					"name": "추가",
+					"description": "재생 중인 곡과 함께 곡을 재생합니다"
+				},
+				"remove": {
+					"name": "제거",
+					"description": "믹스 중인 곡을 중지합니다"
+				},
+				"volume": {
+					"name": "음량",
+					"description": "믹스 중인 곡의 음량을 설정합니다"
+				},
+				"main": {
+					"name": "메인",
+					"description": "믹스 내 대기열 곡의 음량을 설정합니다"
+				},
+				"list": {
+					"name": "목록",
+					"description": "믹스 중인 곡을 표시합니다"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "원하는 곡이 아닌가요? 아래에서 다른 검색 결과를 선택하세요.",
@@ -281,5 +307,18 @@
 	"SCHEDULE_LIST_ITEM": "`{index}.` **[{title}]({url})** {time} ({relative}){premiere}",
 	"SCHEDULE_PREMIERE_TAG": " · 최초 공개",
 	"SCHEDULE_NOT_FOUND": "예약 재생 #{index} 이(가) 없습니다",
-	"SCHEDULE_FROM_DASHBOARD": "대시보드에서"
+	"SCHEDULE_FROM_DASHBOARD": "대시보드에서",
+	"MIX_NATIVE_ONLY": "곡을 믹스하려면 Rust 음성 백엔드(`USE_RUST_VOICE`)가 필요합니다",
+	"MIX_MAIN_VOLUME": "대기열 곡 음량: {volume}%",
+	"MIX_LIST_HEADER": "믹스 중:",
+	"MIX_EMPTY": "믹스 중인 곡이 없습니다",
+	"MIX_LIST_ITEM": "`{index}.` **[{title}]({url})** · {volume}%",
+	"MIX_VIDEO_ONLY": "재생목록이 아닌 단일 동영상만 믹스할 수 있습니다",
+	"MIX_FULL": "믹스가 가득 찼습니다. 먼저 곡을 제거하세요",
+	"MIX_NOT_FOUND": "해당 동영상을 찾을 수 없습니다",
+	"MIX_ADDED": "**[{title}]({url})** 을(를) {volume}% 로 믹스했습니다",
+	"MIX_MAIN_SET": "믹스 내 대기열 곡 음량을 {volume}% 로 설정했습니다",
+	"MIX_NO_LAYER": "믹스 중인 곡 #{index} 이(가) 없습니다",
+	"MIX_REMOVED": "**[{title}]({url})** 믹스를 중지했습니다",
+	"MIX_VOLUME_SET": "**[{title}]({url})** 음량을 {volume}% 로 설정했습니다"
 }

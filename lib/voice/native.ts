@@ -3,6 +3,7 @@ import type { VoiceBasedChannel } from "discord.js";
 import type { CustomAudioPlayer, CustomClient } from "../custom";
 import { dcb, globalApp } from "../misc";
 import { getYouTubeVideoId } from "../youtube";
+import { gainFromPercent, GuildMix, type MixLayer } from "./mixPlan";
 import { nativeFetchBin } from "./nativeFetch";
 import { planArm } from "./nativePlan";
 import {
@@ -101,6 +102,7 @@ export class NativeConnection {
 			return false;
 		}
 		connections.delete(this.guildId);
+		mixes.delete(this.guildId);
 		sidecar().send({ type: "disconnect", guildId: this.guildId });
 		// Closing the voice socket alone leaves the bot sitting in the channel:
 		// the gateway still has it there until it is told otherwise.
@@ -116,6 +118,7 @@ export class NativeConnection {
 	dropped() {
 		if (connections.get(this.guildId) !== this) return;
 		connections.delete(this.guildId);
+		mixes.delete(this.guildId);
 		this.leaveGateway();
 	}
 
@@ -231,6 +234,79 @@ export function nativeSetVolume(guildId: string, gain: number) {
 	send(guildId, { type: "setVolume", guildId, gain });
 }
 
+/**
+ * Layers live in the sidecar's guild session, so they go when it does: every
+ * way a connection ends drops its mix here too.
+ */
+const mixes = new Map<string, GuildMix>();
+
+/** The guild's mix, created empty on first use. */
+export function getMix(guildId: string) {
+	let mix = mixes.get(guildId);
+	if (!mix) {
+		mix = new GuildMix();
+		mixes.set(guildId, mix);
+	}
+	return mix;
+}
+
+/** The guild's mix if it has one, without creating it. */
+export function findMix(guildId: string) {
+	return mixes.get(guildId);
+}
+
+/** Whether anything is mixed in over the queue right now. */
+export function hasLayers(guildId: string) {
+	return (mixes.get(guildId)?.size ?? 0) > 0;
+}
+
+/**
+ * Play a cached track alongside the queue. Null when the mix is already full.
+ *
+ * The file only has to have started downloading: the sidecar follows a
+ * growing file, and a layer that outruns its download stalls on its own while
+ * the rest of the mix plays on.
+ */
+export function nativeAddLayer(
+	guildId: string,
+	track: Omit<MixLayer, "id">,
+): MixLayer | null {
+	const layer = getMix(guildId).add(track);
+	if (!layer) return null;
+	send(guildId, {
+		type: "addLayer",
+		guildId,
+		layerId: layer.id,
+		trackId: layer.trackId,
+		gain: gainFromPercent(layer.volume),
+		startMs: 0,
+	});
+	return layer;
+}
+
+export function nativeRemoveLayer(guildId: string, layer: MixLayer) {
+	// Forgotten now rather than on `layerFinished`, so the list a user reads
+	// next already reflects what they asked for.
+	getMix(guildId).forget(layer.id);
+	send(guildId, { type: "removeLayer", guildId, layerId: layer.id });
+}
+
+export function nativeSetLayerVolume(guildId: string, layer: MixLayer, volume: number) {
+	getMix(guildId).setVolume(layer.id, volume);
+	send(guildId, {
+		type: "setLayerVolume",
+		guildId,
+		layerId: layer.id,
+		gain: gainFromPercent(volume),
+	});
+}
+
+/** The queue track's own level, under the overall volume. */
+export function nativeSetMainVolume(guildId: string, volume: number) {
+	getMix(guildId).mainVolume = volume;
+	send(guildId, { type: "setMainVolume", guildId, gain: gainFromPercent(volume) });
+}
+
 export function nativeSetFades(
 	guildId: string,
 	crossfadeMs: number,
@@ -338,6 +414,22 @@ export function bindNativeVoice(client: CustomClient) {
 		// queue-advance handler is triggered from here instead. One path, the
 		// same one the discord.js player takes when a track ends.
 		player.signalIdle();
+	});
+
+	bus.on("layerStarted", (payload: { guildId: string; layerId: string }) => {
+		dcb.log(`Sidecar started layer ${payload.layerId} in ${payload.guildId}`);
+	});
+
+	// Ended on its own, removed, or cleared by a stop: in every case it is no
+	// longer playing, so it leaves the list.
+	bus.on("layerFinished", (payload: { guildId: string; layerId: string }) => {
+		mixes.get(payload.guildId)?.forget(payload.layerId);
+	});
+
+	bus.on("layerStarved", (payload: { guildId: string; layerId: string }) => {
+		globalApp.warn(
+			`Layer ${payload.layerId} stalled waiting on its download in ${payload.guildId}`,
+		);
 	});
 
 	bus.on("starved", (payload: { guildId: string; trackId: string }) => {

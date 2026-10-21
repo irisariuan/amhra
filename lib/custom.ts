@@ -25,6 +25,7 @@ import {
 	nativeStop,
 	nativeSetFades,
 	nativeVoiceActive,
+	findMix,
 } from "./voice/native";
 import { fadeSettings } from "./voice/sidecar";
 import { nextFades, syncedFades, type Fades } from "./voice/fades";
@@ -93,6 +94,17 @@ export interface SongDataPacket {
 	loop: boolean;
 	autoSuggest: boolean;
 	skipToTimestamp: number | null;
+	/**
+	 * Whether songs can be mixed in over the queue. Like fades, only the
+	 * sidecar can do it, so a dashboard should hide the controls otherwise.
+	 */
+	canMix: boolean;
+	/** Songs playing on top of the queue. Volumes are linear, like `volume`. */
+	mix: {
+		/** The queue track's own level, under `volume`. */
+		mainVolume: number;
+		layers: { id: string; title: string; url: string; volume: number }[];
+	};
 }
 
 export class CustomClient extends Client {
@@ -614,6 +626,21 @@ export class CustomAudioPlayer extends AudioPlayer {
 			loop: this.customSetting.looping ?? false,
 			autoSuggest: this.customSetting.autoSuggest ?? false,
 			skipToTimestamp: this.currentSegment()?.segment[1] ?? null,
+			canMix: this.native,
+			mix: this.mixData(),
+		};
+	}
+
+	private mixData(): SongDataPacket["mix"] {
+		const mix = findMix(this.guildId);
+		return {
+			mainVolume: (mix?.mainVolume ?? 100) / 100,
+			layers: (mix?.list() ?? []).map((layer) => ({
+				id: layer.id,
+				title: layer.title,
+				url: layer.url,
+				volume: layer.volume / 100,
+			})),
 		};
 	}
 	pause() {

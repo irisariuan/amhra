@@ -20,6 +20,10 @@ export enum SongEditType {
 	Loop = "loop",
 	SkipSegment = "skipSegment",
 	AutoSuggest = "autoSuggest",
+	AddLayer = "addLayer",
+	RemoveLayer = "removeLayer",
+	SetLayerVolume = "setLayerVolume",
+	SetMainVolume = "setMainVolume",
 }
 
 export type ExpressEventDetail = {

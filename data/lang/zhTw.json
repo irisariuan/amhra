@@ -263,6 +263,32 @@
 					"description": "搜尋歌詞，而不是使用正在播放的歌曲"
 				}
 			}
+		},
+		"mix": {
+			"name": "混音",
+			"description": "在佇列之上同時播放歌曲，並分別設定音量",
+			"options": {
+				"add": {
+					"name": "新增",
+					"description": "與正在播放的歌曲同時播放一首歌曲"
+				},
+				"remove": {
+					"name": "移除",
+					"description": "停止一首混音中的歌曲"
+				},
+				"volume": {
+					"name": "音量",
+					"description": "設定混音中歌曲的音量"
+				},
+				"main": {
+					"name": "主要",
+					"description": "設定混音中佇列歌曲的音量"
+				},
+				"list": {
+					"name": "列表",
+					"description": "顯示混音中的歌曲"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "不是想要的歌嗎？可以從下面選擇其他搜尋結果。",
@@ -292,5 +318,18 @@
 	"SCHEDULE_LIST_ITEM": "`{index}.` **[{title}]({url})** {time}（{relative}）{premiere}",
 	"SCHEDULE_PREMIERE_TAG": " · 首播",
 	"SCHEDULE_NOT_FOUND": "沒有第 {index} 個預約播放",
-	"SCHEDULE_FROM_DASHBOARD": "來自控制台"
+	"SCHEDULE_FROM_DASHBOARD": "來自控制台",
+	"MIX_NATIVE_ONLY": "混音需要 Rust 語音後端（`USE_RUST_VOICE`）",
+	"MIX_MAIN_VOLUME": "佇列歌曲音量：{volume}%",
+	"MIX_LIST_HEADER": "混音中：",
+	"MIX_EMPTY": "沒有正在混音的歌曲",
+	"MIX_LIST_ITEM": "`{index}.` **[{title}]({url})** · {volume}%",
+	"MIX_VIDEO_ONLY": "只能混入單一影片，不能混入播放清單",
+	"MIX_FULL": "混音已滿，請先移除一首歌曲",
+	"MIX_NOT_FOUND": "找不到該影片",
+	"MIX_ADDED": "已以 {volume}% 混入 **[{title}]({url})**",
+	"MIX_MAIN_SET": "已將混音中佇列歌曲的音量設為 {volume}%",
+	"MIX_NO_LAYER": "沒有第 {index} 首混音歌曲",
+	"MIX_REMOVED": "已停止混入 **[{title}]({url})**",
+	"MIX_VOLUME_SET": "已將 **[{title}]({url})** 的音量設為 {volume}%"
 }

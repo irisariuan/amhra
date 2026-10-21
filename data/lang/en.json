@@ -225,6 +225,26 @@
 					"description": "Search for lyrics instead of using the song playing"
 				}
 			}
+		},
+		"mix": {
+			"description": "Play songs on top of the queue, each at its own volume",
+			"options": {
+				"add": {
+					"description": "Play a song alongside whatever is playing"
+				},
+				"remove": {
+					"description": "Stop a song that is mixed in"
+				},
+				"volume": {
+					"description": "Set the volume of a song that is mixed in"
+				},
+				"main": {
+					"description": "Set the volume of the queue's song within the mix"
+				},
+				"list": {
+					"description": "Show what is mixed in"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "Not the right song? Pick another result below.",
@@ -254,5 +274,18 @@
 	"SCHEDULE_LIST_ITEM": "`{index}.` **[{title}]({url})** {time} ({relative}){premiere}",
 	"SCHEDULE_PREMIERE_TAG": " · premiere",
 	"SCHEDULE_NOT_FOUND": "There is no scheduled play #{index}",
-	"SCHEDULE_FROM_DASHBOARD": "from the dashboard"
+	"SCHEDULE_FROM_DASHBOARD": "from the dashboard",
+	"MIX_NATIVE_ONLY": "Mixing songs needs the Rust voice backend (`USE_RUST_VOICE`)",
+	"MIX_MAIN_VOLUME": "Queue song volume: {volume}%",
+	"MIX_LIST_HEADER": "Mixed in:",
+	"MIX_EMPTY": "Nothing is mixed in",
+	"MIX_LIST_ITEM": "`{index}.` **[{title}]({url})** · {volume}%",
+	"MIX_VIDEO_ONLY": "Only a single video can be mixed in, not a playlist",
+	"MIX_FULL": "The mix is full, remove a song first",
+	"MIX_NOT_FOUND": "I couldn't find that video",
+	"MIX_ADDED": "Mixed in **[{title}]({url})** at {volume}%",
+	"MIX_MAIN_SET": "Set the queue song's volume in the mix to {volume}%",
+	"MIX_NO_LAYER": "There is no mixed-in song #{index}",
+	"MIX_REMOVED": "Stopped mixing in **[{title}]({url})**",
+	"MIX_VOLUME_SET": "Set **[{title}]({url})** to {volume}%"
 }

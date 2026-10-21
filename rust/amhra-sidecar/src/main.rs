@@ -60,6 +60,7 @@ struct GuildSession {
 	position_ms: u32,
 	paused: bool,
 	gain: f32,
+	main_gain: f32,
 }
 
 impl GuildSession {
@@ -206,6 +207,7 @@ async fn dispatch(
 					position_ms: 0,
 					paused: false,
 					gain: 1.0,
+					main_gain: 1.0,
 				},
 			);
 		}
@@ -273,6 +275,34 @@ async fn dispatch(
 				session.worker.send(WorkerCommand::SetVolume(gain));
 			})
 		}
+		Command::SetMainVolume { guild_id, gain } => {
+			with_guild(guilds, events, &guild_id, |session| {
+				session.main_gain = gain;
+				session.worker.send(WorkerCommand::SetMainVolume(gain));
+			})
+		}
+		Command::AddLayer { guild_id, layer_id, track_id, gain, start_ms } => {
+			if let Some((session, reader)) =
+				with_track(guilds, events, &guild_id, &track_id, cache_dir, "layer")
+			{
+				session.worker.send(WorkerCommand::AddLayer {
+					layer_id,
+					reader: Box::new(reader),
+					gain,
+					start_ms,
+				});
+			}
+		}
+		Command::RemoveLayer { guild_id, layer_id } => {
+			with_guild(guilds, events, &guild_id, |session| {
+				session.worker.send(WorkerCommand::RemoveLayer(layer_id));
+			})
+		}
+		Command::SetLayerVolume { guild_id, layer_id, gain } => {
+			with_guild(guilds, events, &guild_id, |session| {
+				session.worker.send(WorkerCommand::SetLayerVolume { layer_id, gain });
+			})
+		}
 		Command::SetFades { guild_id, crossfade_ms, skip_fade_ms } => {
 			with_guild(guilds, events, &guild_id, |session| {
 				session
@@ -291,6 +321,7 @@ async fn dispatch(
 					position_ms: session.position_ms,
 					paused: session.paused,
 					gain: session.gain,
+					main_gain: session.main_gain,
 				})
 				.collect();
 			let _ = events.send(Event::Sessions { guilds });
@@ -314,9 +345,9 @@ fn with_guild(
 
 /// The connected guild and an open cache file, or nothing and a reported reason.
 ///
-/// The two commands that name a track — play it now, queue it for the seam —
-/// both have the same two ways of not happening, and `verb` is all that differs
-/// between what they say when the file will not open.
+/// The commands that name a track — play it now, queue it for the seam, layer
+/// it over the rest — all have the same two ways of not happening, and `verb`
+/// is all that differs between what they say when the file will not open.
 fn with_track<'a>(
 	guilds: &'a mut HashMap<String, GuildSession>,
 	events: &Sender<Event>,

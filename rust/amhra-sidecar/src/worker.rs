@@ -1,7 +1,7 @@
 //! One guild's audio thread.
 //!
 //! Everything time-critical happens here and nowhere else: the 20ms tick, the
-//! frame, the gain, the two encryptions, the send. The thread owns its player
+//! frame, the mix, the two encryptions, the send. The thread owns its player
 //! and its socket outright, so a tick is a handful of function calls and one
 //! syscall, with nothing to await and nothing to lock except the DAVE session —
 //! which the gateway task must also touch when the group rekeys.
@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 
 use amhra_audio::CacheReader;
 use amhra_voice::dave::driver::Driver;
-use amhra_voice::dsp::Volume;
+use amhra_voice::mixer::{Frame, LayerEvent, Mixer};
 use amhra_voice::player::{Event as PlayerEvent, FadeSettings, Player, Tick};
 use amhra_voice::{SILENCE_FRAME, Session};
 
@@ -53,7 +53,13 @@ pub enum WorkerCommand {
 	Pause,
 	Resume,
 	Seek(u32),
+	/// The overall gain.
 	SetVolume(f32),
+	/// The queue track's own gain.
+	SetMainVolume(f32),
+	AddLayer { layer_id: String, reader: Box<CacheReader>, gain: f32, start_ms: u32 },
+	RemoveLayer(String),
+	SetLayerVolume { layer_id: String, gain: f32 },
 	SetFades(FadeSettings),
 	Shutdown,
 }
@@ -132,7 +138,7 @@ fn run(
 	speaking: Arc<AtomicBool>,
 ) {
 	let mut player = Player::new();
-	let mut volume = Volume::new();
+	let mut mixer = Mixer::new();
 	let mut attachment: Option<Attachment> = None;
 	let mut paused = false;
 	let mut packet = Vec::with_capacity(1400);
@@ -162,7 +168,7 @@ fn run(
 					apply(
 						command,
 						&mut player,
-						&mut volume,
+						&mut mixer,
 						&mut attachment,
 						&mut paused,
 						&guild_id,
@@ -202,36 +208,42 @@ fn run(
 			continue;
 		}
 
-		match player.tick() {
-			Tick::Frame { bytes, samples } => {
+		let tick = player.tick();
+		// A stalled queue track is not an ending, even with nothing to send.
+		let stalled = matches!(tick, Tick::Starving);
+		let main = match tick {
+			Tick::Frame { bytes, samples } => Some(Frame { bytes, samples }),
+			Tick::Starving | Tick::Idle => None,
+		};
+
+		let silent = match mixer.mix(main) {
+			Ok(Some(frame)) => {
 				speaking.store(true, Ordering::Relaxed);
-				let scaled = match volume.process(bytes) {
-					Ok(scaled) => scaled,
-					Err(error) => {
-						report(&events, &guild_id, format!("gain failed: {error}"));
-						continue;
-					}
-				};
-				if let Err(message) = send_frame(attached, scaled, &mut e2ee, &mut packet) {
+				if let Err(message) = send_frame(attached, frame.bytes, &mut e2ee, &mut packet) {
 					report(&events, &guild_id, message);
-					continue;
+				} else {
+					attached.session.advance(frame.samples);
 				}
-				attached.session.advance(samples);
+				false
 			}
-			// Hold the speaking flag: this is a stall, and dropping it would
-			// make the client show the bot as having stopped.
-			Tick::Starving => {}
-			Tick::Idle => {
-				if speaking.swap(false, Ordering::Relaxed) {
-					// Three silence frames tell the decoder not to interpolate
-					// across the gap that is about to start.
-					for _ in 0..3 {
-						let _ = send_frame(attached, &SILENCE_FRAME, &mut e2ee, &mut packet);
-						attached.session.advance(960);
-					}
-					let _ = events.send(Event::Idle { guild_id: guild_id.clone() });
-				}
+			Ok(None) => true,
+			Err(error) => {
+				report(&events, &guild_id, format!("mix failed: {error}"));
+				false
 			}
+		};
+		// Nothing sent, and nothing about to be: the queue is not merely
+		// stalled and no layer is waiting on its download. A stall instead
+		// holds the speaking flag, because dropping it would make the client
+		// show the bot as having stopped.
+		if silent && !stalled && !mixer.has_layers() && speaking.swap(false, Ordering::Relaxed) {
+			// Three silence frames tell the decoder not to interpolate across
+			// the gap that is about to start.
+			for _ in 0..3 {
+				let _ = send_frame(attached, &SILENCE_FRAME, &mut e2ee, &mut packet);
+				attached.session.advance(960);
+			}
+			let _ = events.send(Event::Idle { guild_id: guild_id.clone() });
 		}
 
 		for event in player.drain_events() {
@@ -244,6 +256,24 @@ fn run(
 				}
 				PlayerEvent::Starved(track_id) => {
 					Event::Starved { guild_id: guild_id.clone(), track_id }
+				}
+			};
+			let _ = events.send(event);
+		}
+		for event in mixer.drain_events() {
+			let event = match event {
+				LayerEvent::Started(layer_id) => {
+					Event::LayerStarted { guild_id: guild_id.clone(), layer_id }
+				}
+				LayerEvent::Finished(layer_id) => {
+					Event::LayerFinished { guild_id: guild_id.clone(), layer_id }
+				}
+				LayerEvent::Starved(layer_id) => {
+					Event::LayerStarved { guild_id: guild_id.clone(), layer_id }
+				}
+				LayerEvent::Failed { id, reason } => {
+					report(&events, &guild_id, format!("layer {id} dropped: {reason}"));
+					continue;
 				}
 			};
 			let _ = events.send(event);
@@ -304,7 +334,7 @@ fn send_frame(
 fn apply(
 	command: WorkerCommand,
 	player: &mut Player,
-	volume: &mut Volume,
+	mixer: &mut Mixer,
 	attachment: &mut Option<Attachment>,
 	paused: &mut bool,
 	guild_id: &str,
@@ -325,7 +355,11 @@ fn apply(
 		WorkerCommand::SetNext { track_id, reader } => player.set_next(track_id, *reader),
 		WorkerCommand::ClearNext => player.clear_next(),
 		WorkerCommand::Skip => player.skip(),
-		WorkerCommand::Stop => player.stop(),
+		// Stop means silence, so the layers go with the queue.
+		WorkerCommand::Stop => {
+			player.stop();
+			mixer.clear_layers();
+		}
 		WorkerCommand::Pause => *paused = true,
 		WorkerCommand::Resume => *paused = false,
 		WorkerCommand::Seek(position_ms) => {
@@ -333,7 +367,26 @@ fn apply(
 				report(events, guild_id, "nothing is playing to seek".to_owned());
 			}
 		}
-		WorkerCommand::SetVolume(gain) => volume.set_gain(gain),
+		WorkerCommand::SetVolume(gain) => mixer.set_master(gain),
+		WorkerCommand::SetMainVolume(gain) => mixer.set_main_gain(gain),
+		WorkerCommand::AddLayer { layer_id, mut reader, gain, start_ms } => {
+			if start_ms > 0 {
+				reader.seek(start_ms);
+			}
+			if let Err(error) = mixer.add_layer(layer_id, *reader, gain) {
+				report(events, guild_id, error.to_string());
+			}
+		}
+		WorkerCommand::RemoveLayer(layer_id) => {
+			if let Err(error) = mixer.remove_layer(&layer_id) {
+				report(events, guild_id, error.to_string());
+			}
+		}
+		WorkerCommand::SetLayerVolume { layer_id, gain } => {
+			if let Err(error) = mixer.set_layer_gain(&layer_id, gain) {
+				report(events, guild_id, error.to_string());
+			}
+		}
 		WorkerCommand::SetFades(fades) => player.set_fades(fades),
 		WorkerCommand::Shutdown => {}
 	}

@@ -163,6 +163,43 @@ const AutoSuggestSchema = z.object({
 	}),
 });
 
+/**
+ * The mix: songs played on top of the queue, each at its own level. Volumes are
+ * linear like SetVolume's, and a layer is named by the id `getData` reports,
+ * which stays the same while others come and go.
+ */
+const MixVolume = z.number().nonnegative().max(5, "Volume must be <= 5");
+
+const AddLayerSchema = z.object({
+	action: z.literal(SongEditType.AddLayer),
+	guildId: z.string(),
+	detail: z.object({
+		url: z
+			.string()
+			.refine((u) => isYouTubeVideo(u), "Must be a valid YouTube video URL"),
+		volume: MixVolume.default(1),
+	}),
+});
+
+const RemoveLayerSchema = z.object({
+	action: z.literal(SongEditType.RemoveLayer),
+	guildId: z.string(),
+	detail: z.object({ id: z.string().min(1) }),
+});
+
+const SetLayerVolumeSchema = z.object({
+	action: z.literal(SongEditType.SetLayerVolume),
+	guildId: z.string(),
+	detail: z.object({ id: z.string().min(1), volume: MixVolume }),
+});
+
+/** The queue track's own level within the mix, under the overall volume. */
+const SetMainVolumeSchema = z.object({
+	action: z.literal(SongEditType.SetMainVolume),
+	guildId: z.string(),
+	detail: z.object({ volume: MixVolume }),
+});
+
 // Discriminated union on action
 export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	PauseSchema,
@@ -182,6 +219,10 @@ export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	LoopSchema,
 	AutoSuggestSchema,
 	SkipSegmentSchema,
+	AddLayerSchema,
+	RemoveLayerSchema,
+	SetLayerVolumeSchema,
+	SetMainVolumeSchema,
 ]);
 
 // Inferred Type
