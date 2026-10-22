@@ -566,6 +566,35 @@ seconds there. So:
 `examples/tts_wav.rs` speaks sentences to a WAV and times them, with no
 Discord involved.
 
+**Other languages.** Kokoro, as sherpa-onnx runs it, has no Japanese or
+Korean: its Japanese voice reads kana as "Japanese letter" over and over.
+`examples/tts_check.rs` speaks 13 of the bot's answers per language (10 fixed,
+3 with a song's title) and hears them back through SenseVoice, which
+understands all five, so a model can be judged in a language nobody here
+listens to. One synthesis thread, M5 Pro; error is SenseVoice's character
+error against the text, after punctuation, with Chinese compared in
+simplified characters:
+
+| model | language | per phrase | real time | error, fixed phrases | error, titles |
+| --- | --- | --- | --- | --- | --- |
+| Kokoro v1.0 (fp32, 330MB) | en | 859ms | 0.77 | 7.3% | 12% |
+| Kokoro v1.0 | zh | 1166ms | 0.83 | 2.8% | 12% |
+| Kokoro v1.0 | ja | — | — | unusable | unusable |
+| Supertonic 3 (int8, 145MB) | en | 441ms | 0.26 | 2.4% | 15% |
+| Supertonic 3 | ja | 460ms | 0.23 | 4.3% | 42% |
+| Supertonic 3 | ko | 451ms | 0.23 | 3.6% | 36% |
+| `vits-cantonese-hf-xiaomaiiwn` (114MB) | yue | 614ms | 0.54 | 11% | 15% |
+
+Supertonic 3 is three times Kokoro's speed and as clear, but has no Chinese.
+Its titles suffer from names in Latin letters read in Japanese or Korean
+("BTS" came back 비스, "Lemon" レメヌ), which SenseVoice also struggles to
+spell back. It speaks more slowly than Kokoro, 24s against 16s for the same
+English. The Cantonese voice must be given simplified characters: its
+lexicon lacks 這 and 過, and skips what it lacks; given simplified, SenseVoice
+heard 12 of 13 as Cantonese. On a Pi 4, sherpa-onnx measures Kokoro at 7.6
+times slower than real time on one thread, about ten times this Mac; at the
+same ratio Supertonic would be about 2.4 and the Cantonese voice about 5.
+
 ### In the bot
 
 Settings, in `data/setting.json` or the dashboard, read when the sidecar
