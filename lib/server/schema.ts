@@ -246,5 +246,6 @@ export const GlobalSettingSchema = z
 		VOICE_DUCK_VOLUME: z.number().min(0).max(1).optional(),
 		VOICE_RECOGNISER_PROVIDER: z.enum(["cpu", "coreml"]).optional(),
 		VOICE_RECOGNISER_THREADS: z.number().int().min(1).max(32).optional(),
+		VOICE_LANGUAGE: z.enum(["auto", "en", "zh", "ja", "ko", "yue"]).optional(),
 	})
 	.passthrough();

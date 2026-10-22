@@ -294,6 +294,7 @@ starts:
 | `--wake-keywords <file>` | `data/wake-keywords.txt` | the wake phrases; edit and restart, no rebuild |
 | `--recogniser-threads <n>` | `2` | speech-recognition threads |
 | `--recogniser-provider <p>` | `cpu` | `cpu`, or `coreml` with `shared-onnxruntime` on macOS |
+| `--recogniser-language <l>` | `auto` | pin SenseVoice to one language |
 | `--wake-model <dir>` | the stock spotter | a fine-tuned one from `training/wake` |
 | `--wake-clips <dir>` | off | save the audio each wake was heard in (below) |
 | `--wake-clips-max <n>` | `2000` | stop saving after this many clips (about 75MB) |
@@ -489,6 +490,13 @@ handing work to another device.
 Either way, 500ms of the wait after someone stops talking is the silence
 that tells the gate they have finished.
 
+**Pinning the language.** On `auto`, four of seven live takes of the name
+said in English came back as Chinese ("什么号啊？"); pinned to `en` they read
+"I Har." The pin is the recogniser's: sherpa-onnx takes a per-stream
+`language` option, and SenseVoice ignores it (checked on the same takes), so
+a language per server would mean loading a recogniser per language, about
+250MB each.
+
 ### In the bot
 
 Settings, in `data/setting.json` or the dashboard, read when the sidecar
@@ -505,6 +513,7 @@ starts:
 | `VOICE_DUCK_VOLUME` | `0.3` | the music's volume from the name until the command is heard; 1 leaves it |
 | `VOICE_RECOGNISER_PROVIDER` | `cpu` | `cpu` or `coreml` |
 | `VOICE_RECOGNISER_THREADS` | `2` | threads for speech recognition |
+| `VOICE_LANGUAGE` | `auto` | pin recognition to `en`, `zh`, `ja`, `ko` or `yue`, for every server |
 
 - **Per-server opt-in.** `/voicecommands enabled:true`, by default for members
   with Manage Server, kept in `data/guildSetting.json` (gitignored). It takes

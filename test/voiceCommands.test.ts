@@ -267,6 +267,13 @@ describe("sidecar flags", () => {
 		]);
 		// Unset, the sidecar's own defaults stand; nonsense is not passed on.
 		expect(voiceCommandArgs(allowed)).not.toContain("--recogniser-provider");
+		expect(voiceCommandArgs(allowed)).not.toContain("--recogniser-language");
+		expect(voiceCommandArgs({ ...allowed, VOICE_LANGUAGE: "auto" })).not.toContain(
+			"--recogniser-language",
+		);
+		expect(voiceCommandArgs({ ...allowed, VOICE_LANGUAGE: "en" })).toContain(
+			"--recogniser-language",
+		);
 		expect(
 			voiceCommandArgs({ ...allowed, VOICE_RECOGNISER_THREADS: 0 }),
 		).not.toContain("--recogniser-threads");

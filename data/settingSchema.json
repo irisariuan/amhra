@@ -186,6 +186,19 @@
    "maximum": 32,
    "default": 2,
    "description": "Threads for speech recognition; more makes each command faster (4 roughly halves it). Restart to apply"
+  },
+  "VOICE_LANGUAGE": {
+   "type": "string",
+   "enum": [
+    "auto",
+    "en",
+    "zh",
+    "ja",
+    "ko",
+    "yue"
+   ],
+   "default": "auto",
+   "description": "The language voice commands are heard in, in every server. auto guesses per command and sometimes takes a short one for another language; pinned, commands in other languages are not understood. Restart to apply"
   }
  },
  "required": [

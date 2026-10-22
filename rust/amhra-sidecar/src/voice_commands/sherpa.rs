@@ -56,6 +56,15 @@ pub struct SherpaConfig {
 	/// they take 20ms at a time from every speaker, which is the worst case
 	/// for handing work to another device.
 	pub recogniser_provider: Provider,
+	/// The language SenseVoice listens for: `auto`, or one of
+	/// [`LANGUAGES`]. Pinned, it stops short windows being taken for another
+	/// language: four of seven live takes of the name, said in English, came
+	/// back as Chinese on `auto` ("什么号啊？"), and as English pinned ("I Har.").
+	///
+	/// It is the recogniser's, not each window's: sherpa-onnx accepts a
+	/// per-stream `language` option and SenseVoice ignores it, so a language
+	/// per guild would take a recogniser per language.
+	pub recogniser_language: String,
 	/// A fine-tuned keyword spotter to use instead of the stock one: a
 	/// directory laid out by `training/wake/export.sh`.
 	pub spotter: Option<PathBuf>,
@@ -71,10 +80,14 @@ impl SherpaConfig {
 			vad_threshold: 0.5,
 			recogniser_threads: 2,
 			recogniser_provider: Provider::Cpu,
+			recogniser_language: "auto".to_owned(),
 			spotter: None,
 		}
 	}
 }
+
+/// The languages SenseVoice can be pinned to.
+pub const LANGUAGES: [&str; 5] = ["en", "zh", "ja", "ko", "yue"];
 
 /// Where onnxruntime runs a model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -201,7 +214,12 @@ pub fn load(config: &SherpaConfig) -> Result<(Arc<SherpaModels>, SenseVoice), Mo
 	let paths = ModelPaths::of(config);
 	paths.check()?;
 	let models = SherpaModels::load(&paths, config)?;
-	let recogniser = SenseVoice::load(&paths, config.recogniser_threads, config.recogniser_provider)?;
+	let recogniser = SenseVoice::load(
+		&paths,
+		config.recogniser_threads,
+		config.recogniser_provider,
+		&config.recogniser_language,
+	)?;
 	Ok((Arc::new(models), recogniser))
 }
 
@@ -364,7 +382,12 @@ const PADDING_MS: u32 = 300;
 unsafe impl Send for SenseVoice {}
 
 impl SenseVoice {
-	pub fn load(paths: &ModelPaths, threads: i32, provider: Provider) -> Result<Self, ModelError> {
+	pub fn load(
+		paths: &ModelPaths,
+		threads: i32,
+		provider: Provider,
+		language: &str,
+	) -> Result<Self, ModelError> {
 		let cstring = |text: String| {
 			CString::new(text).map_err(|_| ModelError::Load {
 				what: "SenseVoice",
@@ -373,7 +396,14 @@ impl SenseVoice {
 		};
 		let model = cstring(path_string(&paths.stt_model))?;
 		let tokens = cstring(path_string(&paths.stt_tokens))?;
-		let language = cstring("auto".to_owned())?;
+		let language = if language == "auto" || LANGUAGES.contains(&language) {
+			cstring(language.to_owned())?
+		} else {
+			return Err(ModelError::Load {
+				what: "SenseVoice",
+				reason: format!("unknown language {language:?}; use auto, {}", LANGUAGES.join(", ")),
+			});
+		};
 		let provider = cstring(provider.name().to_owned())?;
 		let decoding = cstring("greedy_search".to_owned())?;
 

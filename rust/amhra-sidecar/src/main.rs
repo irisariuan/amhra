@@ -30,6 +30,8 @@
 //! - `--wake-keywords <file>`: the wake phrases, default
 //!   `data/wake-keywords.txt`;
 //! - `--recogniser-threads <n>`: threads for speech recognition, default 2;
+//! - `--recogniser-language <lang>`: auto (the default), en, zh, ja, ko or
+//!   yue, for every guild;
 //! - `--recogniser-provider cpu|coreml`: where speech recognition runs,
 //!   default cpu; coreml needs a build with the `shared-onnxruntime` feature;
 //! - `--wake-model <dir>`: a fine-tuned keyword spotter from
@@ -716,6 +718,9 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 			}
 			config.spotter = option("--wake-model").map(Into::into);
 			config.recogniser_provider = recogniser_provider(events);
+			if let Some(language) = option("--recogniser-language") {
+				config.recogniser_language = language;
+			}
 			sherpa::load(&config).map_err(|error| error.to_string())
 		});
 	let (models, recogniser) = match loaded {

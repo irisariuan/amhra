@@ -14,7 +14,8 @@
 //! without editing the keywords file, `--keywords` points at another list, and
 //! `--preroll-ms` moves the start of the window and `--recogniser-threads` sets
 //! how many threads speech recognition gets, `--provider cpu|coreml` where it
-//! runs (coreml needs `--features shared-onnxruntime`). `--wake-model <dir>` tries a
+//! runs (coreml needs `--features shared-onnxruntime`), `--language <lang>`
+//! pins what it listens for. `--wake-model <dir>` tries a
 //! fine-tuned spotter from `training/wake/export.sh`.
 //! `--spell` prints the keywords as the spotter will read them, word pieces and
 //! all, and exits.
@@ -45,6 +46,7 @@ struct Args {
 	boost: Option<f32>,
 	threads: Option<i32>,
 	provider: Option<String>,
+	language: Option<String>,
 	spotter: Option<PathBuf>,
 	tail_ms: u32,
 	verbose: bool,
@@ -63,6 +65,7 @@ fn args() -> Args {
 		boost: None,
 		threads: None,
 		provider: None,
+		language: None,
 		spotter: None,
 		tail_ms: 1500,
 		verbose: false,
@@ -83,6 +86,7 @@ fn args() -> Args {
 			"--recogniser-threads" => args.threads = Some(value().parse().expect("--recogniser-threads takes a number")),
 			"--wake-model" => args.spotter = Some(value().into()),
 			"--provider" => args.provider = Some(value()),
+			"--language" => args.language = Some(value()),
 			"--tail-ms" => args.tail_ms = value().parse().expect("--tail-ms takes a number"),
 			"--verbose" => args.verbose = true,
 			"--spell" => args.spell = true,
@@ -161,6 +165,9 @@ fn main() {
 		let provider = sherpa::Provider::parse(name).unwrap_or_else(|| panic!("unknown provider {name}"));
 		assert!(provider.available(), "{name} is not in this build; add --features shared-onnxruntime");
 		config.recogniser_provider = provider;
+	}
+	if let Some(language) = &args.language {
+		config.recogniser_language = language.clone();
 	}
 	config.spotter = args.spotter.clone();
 

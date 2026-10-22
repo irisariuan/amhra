@@ -126,4 +126,10 @@ export interface Setting {
 	VOICE_RECOGNISER_PROVIDER?: "cpu" | "coreml";
 	/** Threads for speech recognition. Defaults to 2. */
 	VOICE_RECOGNISER_THREADS?: number;
+	/**
+	 * The language speech recognition listens for, in every server. "auto"
+	 * (the default) guesses per command and takes short ones for the wrong
+	 * language now and then; pinned, the others are not understood.
+	 */
+	VOICE_LANGUAGE?: "auto" | "en" | "zh" | "ja" | "ko" | "yue";
 }
