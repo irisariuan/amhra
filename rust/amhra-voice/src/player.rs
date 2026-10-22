@@ -377,7 +377,10 @@ impl Player {
 			}
 
 			if !slot.reader.is_complete() {
-				if !self.starving {
+				// A track yet to play its first frame is buffering, not stalled:
+				// a stream starts with nothing, and saying so would cry wolf at
+				// the top of every track.
+				if !self.starving && slot.started {
 					self.starving = true;
 					self.events.push(Event::Starved(slot.id.clone()));
 				}

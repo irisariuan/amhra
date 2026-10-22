@@ -59,6 +59,13 @@ export interface Setting {
 	/** Play through the Rust voice sidecar instead of @discordjs/voice */
 	USE_RUST_VOICE?: boolean;
 	/**
+	 * With USE_RUST_VOICE, have the sidecar stream each track straight from
+	 * YouTube into the voice connection instead of downloading it into the
+	 * cache first. Nothing is written to disk; a track is held in memory while
+	 * it plays, so it can still seek both ways, and freed when it ends.
+	 */
+	NATIVE_NO_CACHE?: boolean;
+	/**
 	 * Overlap between one track and the next, in milliseconds. Zero is a hard
 	 * cut. Only the Rust voice path can blend; the legacy path ignores it.
 	 */

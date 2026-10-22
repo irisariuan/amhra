@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync } from "node:fs";
 import { EventEmitter } from "node:events";
 import type { Guild, VoiceBasedChannel } from "discord.js";
 import { z } from "zod";
@@ -139,9 +140,12 @@ export class Sidecar extends EventEmitter {
 
 		const binary = sidecarBin.path();
 		dcb.log(`Starting voice sidecar: ${binary}`);
-		const child = spawn(binary, ["--cache-dir", `${process.cwd()}/cache`], {
-			stdio: ["pipe", "pipe", "pipe"],
-		});
+		const args = ["--cache-dir", `${process.cwd()}/cache`];
+		// Streaming with caching off, the sidecar walks the same client ladder
+		// the fetcher does, so it is handed the same operator override.
+		const clients = `${process.cwd()}/data/youtube-clients.json`;
+		if (existsSync(clients)) args.push("--profiles", clients);
+		const child = spawn(binary, args, { stdio: ["pipe", "pipe", "pipe"] });
 		this.child = child;
 
 		child.stdout.on("data", (chunk: Buffer) => this.consume(chunk));

@@ -76,6 +76,10 @@
    "type": "boolean",
    "description": "Play through the Rust voice sidecar instead of @discordjs/voice"
   },
+  "NATIVE_NO_CACHE": {
+   "type": "boolean",
+   "description": "With USE_RUST_VOICE, stream tracks straight into voice without writing them to the cache; each track is held in memory only while it plays"
+  },
   "NATIVE_VOICE_BIN": {
    "type": "string",
    "description": "Path to the amhra-sidecar binary; defaults to rust/target/release/amhra-sidecar"

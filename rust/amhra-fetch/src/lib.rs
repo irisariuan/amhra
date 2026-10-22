@@ -9,7 +9,7 @@ pub mod ytdlp;
 use std::path::{Path, PathBuf};
 
 use download::{CachePaths, DownloadOptions};
-use innertube::Extractor;
+pub use innertube::Extractor;
 
 /// Which path produced a cache entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -213,6 +213,119 @@ async fn native_fetch(
 	} else {
 		reasons.join("; ")
 	})
+}
+
+/// What a finished stream came from.
+#[derive(Debug, Clone)]
+pub struct Streamed {
+	pub title: Option<String>,
+	pub bytes: u64,
+	pub itag: u32,
+	/// The profile that served the last byte.
+	pub profile: String,
+}
+
+/// Download a track straight into `writer`, with no cache on either end.
+///
+/// Walks the same profile ladder as [`fetch`]. A profile refused before any
+/// audio was handed over costs nothing, and the next one is tried. One refused
+/// part-way through can only be replaced by a profile serving the very same
+/// format — same itag, same size, so the same bytes — picking up at the byte
+/// the last one stopped at; anything else would splice two different files
+/// together under the listener. There is no yt-dlp fallback, because yt-dlp
+/// only writes files.
+///
+/// A failure is one joined string, as in the native half of [`fetch`]: the
+/// caller only needs to say why the track ended.
+pub async fn stream(
+	video_id: &str,
+	extractor: &Extractor,
+	options: DownloadOptions,
+	writer: &mut amhra_audio::StreamWriter,
+) -> Result<Streamed, StreamError> {
+	let mut reasons: Vec<String> = Vec::new();
+	// The format the listener has been hearing, once any of it has arrived.
+	let mut committed: Option<(u32, u64)> = None;
+	let mut next = 0usize;
+
+	while next < extractor.profile_count() {
+		let attempt = match extractor.extract_from(video_id, next, &mut reasons).await {
+			Ok(found) => found,
+			Err(error) => {
+				let text = error.to_string();
+				if !reasons.last().is_some_and(|last| text.ends_with(last.as_str())) {
+					reasons.push(text);
+				}
+				break;
+			}
+		};
+		next = attempt.next;
+		let extraction = attempt.extraction;
+		let format = &extraction.format;
+
+		// A size of zero is undeclared, not different: it is probed later.
+		if let Some((itag, total)) = committed
+			&& (format.itag != itag || ![0, total].contains(&format.content_length))
+		{
+			reasons.push(format!(
+				"{}: serves itag {} rather than the {itag} already playing",
+				extraction.profile, format.itag
+			));
+			continue;
+		}
+
+		let offset = writer.sent();
+		match download::stream(
+			extractor.client(),
+			format,
+			&extraction.user_agent,
+			offset,
+			options,
+			writer,
+		)
+		.await
+		{
+			Ok(total) => {
+				return Ok(Streamed {
+					title: extraction.title,
+					bytes: total,
+					itag: format.itag,
+					profile: extraction.profile,
+				});
+			}
+			Err(download::DownloadError::Abandoned) => return Err(StreamError::Abandoned),
+			Err(error) => {
+				reasons.push(format!("{}: {error}", extraction.profile));
+				if writer.sent() > 0 && committed.is_none() {
+					// What the listener has heard fixes the format from here on.
+					let total = download::content_length(
+						extractor.client(),
+						format,
+						&extraction.user_agent,
+					)
+					.await
+					.unwrap_or(format.content_length);
+					committed = Some((format.itag, total));
+				}
+			}
+		}
+	}
+
+	Err(StreamError::Failed(if reasons.is_empty() {
+		"no client profile was usable".to_owned()
+	} else {
+		reasons.join("; ")
+	}))
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum StreamError {
+	/// The reader went away, so the download stopped. Not a failure: it is
+	/// what a skip or a replaced standby looks like from here.
+	#[error("nobody is listening any more")]
+	Abandoned,
+	#[error("{0}")]
+	Failed(String),
 }
 
 /// Whether a cached track is already on disk, and what is known about it.

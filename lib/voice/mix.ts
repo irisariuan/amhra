@@ -7,6 +7,7 @@ import type { MixLayer } from "./mixPlan";
 import {
 	getMix,
 	nativeAddLayer,
+	nativeNoCache,
 	nativeReplaceLayer,
 	nativeSwapLayer,
 } from "./native";
@@ -65,14 +66,18 @@ async function fetchLayerTrack(
 	if (!trackId) return { error: "not_found" };
 	const info = await getVideoInfo(url).catch(() => null);
 	if (!info) return { error: "not_found" };
-	try {
-		await nativeFetchReady(trackId);
-	} catch (error) {
-		globalApp.err(`Failed to fetch ${trackId} for a mix layer`, error);
-		return { error: "failed" };
+	// Streaming, the sidecar fetches the layer itself and there is no file
+	// for the cache sweep to delete.
+	if (!nativeNoCache()) {
+		try {
+			await nativeFetchReady(trackId);
+		} catch (error) {
+			globalApp.err(`Failed to fetch ${trackId} for a mix layer`, error);
+			return { error: "failed" };
+		}
+		// Marked as used so the cache sweep does not delete a file being played.
+		await updateLastUsed([trackId]).catch(() => {});
 	}
-	// Marked as used so the cache sweep does not delete a file being played.
-	await updateLastUsed([trackId]).catch(() => {});
 	return { trackId, title: info.video_details.title, url: info.video_details.url };
 }
 

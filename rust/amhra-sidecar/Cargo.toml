@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 amhra-audio.workspace = true
+amhra-fetch = { path = "../amhra-fetch" }
 amhra-voice = { path = "../amhra-voice" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
