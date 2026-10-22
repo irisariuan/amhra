@@ -31,7 +31,16 @@ pub enum Command {
 		session_id: String,
 		endpoint: String,
 		token: String,
+		/// Whether this guild has voice commands on. Only a sidecar started
+		/// with `--listen` or `--voice-commands` can hear anything at all; this
+		/// says whether it may in this guild. Absent means no.
+		#[serde(default)]
+		listen: bool,
 	},
+	/// Turn hearing this guild on or off without reconnecting. Off, packets
+	/// from other members are dropped before they are decrypted.
+	#[serde(rename_all = "camelCase")]
+	SetListen { guild_id: String, listen: bool },
 	/// Leave, releasing the guild's thread and sockets.
 	#[serde(rename_all = "camelCase")]
 	Disconnect { guild_id: String },
@@ -162,7 +171,8 @@ impl Command {
 			| Self::Resume { guild_id }
 			| Self::Seek { guild_id, .. }
 			| Self::SetVolume { guild_id, .. }
-			| Self::SetFades { guild_id, .. } => Some(guild_id),
+			| Self::SetFades { guild_id, .. }
+			| Self::SetListen { guild_id, .. } => Some(guild_id),
 			Self::ListSessions | Self::Shutdown => None,
 		}
 	}
@@ -196,6 +206,17 @@ mod tests {
 		let command: Command =
 			serde_json::from_str(r#"{"type":"play","guildId":"1","trackId":"x"}"#).unwrap();
 		assert!(matches!(command, Command::Play { start_ms: 0, .. }));
+	}
+
+	#[test]
+	fn a_connect_without_listen_does_not_listen() {
+		// An older bot never sends the field, and must not have its guilds
+		// heard because a newer sidecar was started with voice commands.
+		let command: Command = serde_json::from_str(
+			r#"{"type":"connect","guildId":"1","channelId":"2","userId":"3","sessionId":"s","endpoint":"e","token":"t"}"#,
+		)
+		.unwrap();
+		assert!(matches!(command, Command::Connect { listen: false, .. }));
 	}
 
 	#[test]
@@ -240,6 +261,7 @@ mod tests {
 			r#"{"type":"seek","guildId":"g","positionMs":1}"#,
 			r#"{"type":"setVolume","guildId":"g","gain":0.5}"#,
 			r#"{"type":"setFades","guildId":"g","crossfadeMs":0,"skipFadeMs":40}"#,
+			r#"{"type":"setListen","guildId":"g","listen":true}"#,
 		];
 		for json in commands {
 			let command: Command = serde_json::from_str(json).unwrap();

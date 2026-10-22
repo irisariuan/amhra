@@ -184,6 +184,19 @@ describeBuilt("Sidecar", () => {
 		expect((await next(sidecar, "sessions")).guilds).toEqual([]);
 	});
 
+	test("understands turning listening on for a guild", async () => {
+		const sidecar = start();
+		await next(sidecar, "hello");
+
+		// Sent when a guild flips /voicecommands mid-call. A guild that has
+		// just left gets the usual complaint, which proves the command parsed:
+		// an unknown one would be reported with no guild.
+		sidecar.send({ type: "setListen", guildId: "404", listen: true });
+		const error = await next(sidecar, "error");
+		expect(error.guildId).toBe("404");
+		expect(String(error.message)).toMatch(/not connected/i);
+	});
+
 	test("keeps playing when voice commands cannot start", async () => {
 		// Built without the feature (as in CI) or with no models where it is
 		// pointed: either way a single global error, then business as usual.

@@ -98,6 +98,7 @@ fn print(started: Instant, notice: Notice) {
 		Notice::Unintelligible { user_id, keyword, .. } => {
 			println!("{at:7.1}s  {user_id}: {keyword}, then nothing recognisable")
 		}
+		Notice::Name { .. } => {}
 		Notice::Dropped { what, count, .. } => println!("{at:7.1}s  behind: dropped {count} {what}"),
 		Notice::Failed { message, .. } => println!("{at:7.1}s  failed: {message}"),
 	}

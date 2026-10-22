@@ -1,6 +1,6 @@
 import { select } from "@inquirer/prompts";
 import chalk from "chalk";
-import { client } from "./lib/client";
+import { client, slashCommand } from "./lib/client";
 import { calculateHash } from "./lib/core";
 import { exp, globalApp } from "./lib/misc";
 import { initServer } from "./lib/server/core";
@@ -10,6 +10,8 @@ import { watch } from "node:fs";
 import { updateYtdlpVersion } from "./lib/voice/ytdlp";
 import { bindNativeVoice, nativeVoiceActive } from "./lib/voice/native";
 import { startLeaveSweeper } from "./lib/voice/leave";
+import { bindVoiceCommands } from "./lib/voice/voiceCommands";
+import { voiceCommandsAllowed } from "./lib/voice/voiceSetting";
 
 const setting = readSetting();
 
@@ -75,6 +77,10 @@ const setting = readSetting();
 	if (nativeVoiceActive()) {
 		console.log(chalk.bgBlue.whiteBright("Voice runs through the Rust sidecar"));
 		bindNativeVoice(client);
+		if (voiceCommandsAllowed()) {
+			console.log(chalk.bgBlue.whiteBright("Voice commands can be turned on per server"));
+			bindVoiceCommands(client, slashCommand);
+		}
 	}
 	// Watches for players to go idle and for channels to empty out. Started
 	// before login so a guild the bot is already in when it reconnects is swept

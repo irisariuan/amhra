@@ -3,7 +3,13 @@
 /**
  * What the bot asks this process to do.
  */
-export type Command = { "type": "connect", guildId: string, channelId: string, userId: string, sessionId: string, endpoint: string, token: string, } | { "type": "disconnect", guildId: string, } | { "type": "play", guildId: string, 
+export type Command = { "type": "connect", guildId: string, channelId: string, userId: string, sessionId: string, endpoint: string, token: string, 
+/**
+ * Whether this guild has voice commands on. Only a sidecar started
+ * with `--listen` or `--voice-commands` can hear anything at all; this
+ * says whether it may in this guild. Absent means no.
+ */
+listen: boolean, } | { "type": "setListen", guildId: string, listen: boolean, } | { "type": "disconnect", guildId: string, } | { "type": "play", guildId: string, 
 /**
  * The cache id, not a path: the sidecar owns the cache layout.
  */

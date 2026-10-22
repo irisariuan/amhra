@@ -53,6 +53,9 @@ pub struct GateConfig {
 	/// How far back the spotter's lag may reach. A detection claiming more is
 	/// clamped to this.
 	pub max_lag_ms: u32,
+	/// Audio kept from before the keyword's end for [`GateEvent::Name`], so
+	/// the name itself can be saved to train the spotter on. Zero sends none.
+	pub name_clip_ms: u32,
 }
 
 impl Default for GateConfig {
@@ -65,6 +68,7 @@ impl Default for GateConfig {
 			max_capture_ms: 5000,
 			keep_tail_ms: 200,
 			max_lag_ms: 1500,
+			name_clip_ms: 0,
 		}
 	}
 }
@@ -78,6 +82,10 @@ pub enum GateEvent {
 	TimedOut { keyword: String },
 	/// A command, ready to transcribe.
 	Captured(Capture),
+	/// The audio the name was heard in: [`GateConfig::name_clip_ms`] before
+	/// the spotter says it ended, and whatever had been heard after by the
+	/// time it said so. Sent straight after `Woke`, and only when asked for.
+	Name { keyword: String, samples: Vec<f32> },
 }
 
 /// A window of speech that followed the wake word.
@@ -111,6 +119,14 @@ struct Limits {
 	max_capture: usize,
 	keep_tail: usize,
 	max_lag: usize,
+	name_clip: usize,
+}
+
+impl Limits {
+	/// How much to remember while listening for the name.
+	fn history(&self) -> usize {
+		self.preroll.max(self.name_clip) + self.max_lag
+	}
 }
 
 impl From<GateConfig> for Limits {
@@ -123,6 +139,7 @@ impl From<GateConfig> for Limits {
 			max_capture: samples(config.max_capture_ms),
 			keep_tail: samples(config.keep_tail_ms),
 			max_lag: samples(config.max_lag_ms),
+			name_clip: samples(config.name_clip_ms),
 		}
 	}
 }
@@ -131,7 +148,8 @@ pub struct Gate {
 	limits: Limits,
 	spotter: Box<dyn Spotter>,
 	vad: Box<dyn Vad>,
-	/// The last `preroll + max_lag` samples heard while listening.
+	/// The last `max(preroll, name_clip) + max_lag` samples heard while
+	/// listening.
 	history: VecDeque<f32>,
 	/// The window being built, once the name has been heard.
 	window: Vec<f32>,
@@ -155,7 +173,7 @@ impl Gate {
 			limits,
 			spotter,
 			vad,
-			history: VecDeque::with_capacity(limits.preroll + limits.max_lag),
+			history: VecDeque::with_capacity(limits.history()),
 			window: Vec::new(),
 			state: State::Listening,
 		}
@@ -179,7 +197,7 @@ impl Gate {
 	}
 
 	fn listen(&mut self, samples: &[f32], events: &mut dyn FnMut(GateEvent)) {
-		let keep = self.limits.preroll + self.limits.max_lag;
+		let keep = self.limits.history();
 		self.history.extend(samples.iter().copied());
 		if self.history.len() > keep {
 			self.history.drain(..self.history.len() - keep);
@@ -195,6 +213,11 @@ impl Gate {
 		let lag = lag.min(self.limits.max_lag).min(self.history.len());
 		let keyword_end = self.history.len() - lag;
 		let start = keyword_end.saturating_sub(self.limits.preroll);
+		if self.limits.name_clip > 0 {
+			let from = keyword_end.saturating_sub(self.limits.name_clip);
+			let samples = self.history.range(from..).copied().collect();
+			events(GateEvent::Name { keyword: keyword.clone(), samples });
+		}
 		self.window.clear();
 		self.window.extend(self.history.range(start..));
 		self.history.clear();
@@ -411,6 +434,37 @@ mod tests {
 		assert_eq!(captures[0].samples.len(), samples(300) + samples(400) + samples(200));
 		// So the window opens on the name, not on the quiet before it.
 		assert!(captures[0].samples[..samples(300)].iter().all(|&sample| sample >= LOUD));
+	}
+
+	#[test]
+	fn the_name_is_handed_out_when_asked_for() {
+		let config = GateConfig { name_clip_ms: 1000, ..GateConfig::default() };
+		// Heard 200ms after it ended.
+		let mut gate =
+			Gate::new(config, Box::new(FakeSpotter { lag: samples(200) }), Box::new(FakeVad));
+		let mut audio = frames(0.0, 50); // a second of quiet
+		audio.extend(frames(LOUD, 25)); // the name, 500ms
+		audio.extend(frames(0.0, 9)); // 180ms…
+		audio.push(keyword_frame()); // …and the detection, 20ms later
+		let events = feed(&mut gate, &audio);
+
+		assert_eq!(events[0], GateEvent::Woke { keyword: "AMHRA".to_owned() });
+		let GateEvent::Name { keyword, samples: clip } = &events[1] else {
+			panic!("no name clip: {events:?}");
+		};
+		assert_eq!(keyword, "AMHRA");
+		// A second back from where the name ended, and the 200ms since.
+		assert_eq!(clip.len(), samples(1000) + samples(200));
+		let name = &clip[samples(500)..samples(1000)];
+		assert!(name.iter().all(|&sample| sample >= LOUD), "the name sits before its end");
+		assert!(clip[..samples(500)].iter().all(|&sample| sample == 0.0));
+	}
+
+	#[test]
+	fn no_name_clip_unless_asked() {
+		let mut gate = gate(0);
+		let events = feed(&mut gate, &[keyword_frame()]);
+		assert!(!events.iter().any(|event| matches!(event, GateEvent::Name { .. })));
 	}
 
 	#[test]

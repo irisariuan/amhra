@@ -42,6 +42,8 @@ const STACK_SIZE: usize = 2 * 1024 * 1024;
 pub enum Notice {
 	/// Someone said the wake word.
 	Woke { guild_id: String, user_id: u64, keyword: String },
+	/// The audio the wake word was heard in, when the gate was asked for it.
+	Name { guild_id: String, user_id: u64, keyword: String, samples: Vec<f32> },
 	/// …and then nothing.
 	TimedOut { guild_id: String, user_id: u64, keyword: String },
 	/// A command, as text.
@@ -197,6 +199,9 @@ fn handle(
 	match event {
 		GateEvent::Woke { keyword } => report(Notice::Woke { guild_id, user_id, keyword }),
 		GateEvent::TimedOut { keyword } => report(Notice::TimedOut { guild_id, user_id, keyword }),
+		GateEvent::Name { keyword, samples } => {
+			report(Notice::Name { guild_id, user_id, keyword, samples })
+		}
 		GateEvent::Captured(capture) => {
 			let since = Duration::from_millis(milliseconds(capture.since_speech).into());
 			let job = Job {

@@ -26,6 +26,7 @@
 //! [`speakers`] are tested with fakes and compile without any model runtime.
 //! The real ones, in `sherpa.rs`, are behind the `voice-commands` feature.
 
+pub mod clips;
 pub mod engine;
 pub mod gate;
 pub mod keywords;

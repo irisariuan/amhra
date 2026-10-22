@@ -242,10 +242,10 @@ per-user counters of anything that failed.
 
 ## Voice commands
 
-"Amhra, skip this song" → an `utterance` event carrying the text. Phase B:
-the sidecar hears the name and transcribes what follows. Nothing acts on the
-text yet; intent parsing, per-guild opt-in and a "listening" notice come with
-phase C.
+"Amhra, skip this song" → the song is skipped. The sidecar hears the name
+and transcribes what follows into an `utterance` event; the bot reads a
+command out of the text and runs it (see [In the bot](#in-the-bot)). Off
+unless the bot's owner allows it and each server opts in.
 
 ```text
 16 kHz PCM ─▶ keyword spotter ──"Amhra"──▶ window ─▶ end of speech ─▶ SenseVoice ─▶ utterance
@@ -273,15 +273,25 @@ scripts/download-voice-models.sh
 cargo build --release --manifest-path rust/Cargo.toml -p amhra-sidecar --features voice-commands
 ```
 
-Then start the sidecar with `--voice-commands` (it implies `--listen`). The
-bot does not pass that flag yet; that is phase C. Flags, with paths relative
-to where the sidecar starts:
+Then set `VOICE_COMMANDS` in `data/setting.json` (or the dashboard) and
+restart the bot: it starts the sidecar with `--voice-commands` (which implies
+`--listen`), `--wake-model models/voice/kws-emhara` and `--wake-keywords
+training/wake/keywords.txt`. Flags, with paths relative to where the sidecar
+starts:
 
 | flag | default | |
 | --- | --- | --- |
 | `--voice-models <dir>` | `models/voice` | where the download script put them (gitignored) |
 | `--wake-keywords <file>` | `data/wake-keywords.txt` | the wake phrases; edit and restart, no rebuild |
 | `--recogniser-threads <n>` | `2` | speech-recognition threads |
+| `--wake-model <dir>` | the stock spotter | a fine-tuned one from `training/wake` |
+| `--wake-clips <dir>` | off | save the audio each wake was heard in (below) |
+| `--wake-clips-max <n>` | `2000` | stop saving after this many clips (about 75MB) |
+
+Even started this way, the sidecar hears a guild only while the bot says it
+may: `connect` carries `listen`, and `setListen` changes it mid-call. Until
+then the guild's packets are read off the socket and dropped before they are
+decrypted.
 
 If a model is missing, or the build lacks the feature, the sidecar sends one
 `error` event and plays on without voice commands. Loading takes about half a
@@ -415,7 +425,7 @@ Transcripts of the command after the name are good in English (mean text
 similarity 0.89 to the script). On the earlier corpus they were poor for
 Korean from the novelty voices; Yuna's were good, Eddy's and Flo's gibberish.
 Short windows are sometimes taken for the wrong language. Pinning the language
-per guild is a phase C option, since SenseVoice accepts one.
+per guild would help, since SenseVoice accepts one; it is not done.
 
 **A wake model trained on the name.** Recall above is capped by the model, so
 `training/wake/` fine-tunes the same spotter on recordings of the name
@@ -433,12 +443,54 @@ Live in a Discord call, the same speaker said the name 10 times followed
 by commands: it woke 9 times, with no false wakes. Text arrived 650–790ms
 after they stopped talking. The commands after the name came out rough
 ("how, I pay this song", "Em, I pre the song", "I'm, I stop it"), so
-matching commands in phase C has to tolerate that.
+the bot's matching tolerates that (below).
 
 Ten training takes from one speaker is very little, and training longer
 overfits: later epochs heard every take but woke 25–80 times an hour on
 sentences they had not seen. Recordings from more members are what would
 improve it; `training/wake/README.md` has the steps and every number.
+
+### In the bot
+
+Settings, in `data/setting.json` or the dashboard, read when the sidecar
+starts:
+
+| setting | default | |
+| --- | --- | --- |
+| `VOICE_COMMANDS` | off | let servers turn voice commands on; needs `USE_RUST_VOICE` |
+| `VOICE_WAKE_MODEL` | `models/voice/kws-emhara` | |
+| `VOICE_WAKE_KEYWORDS` | `training/wake/keywords.txt` | |
+| `VOICE_COLLECT_WAKE_CLIPS` | **on** | save wake clips from servers that turned voice commands on |
+
+- **Per-server opt-in.** `/voicecommands enabled:true`, by default for members
+  with Manage Server, kept in `data/guildSetting.json` (gitignored). It takes
+  effect in a call already under way, through `setListen`.
+- **Telling people.** When the bot joins a call in a server that opted in,
+  and when the server turns it on, the voice channel's chat says the bot
+  listens for its name, what happens to what it hears, and how to turn it
+  off. Members who join later are told too, at most every five minutes. With
+  wake clips on, the notice says they are kept.
+- **Reading the command** (`lib/voice/intent.ts`). The verb has to come
+  first, after nothing but the tail of the name ("Empower", "hammer", "I'm,"),
+  fillers ("please") or whatever the recogniser put before a comma; only
+  words about the current song ("this song", "it") may follow it. Verbs may
+  be a letter off ("pay", "ski"), but a misheard play only resumes; it never
+  searches. Japanese, Korean and Chinese are matched by characters, verb
+  first or last. The words are in each `data/lang/*.json` under `voice`.
+  `test/voiceIntent.test.ts` holds the live transcripts and the near misses
+  that must not trigger.
+- **Running it.** A command runs the same slash-command handler as a typed
+  one, with an interaction that answers in the channel the player uses, or the
+  voice channel's chat, headed with who asked for what
+  (`lib/voice/voiceInteraction.ts`). So a voice command can do nothing a typed
+  one could not; the skip vote still applies.
+
+**Wake clips.** With `--wake-clips`, each wake saves a second of audio from
+before where the name ended plus what had been heard by the time it fired
+(about 1.3–1.5s), as 16 kHz WAV, and a line in `clips.tsv` labelling it
+`EMHARA`. The bot saves them to `data/recordings/wake-clips` (gitignored).
+False wakes land there too, so listen before training on them:
+`training/wake/README.md` has the steps.
 
 **Not measured:**
 

@@ -89,4 +89,21 @@ export interface Setting {
 	BANNED_IDS: string[];
 	MESSAGE_LOGGING?: boolean;
 	VOICE_LOGGING?: boolean;
+
+	/**
+	 * Let guilds turn on voice commands. Off by default: it needs the Rust
+	 * sidecar built with voice commands, and its models hold about 570MB.
+	 * Each guild still opts in with /voicecommands. Read when the sidecar
+	 * starts.
+	 */
+	VOICE_COMMANDS?: boolean;
+	/** The fine-tuned wake model; defaults to models/voice/kws-emhara */
+	VOICE_WAKE_MODEL?: string;
+	/** Its wake phrases; defaults to training/wake/keywords.txt */
+	VOICE_WAKE_KEYWORDS?: string;
+	/**
+	 * Keep the audio around each wake, from guilds with voice commands on, for
+	 * retraining the wake model. On unless set to false; members are told.
+	 */
+	VOICE_COLLECT_WAKE_CLIPS?: boolean;
 }

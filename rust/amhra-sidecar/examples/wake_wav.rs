@@ -224,6 +224,8 @@ fn main() {
 					timeouts += 1;
 					println!("  {:6.2}s  {keyword}, then nothing", at(position));
 				}
+				// Not asked for: the gate here never saves the name.
+				GateEvent::Name { .. } => {}
 				GateEvent::Captured(capture) => {
 					commands += 1;
 					if let Some(dir) = &args.dump {

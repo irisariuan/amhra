@@ -237,5 +237,9 @@ export const GlobalSettingSchema = z
 		NATIVE_FETCH_BIN: z.string().optional(),
 		USE_RUST_VOICE: z.boolean().optional(),
 		NATIVE_VOICE_BIN: z.string().optional(),
+		VOICE_COMMANDS: z.boolean().optional(),
+		VOICE_WAKE_MODEL: z.string().optional(),
+		VOICE_WAKE_KEYWORDS: z.string().optional(),
+		VOICE_COLLECT_WAKE_CLIPS: z.boolean().optional(),
 	})
 	.passthrough();

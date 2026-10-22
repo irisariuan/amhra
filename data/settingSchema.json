@@ -137,6 +137,23 @@
   "VOICE_LOGGING": {
    "type": "boolean",
    "description": "Enable voice state logging"
+  },
+  "VOICE_COMMANDS": {
+   "type": "boolean",
+   "description": "Let servers turn on voice commands (\"Amhra, skip\"). Needs USE_RUST_VOICE, a sidecar built with --features voice-commands and the models from scripts/download-voice-models.sh; loads about 570MB of models. Restart to apply"
+  },
+  "VOICE_WAKE_MODEL": {
+   "type": "string",
+   "description": "Directory of the fine-tuned wake model; defaults to models/voice/kws-emhara. Restart to apply"
+  },
+  "VOICE_WAKE_KEYWORDS": {
+   "type": "string",
+   "description": "Wake phrases for that model; defaults to training/wake/keywords.txt. Restart to apply"
+  },
+  "VOICE_COLLECT_WAKE_CLIPS": {
+   "type": "boolean",
+   "default": true,
+   "description": "Save the second or so of audio each time the bot hears its name, in servers with voice commands on, to data/recordings/wake-clips for retraining the wake model. Members are told when it is on. Default on. Restart to apply"
   }
  },
  "required": [

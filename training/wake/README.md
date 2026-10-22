@@ -54,6 +54,16 @@ Run from the repository root.
    More speakers matter more than more takes from one: a model trained on
    one voice learns that voice.
 
+   **Or use what the bot collected.** With `VOICE_COLLECT_WAKE_CLIPS` on
+   (the default once `VOICE_COMMANDS` is), every wake in a server that turned
+   voice commands on is saved to `data/recordings/wake-clips/`, one
+   `<guild>-<user>-<time>.wav` per wake, labelled `EMHARA` in `clips.tsv`.
+   These are the takes the current model already finds; the ones it misses
+   still need recording. Listen to each: delete the ones that are not the
+   name, and add the command where one followed. Copy the rest into
+   `training/wake/work/data/real/`, appending their lines to `train.tsv`, or
+   to `test.tsv` for a speaker you want held out.
+
 3. **Synthesised speech and general English.**
 
    ```bash

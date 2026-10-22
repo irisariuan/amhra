@@ -17,7 +17,9 @@
 //! nothing left to play for.
 //!
 //! `--listen` also decodes what everyone else in the channel says (see
-//! `listen.rs`). It is off by default and, alone, goes nowhere.
+//! `listen.rs`). It is off by default and, alone, goes nowhere. Even with it,
+//! a guild is heard only while its `Connect` or a later `SetListen` says so:
+//! voice commands are opted into per guild, by the bot.
 //!
 //! `--voice-commands` listens for the wake word and transcribes what follows
 //! it, reporting `Utterance` events (see `voice_commands`). It implies
@@ -29,7 +31,10 @@
 //!   `data/wake-keywords.txt`;
 //! - `--recogniser-threads <n>`: threads for speech recognition, default 2;
 //! - `--wake-model <dir>`: a fine-tuned keyword spotter from
-//!   `training/wake/export.sh`, instead of the stock one.
+//!   `training/wake/export.sh`, instead of the stock one;
+//! - `--wake-clips <dir>`: save the second or so of audio each wake was heard
+//!   in, for retraining the spotter (see `voice_commands::clips`), at most
+//!   `--wake-clips-max <n>` of them, default 2000.
 //!
 //! Both relative to the directory the sidecar is started in. A model that will
 //! not load is reported once as an `Error` event and the sidecar carries on
@@ -53,6 +58,11 @@ use amhra_voice::player::FadeSettings;
 use amhra_voice::receive::Membership;
 use amhra_voice::wire::EncryptionMode;
 use amhra_voice::{Opener, Session, VoiceUdp};
+
+/// Audio saved from before where the name ended, for `--wake-clips`. The
+/// name is about half a second; the rest is context, as the training cuts have.
+#[cfg(feature = "voice-commands")]
+const WAKE_CLIP_MS: u32 = 1000;
 
 /// How often the gateway task checks whether the audio thread wants the
 /// speaking flag changed. The flag is a courtesy to the client's UI, not part
@@ -82,6 +92,9 @@ struct GuildSession {
 	position_ms: u32,
 	paused: bool,
 	gain: f32,
+	/// Whether this guild's receive thread passes packets on. Shared with it,
+	/// so `SetListen` takes effect without a reconnect.
+	listening: Arc<AtomicBool>,
 }
 
 impl GuildSession {
@@ -181,7 +194,7 @@ async fn dispatch(
 	voice: Option<&Arc<Engine>>,
 ) {
 	match command {
-		Command::Connect { guild_id, channel_id, user_id, session_id, endpoint, token } => {
+		Command::Connect { guild_id, channel_id, user_id, session_id, endpoint, token, listen: wanted } => {
 			// Reconnecting to the same guild replaces the old session rather
 			// than leaving two things sending to one channel.
 			if let Some(existing) = guilds.remove(&guild_id) {
@@ -209,6 +222,7 @@ async fn dispatch(
 			};
 			let (handle, gateway_events) = gateway::connect(info);
 			let alive = Arc::new(AtomicBool::new(true));
+			let listening = Arc::new(AtomicBool::new(wanted));
 
 			tokio::spawn(drive_connection(
 				guild_id.clone(),
@@ -220,7 +234,7 @@ async fn dispatch(
 				worker.command_sender(),
 				worker.speaking_flag(),
 				alive.clone(),
-				listen,
+				listen.then(|| listening.clone()),
 				voice.cloned(),
 			));
 
@@ -235,6 +249,7 @@ async fn dispatch(
 					position_ms: 0,
 					paused: false,
 					gain: 1.0,
+					listening,
 				},
 			);
 		}
@@ -307,6 +322,12 @@ async fn dispatch(
 				session
 					.worker
 					.send(WorkerCommand::SetFades(FadeSettings { crossfade_ms, skip_fade_ms }));
+			})
+		}
+
+		Command::SetListen { guild_id, listen } => {
+			with_guild(guilds, events, &guild_id, |session| {
+				session.listening.store(listen, Ordering::Relaxed);
 			})
 		}
 
@@ -389,7 +410,8 @@ async fn drive_connection(
 	worker: Sender<WorkerCommand>,
 	speaking: Arc<std::sync::atomic::AtomicBool>,
 	alive: Arc<AtomicBool>,
-	listen: bool,
+	// The guild's switch, when this process can listen at all.
+	listen: Option<Arc<AtomicBool>>,
 	voice: Option<Arc<Engine>>,
 ) {
 	let mut ssrc = 0u32;
@@ -528,8 +550,8 @@ async fn drive_connection(
 							early.clear();
 						}
 
-						let listen = if listen {
-							listen_setup(&mut membership, &speakers, mode, &secret_key, ssrc)
+						let listen = if let Some(enabled) = &listen {
+							listen_setup(&mut membership, &speakers, mode, &secret_key, ssrc, enabled.clone())
 								.map(|mut setup| {
 									if let Some(engine) = &voice {
 										setup.sink = voice_sink(engine, &events, &guild_id);
@@ -631,6 +653,7 @@ fn listen_setup(
 	mode: EncryptionMode,
 	secret_key: &[u8],
 	own_ssrc: u32,
+	enabled: Arc<AtomicBool>,
 ) -> Result<ListenSetup, String> {
 	let opener =
 		Opener::new(mode, secret_key).map_err(|error| format!("listen: bad session key: {error}"))?;
@@ -640,7 +663,7 @@ fn listen_setup(
 	}
 	*membership = Some(sender);
 	// Decoded and let go, unless voice commands replace this.
-	Ok(ListenSetup { opener, own_ssrc, membership: receiver, sink: Box::new(|_| {}) })
+	Ok(ListenSetup { opener, own_ssrc, membership: receiver, sink: Box::new(|_| {}), enabled })
 }
 
 /// A gate thread for this call's voice, or — if one cannot be started —
@@ -657,6 +680,7 @@ fn voice_sink(engine: &Engine, events: &Sender<Event>, guild_id: &str) -> VoiceS
 /// connects.
 #[cfg(feature = "voice-commands")]
 fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
+	use amhra_sidecar::voice_commands::clips::ClipStore;
 	use amhra_sidecar::voice_commands::engine::Notice;
 	use amhra_sidecar::voice_commands::gate::GateConfig;
 	use amhra_sidecar::voice_commands::sherpa::{self, SherpaConfig};
@@ -684,6 +708,22 @@ fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
 		}
 	};
 
+	// A clip store that will not open costs the clips, not voice commands.
+	let clips = option("--wake-clips").and_then(|dir| {
+		let max = option("--wake-clips-max").and_then(|max| max.parse().ok()).unwrap_or(2000);
+		ClipStore::open(dir.clone().into(), max)
+			.map_err(|error| eprintln!("voice commands: not saving wake clips: cannot use {dir}: {error}"))
+			.ok()
+	});
+	let gate = GateConfig {
+		name_clip_ms: if clips.is_some() { WAKE_CLIP_MS } else { 0 },
+		..GateConfig::default()
+	};
+	if let Some(clips) = &clips {
+		eprintln!("voice commands: saving wake clips to {}", clips.dir().display());
+	}
+	let clips = clips.map(Mutex::new);
+
 	let events = events.clone();
 	let report = Arc::new(move |notice: Notice| match notice {
 		Notice::Utterance { guild_id, user_id, keyword, text, lang, latency_ms, recognition_ms, audio_ms } => {
@@ -708,6 +748,17 @@ fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
 		Notice::TimedOut { guild_id, user_id, keyword } => {
 			eprintln!("[{guild_id}] voice: {user_id} said {keyword} and nothing after it")
 		}
+		Notice::Name { guild_id, user_id, samples, .. } => {
+			let Some(Ok(mut clips)) = clips.as_ref().map(Mutex::lock) else { return };
+			let at = std::time::SystemTime::now()
+				.duration_since(std::time::UNIX_EPOCH)
+				.map_or(0, |since| since.as_millis());
+			match clips.save(&guild_id, user_id, &samples, at) {
+				Ok(Some(path)) => eprintln!("[{guild_id}] voice: saved wake clip {}", path.display()),
+				Ok(None) => {}
+				Err(error) => eprintln!("[{guild_id}] voice: could not save a wake clip: {error}"),
+			}
+		}
 		Notice::Unintelligible { guild_id, user_id, keyword } => {
 			eprintln!("[{guild_id}] voice: {user_id} said {keyword}, then nothing recognisable")
 		}
@@ -716,7 +767,7 @@ fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
 		}
 		Notice::Failed { guild_id, message } => fail(&events, &guild_id, format!("voice commands: {message}")),
 	});
-	match Engine::start(models, Box::new(recogniser), GateConfig::default(), report) {
+	match Engine::start(models, Box::new(recogniser), gate, report) {
 		Ok(engine) => {
 			eprintln!("voice commands: models loaded in {:?}", started.elapsed());
 			Some(Arc::new(engine))

@@ -8,7 +8,9 @@
 //! it only governs `recv`; the sender's `send` is unaffected.
 //!
 //! Off unless the sidecar is started with `--listen`. A music bot that never
-//! uses what it hears should not pay to decode everyone in every channel.
+//! uses what it hears should not pay to decode everyone in every channel. Even
+//! then, a guild that has not opted in has its packets read off the socket and
+//! dropped, undecrypted: the switch is [`ListenSetup::enabled`].
 //!
 //! What it hears goes to a [`VoiceSink`]: with `--voice-commands`, the wake
 //! word gate (`voice_commands`); otherwise nowhere.
@@ -55,6 +57,9 @@ pub struct ListenSetup {
 	pub membership: Receiver<Membership>,
 	/// Where what is heard goes.
 	pub sink: VoiceSink,
+	/// Whether to hear anything. Checked per packet, so it can be flipped for
+	/// a live call; off, a packet is dropped before it is decrypted.
+	pub enabled: Arc<AtomicBool>,
 }
 
 /// Keeps a receive thread alive. Dropping it stops the thread within one
@@ -96,7 +101,7 @@ fn run(
 	dave: Option<Arc<Mutex<Driver>>>,
 	stop: Arc<AtomicBool>,
 ) {
-	let ListenSetup { opener, own_ssrc, membership, mut sink } = setup;
+	let ListenSetup { opener, own_ssrc, membership, mut sink, enabled } = setup;
 	let mut listener = Listener::new(opener, own_ssrc);
 	let dave = dave.as_deref();
 	let mut buffer = [0u8; MAX_DATAGRAM];
@@ -119,6 +124,7 @@ fn run(
 		}
 
 		match socket.recv(&mut buffer) {
+			Ok(_) if !enabled.load(Ordering::Relaxed) => {}
 			Ok(length) => listener.handle_packet(&buffer[..length], Instant::now(), dave, &mut |frame| {
 				sink(Heard::Voice(frame))
 			}),
@@ -192,6 +198,7 @@ mod tests {
 						let _ = frames.send(frame);
 					}
 				}),
+				enabled: Arc::new(AtomicBool::new(true)),
 			},
 			None,
 		)
@@ -215,5 +222,49 @@ mod tests {
 		drop(membership);
 		std::thread::sleep(READ_TIMEOUT * 3);
 		assert!(heard.try_recv().is_err());
+	}
+
+	#[test]
+	fn a_guild_that_has_not_opted_in_is_not_heard_until_it_does() {
+		let server = UdpSocket::bind("127.0.0.1:0").unwrap();
+		let bot = UdpSocket::bind("127.0.0.1:0").unwrap();
+		bot.connect(server.local_addr().unwrap()).unwrap();
+
+		let (frames, heard) = std::sync::mpsc::channel();
+		let (membership, changes) = std::sync::mpsc::channel();
+		let enabled = Arc::new(AtomicBool::new(false));
+		let _handle = spawn(
+			"1",
+			bot.try_clone().unwrap(),
+			ListenSetup {
+				opener: Opener::new(MODE, &KEY).unwrap(),
+				own_ssrc: 1,
+				membership: changes,
+				sink: Box::new(move |heard| {
+					if let Heard::Voice(frame) = heard {
+						let _ = frames.send(frame);
+					}
+				}),
+				enabled: Arc::clone(&enabled),
+			},
+			None,
+		)
+		.unwrap();
+
+		membership.send(Membership::Speaking { user_id: 42, ssrc: 9 }).unwrap();
+		let mut session = Session::with_start(MODE, &KEY, 9, 0, 0).unwrap();
+		let mut send = || {
+			let mut packet = Vec::new();
+			session.seal(&amhra_voice::SILENCE_FRAME, &mut packet).unwrap();
+			server.send_to(&packet, bot.local_addr().unwrap()).unwrap();
+		};
+
+		send();
+		assert!(heard.recv_timeout(READ_TIMEOUT * 3).is_err(), "heard a guild that is off");
+
+		enabled.store(true, Ordering::Relaxed);
+		send();
+		let frame = heard.recv_timeout(Duration::from_secs(2)).expect("a decoded frame once on");
+		assert_eq!(frame.user_id, 42);
 	}
 }

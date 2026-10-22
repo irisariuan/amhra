@@ -6,6 +6,7 @@ import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { fadesFrom } from "./fades";
 import { nativeBinary } from "./nativeBinary";
+import { guildListens, voiceCommandArgs } from "./voiceSetting";
 import type {
 	Command as WireCommand,
 	Event as WireEvent,
@@ -78,8 +79,9 @@ const event = z.discriminatedUnion("type", [
 		message: z.string(),
 	}),
 	z.object({ type: z.literal("sessions"), guilds: z.array(sessionState) }),
-	// Only from a sidecar started with --voice-commands. What was heard after
-	// the wake word, as text; nothing acts on it yet.
+	// Only from a sidecar started with --voice-commands, and only for guilds
+	// that opted in. What was heard after the wake word, as text; turned into a
+	// command by lib/voice/voiceCommands.ts.
 	z.object({
 		type: z.literal("utterance"),
 		guildId: z.string(),
@@ -309,10 +311,13 @@ export function fadeSettings() {
 
 let shared: Sidecar | null = null;
 
-/** The process-wide sidecar, started on first use. */
+/**
+ * The process-wide sidecar, started on first use. With voice commands allowed
+ * it loads their models, so changing that setting needs a restart.
+ */
 export function sidecar() {
 	if (!shared) {
-		shared = new Sidecar();
+		shared = new Sidecar(voiceCommandArgs());
 		shared.start();
 	}
 	return shared;
@@ -439,6 +444,9 @@ export function joinVoiceViaSidecar(
 				sessionId,
 				endpoint,
 				token,
+				// Read now rather than when the join began: a guild that turned
+				// voice commands on or off in between gets what it asked for.
+				listen: guildListens(guild.id),
 			});
 			// Sent straight after connect rather than waiting for a ready
 			// event: the sidecar queues commands per guild, so this is applied
