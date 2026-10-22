@@ -159,6 +159,23 @@
    "type": "boolean",
    "description": "Log what was heard after the bot's name, for tuning the command matching. Off by default: it writes what people said into the log"
   },
+  "VOICE_SPEECH": {
+   "type": "boolean",
+   "default": false,
+   "description": "Say aloud what a voice command does (\"Skipping.\", \"Playing bad guy.\"), in English or Chinese, over the lowered music. Needs the Kokoro model (scripts/download-voice-models.sh). Fixed phrases are made once and saved under the cache; a song name takes a second or so of CPU on a fast machine and several on a Raspberry Pi. Default off. Restart to apply"
+  },
+  "VOICE_SPEECH_MODEL": {
+   "type": "string",
+   "default": "models/voice/kokoro-multi-lang-v1_0",
+   "description": "The unpacked kokoro-multi-lang-v1_0 (fp32; the int8 one says nothing on Apple silicon). Restart to apply"
+  },
+  "VOICE_SPEECH_THREADS": {
+   "type": "integer",
+   "minimum": 1,
+   "maximum": 8,
+   "default": 1,
+   "description": "CPU threads for making speech. More makes a new phrase sooner but takes cores from playback and recognition. Restart to apply"
+  },
   "VOICE_WAKE_CHIME": {
    "type": "boolean",
    "default": true,

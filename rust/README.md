@@ -522,6 +522,45 @@ said in English came back as Chinese ("什么号啊？"); pinned to `en` they re
 a language per server would mean loading a recogniser per language, about
 250MB each.
 
+### Speaking
+
+With `VOICE_SPEECH` on, the bot says what a voice command does as it starts
+it ("Skipping.", "Playing bad guy.", "Volume 40 percent."), after the chime,
+over the music lowered to `VOICE_DUCK_VOLUME`. A command refused afterwards
+(nothing playing, another channel) says why in the chat. The phrases are the
+`VOICE_SAY_*` strings in `data/lang`, chosen in `lib/voice/announce.ts`.
+
+The model is Kokoro (`kokoro-multi-lang-v1_0`, fetched by
+`scripts/download-voice-models.sh --speech`) through sherpa-onnx, in
+`src/speech.rs`. It has English and Chinese voices (af_heart, zf_xiaoxiao),
+so a command in Chinese is answered in Chinese and every other one in
+English: its Japanese voice was not intelligible even told the language, and
+it has no Korean. It reads traditional characters as well as simplified.
+
+On an M5 Pro, one CPU thread makes a second of speech in 0.8 to 0.95s (0.7
+for a long sentence), and the model takes 727MB loaded. Core ML saves
+nothing: the fp32 model ran on the same CPU, and the int8 one aborts on Core
+ML and produces only NaN on the CPU. A Raspberry Pi class board, which this
+is meant to run on, has several times less per core, so a new phrase takes
+seconds there. So:
+
+- **Fixed phrases are made once.** The bot sends every phrase that does not
+  change (`prepareSpeech`) when the sidecar starts. Any not yet saved is
+  synthesised in the background and saved under `<cache-dir>/speech`; from
+  then on it is read back, and saying it costs no model time at all.
+- **The rest when it is said.** A song name or a number is synthesised when
+  the command comes, on the one speech thread, ahead of any preparing, and
+  remembered (64 phrases) but not saved, so the store never grows past the
+  fixed phrases. One that is not ready within 8s is not said.
+- **The model only while it is needed.** It is loaded for the first phrase
+  that is not saved and let go after a minute without another, so the 700MB
+  is not held while nothing new is being said.
+- **One thread** by default (`VOICE_SPEECH_THREADS`), so speech never takes
+  more than a core from playback and recognition.
+
+`examples/tts_wav.rs` speaks sentences to a WAV and times them, with no
+Discord involved.
+
 ### In the bot
 
 Settings, in `data/setting.json` or the dashboard, read when the sidecar
@@ -544,6 +583,9 @@ starts:
 | `VOICE_MAX_COMMAND_MS` | `8000` | the longest command |
 | `VOICE_INTENT_MODEL_URL` | empty | an OpenAI-compatible server whose model reads every command; empty, only command names said first are understood |
 | `VOICE_INTENT_MODEL` | `mlx-community/Qwen3-4B-4bit` | the model that server uses |
+| `VOICE_SPEECH` | off | say aloud what a voice command does (see Speaking) |
+| `VOICE_SPEECH_MODEL` | `models/voice/kokoro-multi-lang-v1_0` | |
+| `VOICE_SPEECH_THREADS` | `1` | CPU threads for making speech |
 
 - **Per-server opt-in.** `/voicecommands enabled:true`, by default for members
   with Manage Server, kept in `data/guildSetting.json` (gitignored). It takes

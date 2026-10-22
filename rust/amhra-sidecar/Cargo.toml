@@ -48,3 +48,7 @@ required-features = ["voice-commands"]
 [[example]]
 name = "wake_live"
 required-features = ["voice-commands"]
+
+[[example]]
+name = "tts_wav"
+required-features = ["voice-commands"]

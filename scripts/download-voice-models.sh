@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
 # Fetch the models voice commands need into models/voice (gitignored).
 #
-#   scripts/download-voice-models.sh [target dir]
+#   scripts/download-voice-models.sh [--speech] [target dir]
 #
 # Idempotent: anything already in place is left alone, so rerunning after a
 # partial download only fetches what is missing. About 180MB to download and
-# 260MB unpacked, nearly all of it SenseVoice.
+# 260MB unpacked, nearly all of it SenseVoice. `--speech` also fetches Kokoro,
+# for VOICE_SPEECH: another 330MB or so.
 #
 # The sidecar finds them with `--voice-models <dir>` (default models/voice,
 # relative to the directory it is started in).
 set -euo pipefail
 
+SPEECH=0
+if [[ "${1:-}" == "--speech" ]]; then
+	SPEECH=1
+	shift
+fi
 TARGET="${1:-models/voice}"
 RELEASES="https://github.com/k2-fsa/sherpa-onnx/releases/download"
 
@@ -24,6 +30,9 @@ KWS="sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
 STT="sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
 # End of speech.
 VAD="silero_vad.onnx"
+# Speech, for answering aloud: English and Chinese, 24 kHz. The fp32 export:
+# the int8 one produces only NaN on Apple silicon.
+TTS="kokoro-multi-lang-v1_0"
 
 mkdir -p "$TARGET"
 cd "$TARGET"
@@ -65,6 +74,10 @@ if [[ -f "$VAD" ]]; then
 else
 	echo "fetching $VAD"
 	download "$RELEASES/asr-models/$VAD" "$VAD"
+fi
+
+if [[ "$SPEECH" == 1 ]]; then
+	fetch_archive tts-models "$TTS"
 fi
 
 # The test clips and the full-precision weights are not used at runtime.

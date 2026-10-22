@@ -111,6 +111,17 @@ export interface Setting {
 	 * unless set: it writes what people said into the bot's log.
 	 */
 	VOICE_LOG_TRANSCRIPTS?: boolean;
+	/**
+	 * Say aloud what a voice command does: "Skipping.", "Playing bad guy.". Off
+	 * unless set. The speech model is loaded only to make a phrase not said
+	 * before, and the fixed ones are saved under the cache, so it costs little
+	 * after the first run; see the sidecar's `speech` module.
+	 */
+	VOICE_SPEECH?: boolean;
+	/** The unpacked kokoro-multi-lang-v1_0 (fp32). Defaults to models/voice. */
+	VOICE_SPEECH_MODEL?: string;
+	/** CPU threads for making speech. Defaults to 1. */
+	VOICE_SPEECH_THREADS?: number;
 	/** Chime in the call when the bot hears its name. On unless false. */
 	VOICE_WAKE_CHIME?: boolean;
 	/**

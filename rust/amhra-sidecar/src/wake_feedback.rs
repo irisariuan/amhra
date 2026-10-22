@@ -1,5 +1,6 @@
 //! What a call hears when someone says the bot's name: a chime, and the music
-//! lowered until what they said next has been heard.
+//! lowered until what they said next has been heard. Then, with speech on,
+//! the bot saying what it is doing, over the music lowered again.
 //!
 //! Both happen on the guild's audio thread, at the moment of the wake rather
 //! than when the text reaches the bot, which is most of a second later. The
@@ -11,7 +12,8 @@
 //! apart, rising, the way an assistant answers to its name. Nothing to ship,
 //! license or load.
 
-use std::sync::OnceLock;
+use std::collections::VecDeque;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use amhra_audio::opus::{CHANNELS, FRAME_SIZE, SAMPLE_RATE};
@@ -39,9 +41,9 @@ const DECAY: f32 = 0.14;
 const RELEASE: f32 = 0.03;
 
 /// The chime as interleaved stereo PCM at the Opus rate, rendered once.
-pub fn chime() -> &'static [i16] {
-	static CHIME: OnceLock<Vec<i16>> = OnceLock::new();
-	CHIME.get_or_init(render)
+pub fn chime() -> Arc<[i16]> {
+	static CHIME: OnceLock<Arc<[i16]>> = OnceLock::new();
+	Arc::clone(CHIME.get_or_init(|| render().into()))
 }
 
 fn render() -> Vec<i16> {
@@ -71,26 +73,79 @@ fn render() -> Vec<i16> {
 	pcm
 }
 
-/// A chime being played, a frame at a time.
-#[derive(Debug, Default)]
-pub struct Chime {
+/// A sound being played over the music, a frame at a time: the chime, or
+/// something the bot says.
+#[derive(Debug)]
+pub struct Clip {
+	pcm: Arc<[i16]>,
 	at: usize,
+	/// Lower the music to this while it plays.
+	duck: Option<f32>,
+	started: bool,
 }
 
-impl Chime {
+impl Clip {
+	pub fn chime() -> Self {
+		Self::new(chime(), None)
+	}
+
+	/// `pcm`, interleaved stereo at the Opus rate, with the music lowered to
+	/// `duck` under it if given.
+	pub fn new(pcm: Arc<[i16]>, duck: Option<f32>) -> Self {
+		Self { pcm, at: 0, duck, started: false }
+	}
+
 	/// Fill `out` with the next frame, padding the last with silence. False
-	/// once the chime is over.
+	/// once the clip is over.
 	pub fn next_frame(&mut self, out: &mut [i16; FRAME_PCM]) -> bool {
-		let pcm = chime();
-		if self.at >= pcm.len() {
+		if self.at >= self.pcm.len() {
 			return false;
 		}
-		let end = (self.at + FRAME_PCM).min(pcm.len());
+		let end = (self.at + FRAME_PCM).min(self.pcm.len());
 		let filled = end - self.at;
-		out[..filled].copy_from_slice(&pcm[self.at..end]);
+		out[..filled].copy_from_slice(&self.pcm[self.at..end]);
 		out[filled..].fill(0);
 		self.at = end;
 		true
+	}
+}
+
+/// Clips waiting to be played, one after another: a chime is not talked over.
+#[derive(Debug, Default)]
+pub struct Clips {
+	queue: VecDeque<Clip>,
+}
+
+/// More than this waiting and the newest is dropped: a backlog of what the
+/// bot meant to say a while ago is worse than silence.
+const MAX_QUEUED: usize = 4;
+
+impl Clips {
+	pub fn push(&mut self, clip: Clip) {
+		if self.queue.len() < MAX_QUEUED {
+			self.queue.push_back(clip);
+		}
+	}
+
+	/// The next frame of whatever is playing into `out`, lowering the music
+	/// through `duck` while a clip that asks for it plays. False when nothing
+	/// is.
+	pub fn next_frame(&mut self, out: &mut [i16; FRAME_PCM], duck: &mut Duck, now: Instant) -> bool {
+		while let Some(clip) = self.queue.front_mut() {
+			if !clip.started {
+				clip.started = true;
+				if let Some(gain) = clip.duck {
+					duck.woke(gain, now);
+				}
+			}
+			if clip.next_frame(out) {
+				return true;
+			}
+			if self.queue.pop_front().is_some_and(|clip| clip.duck.is_some()) {
+				duck.heard();
+			}
+		}
+		false
 	}
 }
 
@@ -145,6 +200,7 @@ mod tests {
 	#[test]
 	fn the_chime_is_short_quiet_and_starts_and_ends_at_rest() {
 		let pcm = chime();
+		let pcm = &pcm[..];
 		let seconds = pcm.len() as f32 / CHANNELS as f32 / SAMPLE_RATE as f32;
 		assert!((seconds - LENGTH).abs() < 0.01, "{seconds}s");
 		let peak = pcm.iter().map(|sample| i32::from(*sample).abs()).max().unwrap();
@@ -157,7 +213,7 @@ mod tests {
 
 	#[test]
 	fn the_chime_plays_out_in_whole_frames() {
-		let mut chime = Chime::default();
+		let mut chime = Clip::chime();
 		let mut frame = [0i16; FRAME_PCM];
 		let mut frames = 0;
 		while chime.next_frame(&mut frame) {
@@ -165,6 +221,41 @@ mod tests {
 		}
 		assert_eq!(frames, (LENGTH * 1000.0 / 20.0).ceil() as usize);
 		assert!(!chime.next_frame(&mut frame), "and stays over");
+	}
+
+	#[test]
+	fn clips_play_in_turn_with_the_music_down_under_speech() {
+		let now = Instant::now();
+		let mut duck = Duck::default();
+		let mut clips = Clips::default();
+		let mut frame = [0i16; FRAME_PCM];
+		clips.push(Clip::chime());
+		let speech: Arc<[i16]> = vec![1000; FRAME_PCM * 2].into();
+		clips.push(Clip::new(speech, Some(0.3)));
+
+		// The chime first, with the music where it was.
+		let chime_frames = (LENGTH * 1000.0 / 20.0).ceil() as usize;
+		for _ in 0..chime_frames {
+			assert!(clips.next_frame(&mut frame, &mut duck, now));
+			assert_eq!(duck.factor(now), 1.0);
+		}
+		// Then the speech, over the music lowered.
+		assert!(clips.next_frame(&mut frame, &mut duck, now));
+		assert_eq!(frame[0], 1000);
+		assert_eq!(duck.factor(now), 0.3);
+		assert!(clips.next_frame(&mut frame, &mut duck, now));
+		// And the music back once it is said.
+		assert!(!clips.next_frame(&mut frame, &mut duck, now));
+		assert_eq!(duck.factor(now), 1.0);
+	}
+
+	#[test]
+	fn a_backlog_of_speech_is_dropped() {
+		let mut clips = Clips::default();
+		for _ in 0..10 {
+			clips.push(Clip::chime());
+		}
+		assert_eq!(clips.queue.len(), MAX_QUEUED);
 	}
 
 	#[test]

@@ -12,11 +12,12 @@ import { languageText, parseLocale } from "../language";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { userSetting } from "../userSetting";
+import { announcement, prepared } from "./announce";
 import { readIntent } from "./intentModel";
 import { getNativeConnection } from "./native";
 import { type SidecarEvent, sidecar } from "./sidecar";
 import { voiceInteraction } from "./voiceInteraction";
-import { collectsWakeClips, guildListens } from "./voiceSetting";
+import { collectsWakeClips, guildListens, speaksAnswers } from "./voiceSetting";
 
 /**
  * Turns what the sidecar heard after the wake word into the bot's own
@@ -76,6 +77,14 @@ export function bindVoiceCommands(client: CustomClient, lookup: Lookup) {
 			announceListening(channel.guild, channel.id).catch(() => {});
 		}
 	});
+
+	// The phrases always said the same are made ready once per sidecar, so
+	// saying them never waits on the speech model.
+	const prepare = () => {
+		if (speaksAnswers()) bus.send({ type: "prepareSpeech", phrases: prepared() });
+	};
+	bus.on("hello", prepare);
+	if (bus.running) prepare();
 
 	client.on("voiceStateUpdate", (before, after) => newcomer(before, after));
 }
@@ -195,6 +204,10 @@ async function onUtterance(
 	dcb.log(
 		`(Guild ID: ${guildId}) ${member.user.tag} said voice command ${intent.command}${heard}`,
 	);
+	// Said as it starts, not once it is done: "Leaving the channel" after
+	// leaving would never be heard. A command that is then refused says why
+	// in the chat.
+	if (speaksAnswers()) sidecar().send({ type: "speak", guildId, ...announcement(intent) });
 	await command.execute({
 		interaction: voiceInteraction(member, channel, intent, {
 			message: waiting,

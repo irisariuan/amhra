@@ -74,11 +74,36 @@ pub enum Command {
 	SetVolume { guild_id: String, gain: f32 },
 	#[serde(rename_all = "camelCase")]
 	SetFades { guild_id: String, crossfade_ms: u16, skip_fade_ms: u16 },
+	/// Say `text` in the call, over the music, lowered meanwhile. Only a
+	/// sidecar started with `--speech-model` speaks; others ignore it.
+	#[serde(rename_all = "camelCase")]
+	Speak {
+		guild_id: String,
+		text: String,
+		/// `zh` or `yue` for the Chinese voice; anything else, or nothing, is
+		/// English.
+		#[serde(default)]
+		language: Option<String>,
+	},
+	/// Have these phrases ready, so saying them never waits on the model:
+	/// what is not yet saved is synthesised in the background, once.
+	#[serde(rename_all = "camelCase")]
+	PrepareSpeech { phrases: Vec<Phrase> },
 	/// Ask for one `Sessions` event. Used after the bot restarts, to find out
 	/// what this process is still doing.
 	ListSessions,
 	/// Shut down cleanly.
 	Shutdown,
+}
+
+/// Something the bot may say, for `PrepareSpeech`.
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "protocol.d.ts")]
+pub struct Phrase {
+	pub text: String,
+	#[serde(default)]
+	pub language: Option<String>,
 }
 
 /// What this process reports back.
@@ -181,8 +206,9 @@ impl Command {
 			| Self::Seek { guild_id, .. }
 			| Self::SetVolume { guild_id, .. }
 			| Self::SetFades { guild_id, .. }
-			| Self::SetListen { guild_id, .. } => Some(guild_id),
-			Self::ListSessions | Self::Shutdown => None,
+			| Self::SetListen { guild_id, .. }
+			| Self::Speak { guild_id, .. } => Some(guild_id),
+			Self::PrepareSpeech { .. } | Self::ListSessions | Self::Shutdown => None,
 		}
 	}
 }
@@ -271,6 +297,7 @@ mod tests {
 			r#"{"type":"setVolume","guildId":"g","gain":0.5}"#,
 			r#"{"type":"setFades","guildId":"g","crossfadeMs":0,"skipFadeMs":40}"#,
 			r#"{"type":"setListen","guildId":"g","listen":true}"#,
+			r#"{"type":"speak","guildId":"g","text":"Skipping."}"#,
 		];
 		for json in commands {
 			let command: Command = serde_json::from_str(json).unwrap();

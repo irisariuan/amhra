@@ -13,6 +13,9 @@ export const DEFAULT_DUCK_VOLUME = 0.3;
 /** Where the sidecar puts the wake clips, relative to where it starts. */
 export const WAKE_CLIPS_DIR = "data/recordings/wake-clips";
 
+/** Where the speech model is, relative to where the sidecar starts. */
+export const DEFAULT_SPEECH_MODEL = "models/voice/kokoro-multi-lang-v1_0";
+
 /** The bot's owner allows voice commands at all. */
 export function voiceCommandsAllowed(setting: Setting = readSetting()) {
 	return setting.VOICE_COMMANDS === true;
@@ -21,6 +24,11 @@ export function voiceCommandsAllowed(setting: Setting = readSetting()) {
 /** Wake clips are kept. On unless switched off, and only where voice commands are. */
 export function collectsWakeClips(setting: Setting = readSetting()) {
 	return voiceCommandsAllowed(setting) && setting.VOICE_COLLECT_WAKE_CLIPS !== false;
+}
+
+/** The bot says aloud what it does for a voice command. Off unless set. */
+export function speaksAnswers(setting: Setting = readSetting()) {
+	return voiceCommandsAllowed(setting) && setting.VOICE_SPEECH === true;
 }
 
 /** The guild has opted in, and the bot allows it. */
@@ -57,6 +65,13 @@ export function voiceCommandArgs(setting: Setting = readSetting()): string[] {
 	const threads = setting.VOICE_RECOGNISER_THREADS;
 	if (threads !== undefined && Number.isInteger(threads) && threads >= 1) {
 		args.push("--recogniser-threads", String(threads));
+	}
+	if (speaksAnswers(setting)) {
+		args.push("--speech-model", setting.VOICE_SPEECH_MODEL ?? DEFAULT_SPEECH_MODEL);
+		const threads = setting.VOICE_SPEECH_THREADS;
+		if (threads !== undefined && Number.isInteger(threads) && threads >= 1) {
+			args.push("--speech-threads", String(threads));
+		}
 	}
 	const timings = [
 		["--wait-for-speech-ms", setting.VOICE_WAIT_FOR_COMMAND_MS],

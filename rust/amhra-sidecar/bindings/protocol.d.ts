@@ -13,7 +13,12 @@ listen: boolean, } | { "type": "setListen", guildId: string, listen: boolean, } 
 /**
  * The cache id, not a path: the sidecar owns the cache layout.
  */
-trackId: string, startMs: number, } | { "type": "setNext", guildId: string, trackId: string, } | { "type": "clearNext", guildId: string, } | { "type": "skip", guildId: string, } | { "type": "stop", guildId: string, } | { "type": "pause", guildId: string, } | { "type": "resume", guildId: string, } | { "type": "seek", guildId: string, positionMs: number, } | { "type": "setVolume", guildId: string, gain: number, } | { "type": "setFades", guildId: string, crossfadeMs: number, skipFadeMs: number, } | { "type": "listSessions" } | { "type": "shutdown" };
+trackId: string, startMs: number, } | { "type": "setNext", guildId: string, trackId: string, } | { "type": "clearNext", guildId: string, } | { "type": "skip", guildId: string, } | { "type": "stop", guildId: string, } | { "type": "pause", guildId: string, } | { "type": "resume", guildId: string, } | { "type": "seek", guildId: string, positionMs: number, } | { "type": "setVolume", guildId: string, gain: number, } | { "type": "setFades", guildId: string, crossfadeMs: number, skipFadeMs: number, } | { "type": "speak", guildId: string, text: string, 
+/**
+ * `zh` or `yue` for the Chinese voice; anything else, or nothing, is
+ * English.
+ */
+language: string | null, } | { "type": "prepareSpeech", phrases: Array<Phrase>, } | { "type": "listSessions" } | { "type": "shutdown" };
 
 /**
  * What this process reports back.
@@ -33,6 +38,11 @@ wakeKeyword: string,
  * half second of silence that marks a command as finished.
  */
 latencyMs: number, };
+
+/**
+ * Something the bot may say, for `PrepareSpeech`.
+ */
+export type Phrase = { text: string, language: string | null, };
 
 /**
  * One guild's state, for a bot that has just restarted and lost its own.

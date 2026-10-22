@@ -28,7 +28,7 @@ use amhra_voice::{SILENCE_FRAME, Session};
 
 use crate::listen::{self, ListenHandle, ListenSetup};
 use crate::protocol::Event;
-use crate::wake_feedback::{Chime, Duck, FRAME_PCM};
+use crate::wake_feedback::{Clip, Clips, Duck, FRAME_PCM};
 
 /// One audio frame's worth of time.
 const TICK: Duration = Duration::from_millis(20);
@@ -64,6 +64,9 @@ pub enum WorkerCommand {
 	Woke { chime: bool, duck: f32 },
 	/// A wake has been dealt with; the music may come back up.
 	Heard,
+	/// Say this, after anything already being said, with the music lowered
+	/// to `duck` meanwhile. Interleaved stereo PCM at the Opus rate.
+	Say { pcm: Arc<[i16]>, duck: f32 },
 	Shutdown,
 }
 
@@ -203,15 +206,13 @@ fn run(
 		}
 
 		ticks = ticks.wrapping_add(1);
-		output.update(Instant::now());
-		let chiming = output.chime.as_mut().is_some_and(|chime| chime.next_frame(&mut overlay));
-		if !chiming {
-			output.chime = None;
-		}
-		let overlay = chiming.then_some(&overlay[..]);
+		let now = Instant::now();
+		let playing = output.clips.next_frame(&mut overlay, &mut output.duck, now);
+		output.update(now);
+		let overlay = playing.then_some(&overlay[..]);
 
-		// A chime still plays over a paused track: the name is often said to
-		// ask for it back.
+		// A chime or speech still plays over a paused track: the name is often
+		// said to ask for it back.
 		if paused && overlay.is_none() {
 			speaking.store(false, Ordering::Relaxed);
 			continue;
@@ -300,12 +301,12 @@ fn run(
 	}
 }
 
-/// The volume stage, and what answering the name does to it: the chime mixed
-/// in and the music lowered.
+/// The volume stage, and what answering the name does to it: the chime and
+/// speech mixed in and the music lowered.
 #[derive(Default)]
 struct Output {
 	volume: Volume,
-	chime: Option<Chime>,
+	clips: Clips,
 	duck: Duck,
 	/// The listener's own volume, which a duck scales rather than replaces.
 	gain: Option<f32>,
@@ -436,7 +437,7 @@ fn apply(
 		}
 		WorkerCommand::Woke { chime, duck } => {
 			if chime {
-				output.chime = Some(Chime::default());
+				output.clips.push(Clip::chime());
 			}
 			if duck < 1.0 {
 				output.duck.woke(duck, Instant::now());
@@ -447,6 +448,7 @@ fn apply(
 			output.duck.heard();
 			output.update(Instant::now());
 		}
+		WorkerCommand::Say { pcm, duck } => output.clips.push(Clip::new(pcm, (duck < 1.0).then_some(duck))),
 		WorkerCommand::SetFades(fades) => player.set_fades(fades),
 		WorkerCommand::Shutdown => {}
 	}

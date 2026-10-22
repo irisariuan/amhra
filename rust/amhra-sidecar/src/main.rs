@@ -46,9 +46,15 @@
 //!   to wait for a command after the name, the silence that ends it, and the
 //!   longest one, overriding `GateConfig`'s defaults.
 //!
-//! Both relative to the directory the sidecar is started in. A model that will
-//! not load is reported once as an `Error` event and the sidecar carries on
-//! without voice commands: playback never depends on them.
+//! `--speech-model <dir>` lets the bot speak (`Speak`, `PrepareSpeech`) with
+//! the unpacked `kokoro-multi-lang-v1_0` there, on `--speech-threads <n>`
+//! CPU threads, default 1. Phrases are saved under `<cache-dir>/speech` and
+//! the model is loaded only to make new ones (see `speech`). It needs the
+//! `voice-commands` feature and lowers the music to `--wake-duck` meanwhile.
+//!
+//! Paths are relative to the directory the sidecar is started in. A model
+//! that will not load is reported once as an `Error` event and the sidecar
+//! carries on without voice commands: playback never depends on them.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -59,6 +65,7 @@ use std::time::Duration;
 use amhra_audio::CacheReader;
 use amhra_sidecar::framing::{read_frame, write_frame};
 use amhra_sidecar::protocol::{Command, Event, PROTOCOL_VERSION, SessionState};
+use amhra_sidecar::speech::{Speech, Voice};
 use amhra_sidecar::worker::{Worker, WorkerCommand};
 
 /// Each connected guild's audio thread, for what the voice-command threads
@@ -151,6 +158,7 @@ async fn main() {
 
 	let workers: Workers = Arc::default();
 	let voice = if voice_commands { start_voice_commands(&events, &workers) } else { None };
+	let speech = start_speech(&cache_dir, &workers);
 
 	// stdin is blocking, so it gets its own thread rather than stalling the
 	// runtime that every gateway connection shares.
@@ -191,7 +199,14 @@ async fn main() {
 		if matches!(command, Command::Shutdown) {
 			break;
 		}
-		dispatch(command, &mut guilds, &events, &cache_dir, listen, voice.as_ref(), &workers).await;
+		let context = Context {
+			cache_dir: &cache_dir,
+			listen,
+			voice: voice.as_ref(),
+			workers: &workers,
+			speech: speech.as_ref(),
+		};
+		dispatch(command, &mut guilds, &events, &context).await;
 	}
 
 	eprintln!("shutting down {} guild(s)", guilds.len());
@@ -200,15 +215,22 @@ async fn main() {
 	}
 }
 
+/// What every command may need, set up once at startup.
+struct Context<'a> {
+	cache_dir: &'a std::path::Path,
+	listen: bool,
+	voice: Option<&'a Arc<Engine>>,
+	workers: &'a Workers,
+	speech: Option<&'a Speech>,
+}
+
 async fn dispatch(
 	command: Command,
 	guilds: &mut HashMap<String, GuildSession>,
 	events: &Sender<Event>,
-	cache_dir: &std::path::Path,
-	listen: bool,
-	voice: Option<&Arc<Engine>>,
-	workers: &Workers,
+	context: &Context<'_>,
 ) {
+	let Context { cache_dir, listen, voice, workers, speech } = *context;
 	match command {
 		Command::Connect { guild_id, channel_id, user_id, session_id, endpoint, token, listen: wanted } => {
 			// Reconnecting to the same guild replaces the old session rather
@@ -353,6 +375,18 @@ async fn dispatch(
 			})
 		}
 
+		Command::Speak { guild_id, text, language } => {
+			if let Some(speech) = speech {
+				speech.say(guild_id, text, Voice::for_language(language.as_deref()));
+			}
+		}
+		Command::PrepareSpeech { phrases } => {
+			for phrase in phrases {
+				if let Some(speech) = speech {
+					speech.prepare(phrase.text, Voice::for_language(phrase.language.as_deref()));
+				}
+			}
+		}
 		Command::ListSessions => {
 			let guilds = guilds
 				.iter()
@@ -862,6 +896,40 @@ fn start_voice_commands(events: &Sender<Event>, _workers: &Workers) -> Option<Ar
 	let message = "voice commands are off: this sidecar was built without the voice-commands feature".to_owned();
 	eprintln!("{message}");
 	let _ = events.send(Event::Error { guild_id: None, message });
+	None
+}
+
+/// The speech thread, if `--speech-model` asks for one. The model itself is
+/// not loaded until something new has to be said.
+#[cfg(feature = "voice-commands")]
+fn start_speech(cache_dir: &std::path::Path, workers: &Workers) -> Option<Speech> {
+	let model = option("--speech-model")?;
+	let threads = option("--speech-threads").and_then(|threads| threads.parse().ok()).filter(|n| *n >= 1).unwrap_or(1);
+	let duck = option("--wake-duck").and_then(|gain| gain.parse::<f32>().ok()).unwrap_or(1.0);
+	let workers = Arc::clone(workers);
+	let deliver = Box::new(move |guild_id: &str, pcm| {
+		if let Some(worker) = workers.lock().ok().and_then(|workers| workers.get(guild_id).cloned()) {
+			let _ = worker.send(WorkerCommand::Say { pcm, duck });
+		}
+	});
+	let load = amhra_sidecar::speech::kokoro::load(model.clone(), threads);
+	match Speech::start(load, Some(cache_dir.join("speech")), deliver) {
+		Ok(speech) => {
+			eprintln!("speech: on, with {model} on {threads} thread(s) when a phrase is new");
+			Some(speech)
+		}
+		Err(error) => {
+			eprintln!("speech is off: {error}");
+			None
+		}
+	}
+}
+
+#[cfg(not(feature = "voice-commands"))]
+fn start_speech(_cache_dir: &std::path::Path, _workers: &Workers) -> Option<Speech> {
+	if option("--speech-model").is_some() {
+		eprintln!("speech is off: this sidecar was built without the voice-commands feature");
+	}
 	None
 }
 
