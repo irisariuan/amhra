@@ -15,6 +15,11 @@
 //!
 //! Losing stdin means the bot is gone, which is the shutdown signal: there is
 //! nothing left to play for.
+//!
+//! Tracks normally come from the cache, which the bot fills with `amhra-fetch`
+//! before asking for them. A command marked `stream` is the exception: with
+//! caching off, this process downloads the track itself, straight into the
+//! reader that plays it, and nothing is written to disk.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -23,6 +28,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use amhra_audio::CacheReader;
+use amhra_fetch::Extractor;
+use amhra_fetch::download::DownloadOptions;
 use amhra_sidecar::framing::{read_frame, write_frame};
 use amhra_sidecar::protocol::{Command, Event, PROTOCOL_VERSION, SessionState};
 use amhra_sidecar::worker::{Worker, WorkerCommand};
@@ -77,13 +84,82 @@ impl GuildSession {
 	}
 }
 
+/// Downloads for tracks played without the cache.
+struct Streamer {
+	/// An operator's client ladder, when the bot was given one.
+	profiles: Option<std::path::PathBuf>,
+	/// Built on first use and kept: it holds the connection pool and the
+	/// minted visitor id, and every stream after the first reuses both.
+	extractor: Option<Arc<Extractor>>,
+}
+
+impl Streamer {
+	/// Start downloading `track_id` and return the reader that will play it.
+	///
+	/// Returns at once with an empty reader; the audio follows as it lands.
+	/// Dropping the reader cancels the download at its next chunk.
+	fn open(
+		&mut self,
+		events: &Sender<Event>,
+		guild_id: &str,
+		track_id: &str,
+	) -> Result<CacheReader, String> {
+		let extractor = match &self.extractor {
+			Some(extractor) => Arc::clone(extractor),
+			None => {
+				let profiles = amhra_fetch::innertube::load_profiles(self.profiles.as_deref())
+					.map_err(|error| error.to_string())?;
+				let extractor =
+					Arc::new(Extractor::new(profiles).map_err(|error| error.to_string())?);
+				self.extractor = Some(Arc::clone(&extractor));
+				extractor
+			}
+		};
+
+		let (mut writer, feed) = amhra_audio::stream::channel();
+		let (events, guild_id, track_id) =
+			(events.clone(), guild_id.to_owned(), track_id.to_owned());
+		tokio::spawn(async move {
+			let started = std::time::Instant::now();
+			let outcome =
+				amhra_fetch::stream(&track_id, &extractor, DownloadOptions::default(), &mut writer)
+					.await;
+			match outcome {
+				Ok(done) => eprintln!(
+					"[{guild_id}] streamed {track_id} via {} in {}ms ({} bytes)",
+					done.profile,
+					started.elapsed().as_millis(),
+					done.bytes
+				),
+				Err(amhra_fetch::StreamError::Abandoned) => {}
+				// The writer goes with this task either way, which ends the
+				// track where its audio does — immediately, if none arrived —
+				// so the queue moves on rather than waiting on a dead download.
+				Err(amhra_fetch::StreamError::Failed(reason)) => {
+					let message = if writer.sent() == 0 {
+						format!("cannot stream {track_id}: {reason}")
+					} else {
+						format!("stream of {track_id} ended early: {reason}")
+					};
+					fail(&events, &guild_id, message);
+				}
+			}
+		});
+		Ok(CacheReader::streaming(feed))
+	}
+}
+
+/// The value after `flag` on the command line.
+fn argument(flag: &str) -> Option<String> {
+	std::env::args().skip_while(|argument| argument != flag).nth(1)
+}
+
 #[tokio::main]
 async fn main() {
-	let cache_dir = std::env::args()
-		.skip_while(|argument| argument != "--cache-dir")
-		.nth(1)
-		.unwrap_or_else(|| "cache".to_owned());
-	let cache_dir = std::path::PathBuf::from(cache_dir);
+	let cache_dir =
+		std::path::PathBuf::from(argument("--cache-dir").unwrap_or_else(|| "cache".to_owned()));
+	let profiles = argument("--profiles").map(std::path::PathBuf::from);
+	let mut streamer = Streamer { profiles, extractor: None };
 
 	// Events are written by one thread so frames from the audio threads and the
 	// gateway tasks cannot interleave halfway through.
@@ -139,7 +215,7 @@ async fn main() {
 		if matches!(command, Command::Shutdown) {
 			break;
 		}
-		dispatch(command, &mut guilds, &events, &cache_dir).await;
+		dispatch(command, &mut guilds, &events, &cache_dir, &mut streamer).await;
 	}
 
 	eprintln!("shutting down {} guild(s)", guilds.len());
@@ -153,6 +229,7 @@ async fn dispatch(
 	guilds: &mut HashMap<String, GuildSession>,
 	events: &Sender<Event>,
 	cache_dir: &std::path::Path,
+	streamer: &mut Streamer,
 ) {
 	match command {
 		Command::Connect { guild_id, channel_id, user_id, session_id, endpoint, token } => {
@@ -222,9 +299,10 @@ async fn dispatch(
 			}
 		}
 
-		Command::Play { guild_id, track_id, start_ms } => {
+		Command::Play { guild_id, track_id, start_ms, stream } => {
+			let source = Source { cache_dir, streamer, stream };
 			if let Some((session, reader)) =
-				with_track(guilds, events, &guild_id, &track_id, cache_dir, "play")
+				with_track(guilds, events, &guild_id, &track_id, source, "play")
 			{
 				session.track_id = Some(track_id.clone());
 				session.position_ms = start_ms;
@@ -237,9 +315,10 @@ async fn dispatch(
 			}
 		}
 
-		Command::SetNext { guild_id, track_id } => {
+		Command::SetNext { guild_id, track_id, stream } => {
+			let source = Source { cache_dir, streamer, stream };
 			if let Some((session, reader)) =
-				with_track(guilds, events, &guild_id, &track_id, cache_dir, "queue")
+				with_track(guilds, events, &guild_id, &track_id, source, "queue")
 			{
 				session.worker.send(WorkerCommand::SetNext { track_id, reader: Box::new(reader) });
 			}
@@ -281,9 +360,10 @@ async fn dispatch(
 				session.worker.send(WorkerCommand::SetMainVolume(gain));
 			})
 		}
-		Command::AddLayer { guild_id, layer_id, track_id, gain, start_ms } => {
+		Command::AddLayer { guild_id, layer_id, track_id, gain, start_ms, stream } => {
+			let source = Source { cache_dir, streamer, stream };
 			if let Some((session, reader)) =
-				with_track(guilds, events, &guild_id, &track_id, cache_dir, "layer")
+				with_track(guilds, events, &guild_id, &track_id, source, "layer")
 			{
 				session.worker.send(WorkerCommand::AddLayer {
 					layer_id,
@@ -349,24 +429,53 @@ fn with_guild(
 	}
 }
 
-/// The connected guild and an open cache file, or nothing and a reported reason.
+/// Where a track named by a command should come from.
+struct Source<'a> {
+	cache_dir: &'a std::path::Path,
+	streamer: &'a mut Streamer,
+	stream: bool,
+}
+
+impl Source<'_> {
+	fn open(
+		self,
+		events: &Sender<Event>,
+		guild_id: &str,
+		track_id: &str,
+	) -> Result<CacheReader, String> {
+		if !self.stream {
+			return CacheReader::open(self.cache_dir, track_id).map_err(|error| error.to_string());
+		}
+		// A whole cached copy is free to play and needs no network. A partial
+		// one is not trusted: with caching off nothing here is downloading it,
+		// so it may be the remains of a fetch that died and would never grow.
+		if self.cache_dir.join(format!("{track_id}.music")).exists()
+			&& let Ok(reader) = CacheReader::open(self.cache_dir, track_id)
+		{
+			return Ok(reader);
+		}
+		self.streamer.open(events, guild_id, track_id)
+	}
+}
+
+/// The connected guild and an open track, or nothing and a reported reason.
 ///
 /// The commands that name a track — play it now, queue it for the seam, layer
 /// it over the rest — all have the same two ways of not happening, and `verb`
-/// is all that differs between what they say when the file will not open.
+/// is all that differs between what they say when the track will not open.
 fn with_track<'a>(
 	guilds: &'a mut HashMap<String, GuildSession>,
 	events: &Sender<Event>,
 	guild_id: &str,
 	track_id: &str,
-	cache_dir: &std::path::Path,
+	source: Source<'_>,
 	verb: &str,
 ) -> Option<(&'a mut GuildSession, CacheReader)> {
 	let Some(session) = guilds.get_mut(guild_id) else {
 		not_connected(events, guild_id);
 		return None;
 	};
-	match CacheReader::open(cache_dir, track_id) {
+	match source.open(events, guild_id, track_id) {
 		Ok(reader) => Some((session, reader)),
 		Err(error) => {
 			let _ = events.send(Event::Error {

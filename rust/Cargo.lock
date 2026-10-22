@@ -106,6 +106,7 @@ name = "amhra-sidecar"
 version = "0.1.0"
 dependencies = [
  "amhra-audio",
+ "amhra-fetch",
  "amhra-voice",
  "serde",
  "serde_json",

@@ -43,11 +43,20 @@ pub enum Command {
 		track_id: String,
 		#[serde(default)]
 		start_ms: u32,
+		/// Fetch the track straight into playback rather than read it from
+		/// the cache, unless the cache already holds all of it.
+		#[serde(default)]
+		stream: bool,
 	},
 	/// Queue what follows, so the seam can be prepared before it is needed.
 	/// Sending it again replaces the previous choice.
 	#[serde(rename_all = "camelCase")]
-	SetNext { guild_id: String, track_id: String },
+	SetNext {
+		guild_id: String,
+		track_id: String,
+		#[serde(default)]
+		stream: bool,
+	},
 	#[serde(rename_all = "camelCase")]
 	ClearNext { guild_id: String },
 	#[serde(rename_all = "camelCase")]
@@ -79,6 +88,8 @@ pub enum Command {
 		gain: f32,
 		#[serde(default)]
 		start_ms: u32,
+		#[serde(default)]
+		stream: bool,
 	},
 	/// Fade a layer out and drop it.
 	#[serde(rename_all = "camelCase")]
@@ -212,7 +223,7 @@ mod tests {
 	fn commands_round_trip_as_tagged_json() {
 		let json = r#"{"type":"play","guildId":"1","trackId":"dQw4w9WgXcQ","startMs":5000}"#;
 		let command: Command = serde_json::from_str(json).unwrap();
-		let Command::Play { guild_id, track_id, start_ms } = &command else {
+		let Command::Play { guild_id, track_id, start_ms, .. } = &command else {
 			panic!("wrong variant: {command:?}");
 		};
 		assert_eq!(guild_id, "1");
@@ -231,7 +242,16 @@ mod tests {
 		// require the caller to send a zero.
 		let command: Command =
 			serde_json::from_str(r#"{"type":"play","guildId":"1","trackId":"x"}"#).unwrap();
-		assert!(matches!(command, Command::Play { start_ms: 0, .. }));
+		assert!(matches!(command, Command::Play { start_ms: 0, stream: false, .. }));
+	}
+
+	#[test]
+	fn streaming_is_asked_for_per_track() {
+		let command: Command = serde_json::from_str(
+			r#"{"type":"setNext","guildId":"1","trackId":"x","stream":true}"#,
+		)
+		.unwrap();
+		assert!(matches!(command, Command::SetNext { stream: true, .. }));
 	}
 
 	#[test]

@@ -24,6 +24,7 @@ import {
 	nativeFetchBin,
 	nativeFetchReady,
 } from "./nativeFetch";
+import { nativeNoCache, nativeVoiceActive } from "./native";
 import { stopSidecar } from "./sidecar";
 
 if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
@@ -109,6 +110,11 @@ export async function prefetch(url: string, force = false) {
 		dcb.log(`Cache hit: ${id}, skipping prefetch`);
 		return;
 	}
+
+	// With caching off, the sidecar downloads each track when it is armed or
+	// played; filling the cache ahead of it would be the one thing asked not
+	// to happen.
+	if (nativeVoiceActive() && nativeNoCache()) return;
 
 	// The native fetcher owns its own de-duplication and writes straight to the
 	// cache, so a prefetch is only a nudge: nothing here holds the audio.

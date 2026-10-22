@@ -593,8 +593,9 @@ export class CustomAudioPlayer extends AudioPlayer {
 	seekTo(seconds: number) {
 		if (!this.nowPlaying || !this.isPlaying) return false;
 		if (this.nativePlayback) {
-			// The sidecar plays from an indexed cache file, so every track it
-			// can play at all, it can seek in.
+			// The sidecar plays from an indexed cache file, or from a stream it
+			// keeps whole while the track is loaded, so every track it can play
+			// at all, it can seek in — ahead of the download too, by waiting.
 			nativeSeek(this.guildId, seconds * 1000);
 			this.nativePlayback.anchorAt(seconds * 1000, Date.now());
 		} else {

@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import type { VoiceBasedChannel } from "discord.js";
 import type { CustomAudioPlayer, CustomClient } from "../custom";
 import { dcb, globalApp } from "../misc";
+import { readSetting } from "../setting";
 import { getYouTubeVideoId } from "../youtube";
 import { gainFromPercent, GuildMix, type MixLayer } from "./mixPlan";
 import { nativeFetchBin } from "./nativeFetch";
@@ -24,6 +25,10 @@ import {
  * audio. No audio crosses back; the sidecar reads the same cache files this
  * process downloads into, and reports where it is about once a second.
  *
+ * With `NATIVE_NO_CACHE` on, there are no cache files either: the sidecar
+ * downloads each track itself, straight into the reader that plays it, and
+ * frees it once the track is done. Nothing here downloads at all then.
+ *
  * This sits behind `USE_RUST_VOICE`. With the flag off, or with the binaries
  * missing, nothing here runs and @discordjs/voice keeps the job.
  */
@@ -31,15 +36,25 @@ import {
 let warnedMissing = false;
 
 /**
+ * Whether the sidecar streams tracks itself instead of playing them from the
+ * cache. Only meaningful while {@link nativeVoiceActive}.
+ */
+export function nativeNoCache() {
+	return readSetting().NATIVE_NO_CACHE === true;
+}
+
+/**
  * Whether playback should go through the sidecar right now.
  *
- * Both binaries are required, not just the sidecar: the sidecar plays from the
- * cache and never downloads, so without the fetcher there would be nothing for
- * it to play.
+ * Normally both binaries are required, not just the sidecar: it plays from the
+ * cache, and without the fetcher there would be nothing in it to play. With
+ * caching off the sidecar fetches for itself, and it alone is enough.
  */
 export function nativeVoiceActive() {
 	if (!sidecarBin.enabled()) return false;
-	if (sidecarBin.available() && nativeFetchBin.available()) return true;
+	if (sidecarBin.available() && (nativeNoCache() || nativeFetchBin.available())) {
+		return true;
+	}
 	if (!warnedMissing) {
 		warnedMissing = true;
 		globalApp.warn(
@@ -204,7 +219,7 @@ function send(guildId: string, command: SidecarCommand) {
 }
 
 export function nativePlay(guildId: string, trackId: string, startMs = 0) {
-	send(guildId, { type: "play", guildId, trackId, startMs });
+	send(guildId, { type: "play", guildId, trackId, startMs, stream: nativeNoCache() });
 }
 
 export function nativeSkip(guildId: string) {
@@ -266,7 +281,8 @@ export function hasLayers(guildId: string) {
  *
  * The file only has to have started downloading: the sidecar follows a
  * growing file, and a layer that outruns its download stalls on its own while
- * the rest of the mix plays on.
+ * the rest of the mix plays on. With caching off there is no file, and the
+ * sidecar streams the layer the same way it streams the queue.
  */
 export function nativeAddLayer(
 	guildId: string,
@@ -282,6 +298,7 @@ export function nativeAddLayer(
 		trackId: layer.trackId,
 		gain: gainFromPercent(layer.volume),
 		startMs: Math.max(0, Math.round(startMs)),
+		stream: nativeNoCache(),
 	});
 	return layer;
 }
@@ -362,12 +379,21 @@ export function cachedTrackId(url: string) {
 }
 
 /**
+ * The id to arm for a URL, or null when it is not ready to be armed.
+ *
+ * From the cache, only a track that is already fully downloaded. A partial
+ * file would play and then starve at the seam, which is worse than the small
+ * gap of arming nothing — and the queue's own prefetch is what fills the cache.
+ * Streaming, arming is what starts the download, which lands long before the
+ * seam it is for.
+ */
+function armableTrackId(url: string) {
+	return nativeNoCache() ? getYouTubeVideoId(url) : cachedTrackId(url);
+}
+
+/**
  * Tell the sidecar what follows, so the seam between two tracks can be
  * prepared before it arrives.
- *
- * Only a track that is already fully downloaded is armed. A partial file would
- * play and then starve at the seam, which is worse than the small gap of
- * arming nothing — and the queue's own prefetch is what fills the cache.
  *
  * Called after each track starts and again on every position report, so a song
  * queued mid-track, or one whose download finishes mid-track, still gets armed
@@ -381,7 +407,7 @@ export function armNext(player: CustomAudioPlayer) {
 	// promote it from the top at the seam, then be told to seek a moment later.
 	// Left unarmed, it starts with an ordinary `play` at the right place.
 	const plan = planArm(
-		next && !next.seek ? cachedTrackId(next.url) : null,
+		next && !next.seek ? armableTrackId(next.url) : null,
 		playback.armed,
 	);
 	const guildId = player.guildId;
@@ -389,7 +415,12 @@ export function armNext(player: CustomAudioPlayer) {
 	switch (plan.action) {
 		case "arm":
 			playback.armed = plan.trackId;
-			send(guildId, { type: "setNext", guildId, trackId: plan.trackId });
+			send(guildId, {
+				type: "setNext",
+				guildId,
+				trackId: plan.trackId,
+				stream: nativeNoCache(),
+			});
 			break;
 		case "clear":
 			playback.armed = null;

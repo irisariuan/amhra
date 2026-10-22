@@ -112,3 +112,27 @@ async fn two_fetches_of_one_track_do_not_trip_over_each_other() {
 
 	tokio::fs::remove_dir_all(&cache).await.ok();
 }
+
+#[tokio::test]
+#[ignore = "talks to YouTube"]
+async fn a_stream_plays_from_memory() {
+	let profiles = load_profiles(None).expect("profiles parse");
+	let extractor = Extractor::new(profiles).expect("client builds");
+	let (mut writer, feed) = amhra_audio::stream::channel();
+	let mut reader = amhra_audio::CacheReader::streaming(feed);
+
+	let streamed = amhra_fetch::stream(VIDEO, &extractor, Default::default(), &mut writer)
+		.await
+		.expect("the stream completes");
+	drop(writer);
+	println!("{} bytes via {}", streamed.bytes, streamed.profile);
+
+	reader.refresh().expect("the bytes demux");
+	assert!(reader.is_complete());
+	let mut frames = 0;
+	while reader.next_frame().is_some() {
+		frames += 1;
+	}
+	assert!(frames > 1_000, "only {frames} frames came through");
+	assert_eq!(reader.seek(0), 0, "a played stream can still seek back");
+}

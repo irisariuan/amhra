@@ -116,7 +116,9 @@ impl Layer {
 				if self.reader.is_complete() {
 					return Pull::Finished;
 				}
-				if !self.starving {
+				// As with the queue's track: buffering before the first frame
+				// is not a stall worth reporting.
+				if !self.starving && self.started {
 					self.starving = true;
 					events.push(LayerEvent::Starved(self.id.clone()));
 				}

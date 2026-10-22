@@ -4,7 +4,7 @@ import { getYouTubeVideoId } from "../youtube";
 import { updateLastUsed } from "./cache";
 import { createResource, getVideoInfo, isVideo } from "./core";
 import type { MixLayer } from "./mixPlan";
-import { getMix, nativeAddLayer, nativeSwapLayer } from "./native";
+import { getMix, nativeAddLayer, nativeNoCache, nativeSwapLayer } from "./native";
 import { nativeFetchReady } from "./nativeFetch";
 
 export type AddLayerResult =
@@ -32,14 +32,18 @@ export async function addLayerFromInput(
 
 	const info = await getVideoInfo(url).catch(() => null);
 	if (!info) return { error: "not_found" };
-	try {
-		await nativeFetchReady(trackId);
-	} catch (error) {
-		globalApp.err(`Failed to fetch ${trackId} for a mix layer`, error);
-		return { error: "failed" };
+	// Streaming, the sidecar fetches the layer itself and there is no file
+	// for the cache sweep to delete.
+	if (!nativeNoCache()) {
+		try {
+			await nativeFetchReady(trackId);
+		} catch (error) {
+			globalApp.err(`Failed to fetch ${trackId} for a mix layer`, error);
+			return { error: "failed" };
+		}
+		// Marked as used so the cache sweep does not delete a file being played.
+		await updateLastUsed([trackId]).catch(() => {});
 	}
-	// Marked as used so the cache sweep does not delete a file being played.
-	await updateLastUsed([trackId]).catch(() => {});
 
 	const layer = nativeAddLayer(
 		guildId,

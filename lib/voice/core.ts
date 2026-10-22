@@ -56,6 +56,7 @@ import { pickRadioTrack } from "./suggest";
 import {
 	getNativeConnection,
 	joinVoiceNative,
+	nativeNoCache,
 	nativeVoiceActive,
 	type NativeConnection,
 } from "./native";
@@ -263,7 +264,8 @@ export async function getVideoInfo(
  * The sidecar reads the cache file itself, so there is no stream to build, no
  * demuxer to run and no buffer to hold here — only the track's details, the
  * segments, and the cache id it should be asked to play. What this does do is
- * make sure the file exists first: the sidecar cannot download.
+ * make sure the file exists first, unless caching is off: then the sidecar
+ * downloads the track itself, and nothing touches the cache.
  */
 async function createNativeResource(
 	url: string,
@@ -273,8 +275,10 @@ async function createNativeResource(
 ): Promise<Resource | null> {
 	const id = getYouTubeVideoId(url);
 	if (!id) return null;
-	await nativeFetchReady(id, skipCache);
-	await updateLastUsed([id]);
+	if (!nativeNoCache()) {
+		await nativeFetchReady(id, skipCache);
+		await updateLastUsed([id]);
+	}
 
 	const segments = await getSegments(id, [SegmentCategory.MusicOffTopic]);
 	if (!detail.channel || !detail.title) {

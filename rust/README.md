@@ -217,3 +217,31 @@ cargo run --release -p amhra-voice --example play_file -- \
 
 which seeks near the end of the first track, blends into the second, and
 reports `Started(second)` before `Finished(first)` — the overlap, in the log.
+
+## Streaming without the cache
+
+```json
+{ "USE_RUST_VOICE": true, "NATIVE_NO_CACHE": true }
+```
+
+The sidecar then downloads each track itself, with the same client ladder and
+ranged requests as `amhra-fetch`, and hands every chunk straight to the reader
+that plays it. Nothing is written to `cache/`, and `amhra-fetch` does not need
+to be built.
+
+A track is held in memory, whole, for as long as it is loaded, so it seeks
+both ways like a cached file; the buffer is sized once from the download's
+length. It is freed the moment the track is done with — finished, skipped,
+replaced as the next track, or stopped — and dropping a reader mid-download
+closes its channel, so the download stops at its next chunk.
+
+What that costs:
+
+- A seek past what has arrived waits for the audio to get there.
+- The next track is armed by starting its stream, so crossfades still work.
+- A URL refused part-way through resumes under the next client only if that
+  client serves the same itag at the same size, so the bytes line up.
+- There is no yt-dlp fallback, because yt-dlp only writes files.
+- A track already whole in the cache is still played from there, since that
+  costs nothing. A partial `.temp.music` is not trusted, because nothing is
+  downloading it.

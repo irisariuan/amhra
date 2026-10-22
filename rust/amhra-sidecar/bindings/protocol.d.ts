@@ -7,12 +7,17 @@ export type Command = { "type": "connect", guildId: string, channelId: string, u
 /**
  * The cache id, not a path: the sidecar owns the cache layout.
  */
-trackId: string, startMs: number, } | { "type": "setNext", guildId: string, trackId: string, } | { "type": "clearNext", guildId: string, } | { "type": "skip", guildId: string, } | { "type": "stop", guildId: string, } | { "type": "pause", guildId: string, } | { "type": "resume", guildId: string, } | { "type": "seek", guildId: string, positionMs: number, } | { "type": "setVolume", guildId: string, gain: number, } | { "type": "setMainVolume", guildId: string, gain: number, } | { "type": "addLayer", guildId: string, 
+trackId: string, startMs: number, 
+/**
+ * Fetch the track straight into playback rather than read it from
+ * the cache, unless the cache already holds all of it.
+ */
+stream: boolean, } | { "type": "setNext", guildId: string, trackId: string, stream: boolean, } | { "type": "clearNext", guildId: string, } | { "type": "skip", guildId: string, } | { "type": "stop", guildId: string, } | { "type": "pause", guildId: string, } | { "type": "resume", guildId: string, } | { "type": "seek", guildId: string, positionMs: number, } | { "type": "setVolume", guildId: string, gain: number, } | { "type": "setMainVolume", guildId: string, gain: number, } | { "type": "addLayer", guildId: string, 
 /**
  * Chosen by the bot, and how every later layer command and event
  * names this one.
  */
-layerId: string, trackId: string, gain: number, startMs: number, } | { "type": "removeLayer", guildId: string, layerId: string, } | { "type": "setLayerVolume", guildId: string, layerId: string, gain: number, } | { "type": "swapLayer", guildId: string, layerId: string, } | { "type": "setFades", guildId: string, crossfadeMs: number, skipFadeMs: number, } | { "type": "listSessions" } | { "type": "shutdown" };
+layerId: string, trackId: string, gain: number, startMs: number, stream: boolean, } | { "type": "removeLayer", guildId: string, layerId: string, } | { "type": "setLayerVolume", guildId: string, layerId: string, gain: number, } | { "type": "swapLayer", guildId: string, layerId: string, } | { "type": "setFades", guildId: string, crossfadeMs: number, skipFadeMs: number, } | { "type": "listSessions" } | { "type": "shutdown" };
 
 /**
  * What this process reports back.

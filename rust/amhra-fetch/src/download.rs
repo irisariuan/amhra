@@ -14,8 +14,8 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use amhra_audio::CacheIndexer;
-use futures_util::StreamExt;
+use amhra_audio::{CacheIndexer, StreamWriter};
+use futures_util::{Stream, StreamExt};
 use tokio::io::AsyncWriteExt;
 
 use crate::format::AudioFormat;
@@ -39,6 +39,9 @@ pub enum DownloadError {
 	ChunkFailed { offset: u64, attempts: u32, source: reqwest::Error },
 	#[error("download produced no bytes")]
 	Empty,
+	/// A stream's listener went away, so the rest is not worth fetching.
+	#[error("nobody is listening any more")]
+	Abandoned,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -130,28 +133,13 @@ async fn run(
 		tokio::fs::create_dir_all(parent).await?;
 	}
 
-	// `contentLength` is normally present; when it is not, one probing range
-	// reveals the total from the Content-Range header.
-	let total = match format.content_length {
-		0 => probe_length(client, &format.url, user_agent).await?,
-		known => known,
-	};
+	let total = content_length(client, format, user_agent).await?;
 
 	let mut file = tokio::fs::File::create(&paths.temp_music).await?;
 	let mut indexer = CacheIndexer::create(&paths.temp_index)?;
 	let mut written = 0u64;
 
-	let ranges: Vec<(u64, u64)> = (0..total)
-		.step_by(options.chunk_size as usize)
-		.map(|start| (start, (start + options.chunk_size).min(total) - 1))
-		.collect();
-
-	let mut chunks = futures_util::stream::iter(ranges)
-		.map(|(start, end)| {
-			fetch_range(client, &format.url, user_agent, start, end, options.attempts)
-		})
-		.buffered(options.concurrency);
-
+	let mut chunks = chunks(client, &format.url, user_agent, 0, total, options);
 	while let Some(chunk) = chunks.next().await {
 		let bytes = chunk?;
 		file.write_all(&bytes).await?;
@@ -182,6 +170,72 @@ async fn run(
 		duration_ms: if summary.duration_ms > 0 { summary.duration_ms } else { format.duration_ms },
 		elapsed: Duration::ZERO,
 	})
+}
+
+/// Fetch `format` from byte `offset` to the end, handing each chunk to
+/// `writer` instead of the cache. Returns the track's total size.
+///
+/// Nothing touches the disk and nothing is indexed: the reader on the other
+/// end demuxes the bytes itself, and keeps them only as long as it is loaded.
+/// Starting past zero is how a stream refused part-way through carries on
+/// under another client's URL for the same format without replaying a byte.
+pub async fn stream(
+	client: &reqwest::Client,
+	format: &AudioFormat,
+	user_agent: &str,
+	offset: u64,
+	options: DownloadOptions,
+	writer: &mut StreamWriter,
+) -> Result<u64, DownloadError> {
+	let total = content_length(client, format, user_agent).await?;
+	if offset == 0 {
+		writer.expect(total);
+	}
+	let mut chunks = chunks(client, &format.url, user_agent, offset, total, options);
+	while let Some(chunk) = chunks.next().await {
+		if !writer.push(&chunk?) {
+			return Err(DownloadError::Abandoned);
+		}
+	}
+	Ok(total)
+}
+
+/// The size of the file behind `format`.
+///
+/// `contentLength` is normally present; when it is not, one probing range
+/// reveals the total from the Content-Range header.
+pub async fn content_length(
+	client: &reqwest::Client,
+	format: &AudioFormat,
+	user_agent: &str,
+) -> Result<u64, DownloadError> {
+	match format.content_length {
+		0 => probe_length(client, &format.url, user_agent).await,
+		known => Ok(known),
+	}
+}
+
+/// The byte ranges covering `start..total`, in order.
+fn ranges(start: u64, total: u64, chunk_size: u64) -> Vec<(u64, u64)> {
+	(start..total)
+		.step_by(chunk_size as usize)
+		.map(|from| (from, (from + chunk_size).min(total) - 1))
+		.collect()
+}
+
+/// Every chunk from `start` to the end, fetched several at a time and yielded
+/// in file order.
+fn chunks<'a>(
+	client: &'a reqwest::Client,
+	url: &'a str,
+	user_agent: &'a str,
+	start: u64,
+	total: u64,
+	options: DownloadOptions,
+) -> impl Stream<Item = Result<bytes::Bytes, DownloadError>> + 'a {
+	futures_util::stream::iter(ranges(start, total, options.chunk_size))
+		.map(move |(from, to)| fetch_range(client, url, user_agent, from, to, options.attempts))
+		.buffered(options.concurrency)
 }
 
 /// Name a non-206 response for what it actually is.
@@ -297,10 +351,7 @@ mod tests {
 	fn ranges_cover_the_file_exactly() {
 		let total = 2_500_000u64;
 		let chunk = 1u64 << 20;
-		let ranges: Vec<(u64, u64)> = (0..total)
-			.step_by(chunk as usize)
-			.map(|start| (start, (start + chunk).min(total) - 1))
-			.collect();
+		let ranges = ranges(0, total, chunk);
 
 		assert_eq!(ranges.len(), 3);
 		assert_eq!(ranges[0], (0, 1_048_575));
@@ -309,6 +360,13 @@ mod tests {
 		assert_eq!(covered, total);
 		// No overlaps: an overlap would corrupt the file with duplicated bytes.
 		assert!(ranges.windows(2).all(|pair| pair[0].1 + 1 == pair[1].0));
+	}
+
+	#[test]
+	fn ranges_can_resume_part_way_without_overlap() {
+		let ranges = ranges(1_500_000, 2_500_000, 1 << 20);
+		assert_eq!(ranges, [(1_500_000, 2_499_999)]);
+		assert!(super::ranges(2_500_000, 2_500_000, 1 << 20).is_empty());
 	}
 
 	#[test]

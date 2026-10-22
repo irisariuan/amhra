@@ -98,6 +98,7 @@ fn playing_without_a_connection_is_refused_before_the_cache_is_consulted() {
 		guild_id: "1".to_owned(),
 		track_id: "does-not-exist".to_owned(),
 		start_ms: 0,
+		stream: false,
 	});
 	let Event::Error { guild_id, message } = sidecar.next_event() else {
 		panic!("expected an error");

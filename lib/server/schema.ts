@@ -324,6 +324,7 @@ export const GlobalSettingSchema = z
 		USE_NATIVE_FETCH: z.boolean().optional(),
 		NATIVE_FETCH_BIN: z.string().optional(),
 		USE_RUST_VOICE: z.boolean().optional(),
+		NATIVE_NO_CACHE: z.boolean().optional(),
 		NATIVE_VOICE_BIN: z.string().optional(),
 		AUTO_SCHEDULE_PREMIERES: z.boolean().optional(),
 		LYRICS_DELAY_MS: z.number().int().min(-10_000).max(10_000).optional(),
