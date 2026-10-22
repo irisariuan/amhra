@@ -406,6 +406,33 @@ mod tests {
 		assert_eq!(silent.lang, None);
 	}
 
+	/// The spotter ships its own keywords spelled by SentencePiece. Spelling
+	/// the same phrases here must give the same pieces, or keywords encode to
+	/// sequences the model never emits and silently never fire — which is
+	/// what treating its unigram model as BPE once did.
+	///
+	/// Needs the models (`scripts/download-voice-models.sh`); skipped, not
+	/// failed, without them, as in CI.
+	#[test]
+	fn spelling_matches_the_models_own_keywords() {
+		let models = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../models/voice");
+		let paths = ModelPaths::under(&models);
+		let kws = paths.kws_tokens.parent().unwrap().to_owned();
+		let (Ok(raw), Ok(reference)) = (
+			std::fs::read_to_string(kws.join("keywords_raw.txt")),
+			std::fs::read_to_string(kws.join("keywords.txt")),
+		) else {
+			eprintln!("skipping: no models in {}", models.display());
+			return;
+		};
+		let vocabulary = Vocabulary::from_sentencepiece(&read(&paths.kws_bpe).unwrap()).unwrap();
+		let tokens = keywords::token_set(&String::from_utf8_lossy(&read(&paths.kws_tokens).unwrap()));
+		let lines = keywords::spotter_lines(&keywords::parse(&raw).unwrap(), &vocabulary, &tokens, 1.5, 0.25).unwrap();
+		let ours: Vec<&str> = lines.lines().map(|line| line.split(" :").next().unwrap()).collect();
+		let theirs: Vec<&str> = reference.lines().map(str::trim).filter(|line| !line.is_empty()).collect();
+		assert_eq!(ours, theirs);
+	}
+
 	#[test]
 	fn a_missing_model_is_named() {
 		let error = load(&SherpaConfig::new(PathBuf::from("/nonexistent"), "AMHRA".to_owned())).err().unwrap();

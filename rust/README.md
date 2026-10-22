@@ -287,11 +287,21 @@ If a model is missing, or the build lacks the feature, the sidecar sends one
 `error` event and plays on without voice commands. Loading takes about half a
 second, and the process then holds about 570MB, nearly all of it SenseVoice.
 
-The keywords file holds plain phrases. They are spelled into the spotter's BPE
+The keywords file holds plain phrases. They are spelled into the spotter's word
 pieces at load, using the model's own `bpe.model`, because sherpa-onnx only
 reads pre-tokenised keywords. Every line is checked first: a token the model
 lacks makes sherpa-onnx exit the process, and here that would end playback in
 every guild. `:boost` and `#threshold` after a phrase tune it alone.
+
+Spell how the name *sounds*. It is said "em-ha-ra", and to this model "em" is
+the letter M, so the line is `M HARA`; `EMHARA` spells as `▁E M HA RA`, which
+nobody says. `wake_wav --spell` prints how each line will be read.
+
+Despite its name, that `bpe.model` is a SentencePiece *unigram* model, which
+splits words differently from BPE. Spelling it as BPE produced piece sequences
+the model never emits, and those keywords never fired. The spelling is now
+checked against the reference keywords the model ships with, in a test that
+runs whenever the models are present.
 
 ### Models
 
@@ -369,7 +379,7 @@ All on an Apple M5 Pro, release build. The corpus was synthesised with macOS
 `say`: 16 English voices, 6 Japanese, 5 Korean and 5 Taiwanese Mandarin. Each
 says the name followed by a command, or the name alone. There are also 25
 minutes of negatives: chatter in all four languages, plus near-miss sentences
-("camera", "Tamra and Amy", "Alhambra", "Omar"…).
+("camera", "Tamra and Amy", "Alhambra", "Omar", "Hamra street"…).
 
 | | |
 | --- | --- |
@@ -378,29 +388,34 @@ minutes of negatives: chatter in all four languages, plus near-miss sentences
 | end of speech → text | **median 645ms, p90 695ms, max 719ms**: 500ms of that is the silence that marks the end |
 | spotter lag | 280–480ms after the keyword ends |
 
-Detection, with the committed `data/wake-keywords.txt`:
+Detection of "em-ha-ra", with the committed `data/wake-keywords.txt` (`M
+HARA #0.1`). Each voice said it before a command (6 clips) and alone (1):
 
 | | woke | notes |
 | --- | --- | --- |
-| English, voices that say "Amra" | **40/42** | Samantha, Reed, Moira, Grandpa, Eddy, Shelley, Rishi |
-| English, all 16 voices | 57/96 | the rest say "Ara", "Era" or "Aal", with no m |
-| Korean | 12/15 | 암라, heard as [amna] |
-| Mandarin | 7/15 | 阿姆拉 |
-| Japanese | 3/18 | the voices say アムラ as something close to "amu" |
-| false wakes | **4 in 25 minutes** | 3 on near-miss sentences, 1 in ordinary Korean chatter; none in English, Japanese or Mandarin chatter |
+| English, 7 voices that say it clearly | **39/49** | Samantha, Shelley, Rishi, Flo, Daniel 6/7 each; Eddy 5, Reed 4 |
+| English, all 16 voices | 45/112 | Sandy, Rocko, Moira, Grandpa and Fred: 0/7; they say "M-ra" or "gara" |
+| Japanese, Korean, Mandarin voices | 0/59 | エムハラ, 엠하라, 艾姆哈拉: no spelling found them |
+| false wakes | **0 in 25 minutes** | chatter in four languages plus near-miss sentences, at every threshold down to 0.02 |
+
+The threshold is set low because nothing false fired even at 0.02, and recall
+stops climbing at 0.1. The limit is the model. It is a 3.3M-parameter English
+(GigaSpeech) spotter, and it does not follow the name as the Japanese, Korean
+and Mandarin voices say it. Every alternative spelling tried (`EMU HARA`,
+`M HALA`, `AIM HALA`…) found none of them.
 
 How to read these. TTS voices invent their own pronunciation of a made-up
 name, so these numbers show how the pipeline behaves, not how well it hears
-real people. Real users say the name consistently, which is what the "say
-Amra" row is closest to. Adding a spelling that matches how the server says
-it is the first fix for misses. Every extra spelling, and every lower
-threshold, buys recall with false wakes.
+real people. The first fix for misses is recordings of the server's own
+members, from `record_users --keep-gaps` and checked with `wake_wav`: test
+spellings against how they actually say it. Every extra spelling, and every
+lower threshold, buys recall with false wakes.
 
-Transcripts are good in English (mean text similarity 0.88 to the script, the
-name aside). They are poor for Korean from the novelty voices: Yuna's were
-good, Eddy's and Flo's gibberish. Short windows are sometimes taken for the
-wrong language. Pinning the language per guild is a phase C option, since
-SenseVoice accepts one.
+Transcripts of the command after the name are good in English (mean text
+similarity 0.89 to the script). On the earlier corpus they were poor for
+Korean from the novelty voices; Yuna's were good, Eddy's and Flo's gibberish.
+Short windows are sometimes taken for the wrong language. Pinning the language
+per guild is a phase C option, since SenseVoice accepts one.
 
 **Not measured:**
 

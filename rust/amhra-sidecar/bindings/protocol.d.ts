@@ -19,7 +19,7 @@ export type Event = { "type": "hello", version: number, pid: number, } | { "type
  */
 lang: string | null, 
 /**
- * Which phrase from the keywords file woke it, e.g. `AMHRA`.
+ * Which phrase from the keywords file woke it, e.g. `M HARA`.
  */
 wakeKeyword: string, 
 /**

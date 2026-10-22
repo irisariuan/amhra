@@ -11,7 +11,7 @@
 //!
 //! with `DEV_TOKEN` in the environment, run from the repository root so the
 //! default `--models models/voice` and `--keywords data/wake-keywords.txt`
-//! resolve. Then say "Amhra, skip this song" in the channel. `--threshold`
+//! resolve. Then say "em-ha-ra, skip this song" in the channel. `--threshold`
 //! overrides the keyword threshold for a session of tuning.
 
 use std::sync::{Arc, Mutex};
@@ -347,7 +347,7 @@ async fn main() {
 						}
 						listener = Some(fresh);
 						deadline = Some(Instant::now() + Duration::from_secs(args.seconds));
-						println!("listening for {}s — say \"Amhra, skip this song\"", args.seconds);
+						println!("listening for {}s — say \"em-ha-ra, skip this song\"", args.seconds);
 					}
 					Event::Dave { opcode, data, payload } => {
 						let Some(driver) = dave.as_ref() else { continue };

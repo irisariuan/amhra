@@ -10,11 +10,7 @@
 #                 more readily, and falsely more often
 #
 # The model hears sounds, not spellings, so each line is a way of *saying* the
-# name. Tuned on synthesised speech (rust/README.md has the numbers):
-AMRA #0.2
-# What English speakers mostly say; the spelling itself rarely matches alone.
-AMHRA
-# 암라, as Korean pronounces it.
-AMNA #0.2
-# 阿姆拉, as Mandarin pronounces it.
-AMULA #0.2
+# name, written in English letters. The name is said "em-ha-ra", and to this
+# model "em" is the letter M: EMHARA spells as E-M-HA-RA, which nobody says.
+# Tuned on synthesised speech (rust/README.md has the numbers).
+M HARA #0.1

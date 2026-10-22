@@ -123,7 +123,7 @@ pub enum Event {
 		/// The language the recogniser detected: `en`, `ja`, `ko`, `zh` or
 		/// `yue`, or null when it could not tell.
 		lang: Option<String>,
-		/// Which phrase from the keywords file woke it, e.g. `AMHRA`.
+		/// Which phrase from the keywords file woke it, e.g. `M HARA`.
 		wake_keyword: String,
 		/// From the end of their speech to the text being ready, including the
 		/// half second of silence that marks a command as finished.

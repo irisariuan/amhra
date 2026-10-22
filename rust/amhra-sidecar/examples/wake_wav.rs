@@ -14,6 +14,8 @@
 //! without editing the keywords file, `--keywords` points at another list, and
 //! `--preroll-ms` moves the start of the window and `--recogniser-threads` sets
 //! how many threads speech recognition gets.
+//! `--spell` prints the keywords as the spotter will read them, word pieces and
+//! all, and exits.
 //! `--whole` also transcribes each file entire, ungated, for comparison.
 //! `--dump <dir>` writes every captured window out as a WAV, to hear exactly
 //! what the recogniser was given. The last line is the throughput: how much of one core the spotter and VAD
@@ -42,6 +44,7 @@ struct Args {
 	threads: Option<i32>,
 	tail_ms: u32,
 	verbose: bool,
+	spell: bool,
 	dump: Option<PathBuf>,
 	whole: bool,
 	gate: GateConfig,
@@ -57,6 +60,7 @@ fn args() -> Args {
 		threads: None,
 		tail_ms: 1500,
 		verbose: false,
+		spell: false,
 		dump: None,
 		whole: false,
 		gate: GateConfig::default(),
@@ -73,6 +77,7 @@ fn args() -> Args {
 			"--recogniser-threads" => args.threads = Some(value().parse().expect("--recogniser-threads takes a number")),
 			"--tail-ms" => args.tail_ms = value().parse().expect("--tail-ms takes a number"),
 			"--verbose" => args.verbose = true,
+			"--spell" => args.spell = true,
 			"--dump" => args.dump = Some(value().into()),
 			"--whole" => args.whole = true,
 			"--preroll-ms" => args.gate.preroll_ms = value().parse().expect("--preroll-ms takes a number"),
@@ -80,7 +85,7 @@ fn args() -> Args {
 			file => args.files.push(file.into()),
 		}
 	}
-	assert!(!args.files.is_empty(), "name at least one WAV file");
+	assert!(args.spell || !args.files.is_empty(), "name at least one WAV file");
 	args
 }
 
@@ -143,6 +148,19 @@ fn main() {
 	}
 	if let Some(threads) = args.threads {
 		config.recogniser_threads = threads;
+	}
+
+	if args.spell {
+		let kws = sherpa::ModelPaths::under(&config.models);
+		let read = |path: &std::path::Path| std::fs::read(path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
+		let vocabulary = voice_commands::keywords::Vocabulary::from_sentencepiece(&read(&kws.kws_bpe)).unwrap();
+		let tokens = voice_commands::keywords::token_set(&String::from_utf8_lossy(&read(&kws.kws_tokens)));
+		let keywords = voice_commands::keywords::parse(&config.keywords).unwrap_or_else(|error| panic!("{error}"));
+		match voice_commands::keywords::spotter_lines(&keywords, &vocabulary, &tokens, config.keyword_boost, config.keyword_threshold) {
+			Ok(lines) => print!("{lines}"),
+			Err(error) => println!("{error}"),
+		}
+		return;
 	}
 
 	let loading = Instant::now();

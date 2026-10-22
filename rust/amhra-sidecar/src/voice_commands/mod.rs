@@ -42,7 +42,7 @@ pub const FRAME_SAMPLES: usize = amhra_voice::receive::SAMPLES_PER_FRAME;
 /// A wake word found in a stream.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Detection {
-	/// The phrase as written in the keywords file, e.g. `HEY AMHRA`.
+	/// The phrase as written in the keywords file, e.g. `M HARA`.
 	pub keyword: String,
 	/// How long ago, in samples, the keyword ended, measured back from the end
 	/// of the audio fed so far. A streaming model only becomes sure of a word
