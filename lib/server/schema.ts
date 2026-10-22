@@ -250,5 +250,7 @@ export const GlobalSettingSchema = z
 		VOICE_WAIT_FOR_COMMAND_MS: z.number().int().min(500).max(10000).optional(),
 		VOICE_END_SILENCE_MS: z.number().int().min(200).max(3000).optional(),
 		VOICE_MAX_COMMAND_MS: z.number().int().min(2000).max(20000).optional(),
+		VOICE_INTENT_MODEL_URL: z.string().optional(),
+		VOICE_INTENT_MODEL: z.string().optional(),
 	})
 	.passthrough();

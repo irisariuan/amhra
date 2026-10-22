@@ -542,6 +542,8 @@ starts:
 | `VOICE_WAIT_FOR_COMMAND_MS` | `2500` | how long after the name to wait for the command; a pause for the chime does not end it within this |
 | `VOICE_END_SILENCE_MS` | `500` | silence that ends a command; all of it is added to the wait for an answer |
 | `VOICE_MAX_COMMAND_MS` | `8000` | the longest command |
+| `VOICE_INTENT_MODEL_URL` | empty | an OpenAI-compatible server whose model reads every command; empty, the word matching does |
+| `VOICE_INTENT_MODEL` | `mlx-community/Qwen3-4B-4bit` | the model that server uses |
 
 - **Per-server opt-in.** `/voicecommands enabled:true`, by default for members
   with Manage Server, kept in `data/guildSetting.json` (gitignored). It takes
@@ -560,6 +562,28 @@ starts:
   first or last. The words are in each `data/lang/*.json` under `voice`.
   `test/voiceIntent.test.ts` holds the live transcripts and the near misses
   that must not trigger.
+- **Or a model reads it** (`lib/voice/intentModel.ts`). With
+  `VOICE_INTENT_MODEL_URL` set, every transcript goes to a language model on
+  the same machine, which answers with one of the bot's commands or none. If
+  it does not answer within 3s, the word matching does. To run one on a Mac:
+
+  ```bash
+  uv run --with mlx-lm mlx_lm.server --model mlx-community/Qwen3-4B-4bit --port 8085
+  ```
+
+  and set the URL to `http://127.0.0.1:8085/v1`. LM Studio and Ollama serve
+  the same API. Qwen3 4B takes about 2.4GB and answers in about 100ms
+  through the server, 1s for the first command.
+
+  It understands requests the word lists do not: of 9 new phrasings ("turn it
+  off", "get out of the call", "I want to hear bad guy by Billie Eilish",
+  "A play expectations by Olro Drigo."), it read every one the word lists
+  read and 5 they could not, and left 3 bits of chatter alone. It is worse at
+  what the recogniser garbles: on 82 labelled live transcripts and near
+  misses, it got 58 right where the word lists got 73, took "live this song"
+  and 下一首歌是什么 ("what is the next song") for commands, and read "play
+  the song" as a search for a song called that. Qwen3 1.7B got 47, and a 27B
+  model 69 at 343ms and 15GB.
 - **Answering the name.** The moment the spotter hears it, the guild's audio
   thread mixes in a half-second chime (two rising sine notes, synthesised in
   `wake_feedback.rs`), over the music or alone if nothing is playing, and

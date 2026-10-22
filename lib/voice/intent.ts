@@ -57,6 +57,11 @@ const RECOGNISER_LANGUAGES: Record<string, Language> = {
 	yue: Language.TraditionalChinese,
 };
 
+/** The bot's language for one the recogniser reported, if it has one. */
+export function recogniserLanguage(lang: string | null): Language | undefined {
+	return lang ? RECOGNISER_LANGUAGES[lang] : undefined;
+}
+
 /** Every language with a vocabulary, the reported one first. */
 const ALL_LANGUAGES = [
 	Language.English,
@@ -80,7 +85,7 @@ export function parseVoiceCommand(
 	lang: string | null,
 	vocabularyOf: (language: Language) => VoiceVocabulary | null = languageVoice,
 ): VoiceIntent | null {
-	const reported = lang ? RECOGNISER_LANGUAGES[lang] : undefined;
+	const reported = recogniserLanguage(lang);
 	const order = reported
 		? [reported, ...ALL_LANGUAGES.filter((language) => language !== reported)]
 		: ALL_LANGUAGES;

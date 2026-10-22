@@ -142,4 +142,12 @@ export interface Setting {
 	VOICE_END_SILENCE_MS?: number;
 	/** The longest command, in ms. Defaults to 8000. */
 	VOICE_MAX_COMMAND_MS?: number;
+	/**
+	 * An OpenAI-compatible server on this machine, as `http://host:port/v1`,
+	 * whose model decides what every voice command asks for. Unset, the
+	 * word matching does; it also answers whenever the server does not.
+	 */
+	VOICE_INTENT_MODEL_URL?: string;
+	/** The model that server should use. Defaults to Qwen3 4B in MLX. */
+	VOICE_INTENT_MODEL?: string;
 }

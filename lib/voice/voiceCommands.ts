@@ -12,7 +12,7 @@ import { languageText, parseLocale } from "../language";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { userSetting } from "../userSetting";
-import { parseVoiceCommand } from "./intent";
+import { readIntent } from "./intentModel";
 import { getNativeConnection } from "./native";
 import { type SidecarEvent, sidecar } from "./sidecar";
 import { voiceInteraction } from "./voiceInteraction";
@@ -165,10 +165,12 @@ async function onUtterance(
 	const { guild, member } = found;
 	const showTranscript = userSetting(userId).showTranscript === true;
 
-	const intent = parseVoiceCommand(text, lang);
+	const { intent, by } = await readIntent(text, lang);
 	// What was said stays out of the log, as it does in the sidecar's, unless
 	// the owner is tuning the matching and asked for it.
-	const heard = readSetting().VOICE_LOG_TRANSCRIPTS ? `: [${lang ?? "?"}] ${JSON.stringify(text)}` : "";
+	const heard = readSetting().VOICE_LOG_TRANSCRIPTS
+		? `: [${lang ?? "?"}] ${JSON.stringify(text)} (read by the ${by === "model" ? "model" : "word matching"})`
+		: "";
 	const command = intent && lookup(intent.command);
 	const channel = replyChannel(client, guild, member);
 
