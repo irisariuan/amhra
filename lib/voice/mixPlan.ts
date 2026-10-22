@@ -50,6 +50,19 @@ export class GuildMix {
 		return added;
 	}
 
+	/**
+	 * Put a new layer where `id` was, so a replaced song keeps its number in
+	 * `/mix list`. It still gets a fresh id: the old one's `layerFinished` may
+	 * yet arrive. Null if `id` is not listed.
+	 */
+	replace(id: string, layer: Omit<MixLayer, "id">): MixLayer | null {
+		const index = this.layers.findIndex((layer) => layer.id === id);
+		if (index < 0) return null;
+		const replaced = { ...layer, id: String(this.nextId++) };
+		this.layers[index] = replaced;
+		return replaced;
+	}
+
 	/** The layer at a 1-based position in `list()`. */
 	at(position: number): MixLayer | undefined {
 		if (!Number.isInteger(position) || position < 1) return undefined;

@@ -293,6 +293,32 @@ export function nativeRemoveLayer(guildId: string, layer: MixLayer) {
 	send(guildId, { type: "removeLayer", guildId, layerId: layer.id });
 }
 
+/**
+ * Swap a layer's song for another, at the same volume and place in the list.
+ * Null when `layer` is no longer mixed in.
+ */
+export function nativeReplaceLayer(
+	guildId: string,
+	layer: MixLayer,
+	track: Omit<MixLayer, "id" | "volume">,
+): MixLayer | null {
+	const replaced = getMix(guildId).replace(layer.id, {
+		...track,
+		volume: layer.volume,
+	});
+	if (!replaced) return null;
+	send(guildId, { type: "removeLayer", guildId, layerId: layer.id });
+	send(guildId, {
+		type: "addLayer",
+		guildId,
+		layerId: replaced.id,
+		trackId: replaced.trackId,
+		gain: gainFromPercent(replaced.volume),
+		startMs: 0,
+	});
+	return replaced;
+}
+
 /** How long to wait for the sidecar to confirm a swap before giving up on it. */
 const SWAP_TIMEOUT_MS = 3_000;
 
