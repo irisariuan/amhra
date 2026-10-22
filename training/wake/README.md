@@ -167,6 +167,32 @@ positives: ten takes from one voice, and synthetic voices for the rest. The
 threshold barely matters for the chosen model: 0.15 to 0.3 give the same
 9/11 and 3 false wakes.
 
+### Room echo
+
+Spoken away from the microphone, the name comes with the room's echo, and
+`kws-emhara` hears it about half as often: 12 of 45 collected wake clips
+through a simulated room, against 24 clean. Quieter alone costs little (20
+of 45 at a tenth of the level). `prepare.py --echo` trains on echo copies,
+and `evaluate.py --echo` scores through different simulated rooms. The
+held-out takes are now joined with 4s of silence, longer than the gate's
+2.5s wait for a command; with 1.5s the next name fell inside the open
+window and went unheard, which is why `kws-emhara` scores 6/11 here and
+9/11 in the table above.
+
+| model | held-out takes | with echo | 45 clips, echo | other speakers, echo | false wakes / hour |
+| --- | --- | --- | --- | --- | --- |
+| `kws-emhara` | 6/11 | 9/11 | 12/45 | 1/4 | 5.6 |
+| echo, epoch 1 | 10/11 | 10/11 | 19/45 | 4/4 | 16.7 |
+| echo, epoch 1, threshold 0.45 | 4/11 | 6/11 | 6/45 | | 5.6 |
+| echo, epoch 2 | 10/11 | 8/11 | 26/45 | 3/4 | 38.9 |
+| echo + 56 collected clips, epoch 1 | 8/11 | 10/11 | (trained on) | 3/4 | 25.9 |
+
+Echo makes the spotter hear more of the name and more of everything else:
+at `kws-emhara`'s false-wake rate it hears less than `kws-emhara` does. The
+other speakers are 4 clips from 2 members, too few to rely on. Adding the
+collected clips (one voice, `--extra`) raised false wakes without raising
+recall on anything held out.
+
 Every number here is one speaker. Before relying on it, record a few more
 members and score again; their takes are both the best training data and the
 only honest test.

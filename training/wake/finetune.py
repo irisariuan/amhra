@@ -17,8 +17,9 @@ of NCCL.
 Checkpoints land in training/wake/work/exp; export.sh turns one into the ONNX
 files the sidecar loads; with little real data an early epoch is usually
 best (see README.md). Any further arguments are passed through,
-for example `--max-duration 200` if memory is short, or `--start-epoch 4
---continue-finetune 1` to resume.
+for example `--max-duration 200` if memory is short, `--exp-dir` to keep
+another run's checkpoints, or `--start-epoch 4 --continue-finetune 1` to
+resume. `--data <dir>` trains on prepare.py's output from its `--out`.
 """
 
 import os
@@ -27,7 +28,12 @@ from pathlib import Path
 
 WORK = Path(__file__).resolve().parent / "work"
 RECIPE = WORK / "icefall" / "egs" / "gigaspeech" / "KWS" / "zipformer"
-MANIFESTS = WORK / "data" / "manifests"
+# Read when the data is loaded, in each spawned worker too, which inherit the
+# environment but not what main() set.
+def manifests():
+	return Path(os.environ.get("WAKE_DATA", WORK / "data")) / "manifests"
+
+
 sys.path[:0] = [str(WORK / "icefall"), str(RECIPE)]
 os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
 
@@ -47,13 +53,13 @@ class WakeData(GigaSpeechAsrDataModule):
 	"""The recipe's data module, reading our manifests instead."""
 
 	def train_cuts(self):
-		return load_manifest(MANIFESTS / "general.jsonl.gz")
+		return load_manifest(manifests() / "general.jsonl.gz")
 
 	def fsc_train_cuts(self):
-		return load_manifest(MANIFESTS / "wake_train.jsonl.gz")
+		return load_manifest(manifests() / "wake_train.jsonl.gz")
 
 	def fsc_valid_cuts(self):
-		return load_manifest(MANIFESTS / "wake_valid.jsonl.gz")
+		return load_manifest(manifests() / "wake_valid.jsonl.gz")
 
 
 def setup_cpu_dist(rank, world_size, master_port=None, use_ddp_launch=False):
@@ -88,6 +94,11 @@ MODEL = [
 
 
 def main():
+	passed = sys.argv[1:]
+	if "--data" in passed:
+		at = passed.index("--data")
+		os.environ["WAKE_DATA"] = str(Path(passed[at + 1]).resolve())
+		del passed[at : at + 2]
 	performance_cores = os.popen("sysctl -n hw.perflevel0.physicalcpu 2>/dev/null").read().strip()
 	workers = int(performance_cores) if performance_cores.isdigit() else max(1, (os.cpu_count() or 2) // 2)
 	sys.argv = [
@@ -109,7 +120,7 @@ def main():
 		"--enable-musan", "0",
 		"--num-workers", "1",
 		*MODEL,
-		*sys.argv[1:],
+		*passed,
 	]
 	recipe.main()
 
