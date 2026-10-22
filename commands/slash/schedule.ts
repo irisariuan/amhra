@@ -19,6 +19,7 @@ import {
 	respondToSchedule,
 } from "../../lib/voice/schedule";
 import { parseScheduleTime } from "../../lib/voice/schedulePlan";
+import { indexChoices } from "../../lib/autocompletePlan";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -56,9 +57,21 @@ export default {
 						.setName("index")
 						.setDescription("The number shown by /schedule list")
 						.setMinValue(1)
-						.setRequired(true),
+						.setRequired(true)
+						.setAutocomplete(true),
 				),
 		),
+	async autocomplete({ interaction, language }) {
+		// Only cancel's "index" is autocompleted.
+		const labels = interaction.guildId
+			? listSchedules(interaction.guildId).map(
+					(entry) =>
+						entry.title +
+						(entry.premiere ? languageText("schedule_premiere_tag", language) : ""),
+				)
+			: [];
+		return interaction.respond(indexChoices(labels, interaction.options.getFocused()));
+	},
 	async execute({ interaction, client, language }) {
 		if (!interaction.guild)
 			return await interaction.reply({
