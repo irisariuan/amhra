@@ -52,6 +52,10 @@ pub struct SherpaConfig {
 	/// 294ms on one thread, 153ms on two, 83ms on four. Two leaves the cores
 	/// to the audio threads, which must not miss a 20ms tick.
 	pub recogniser_threads: i32,
+	/// Where the recogniser runs. The spotter and the VAD stay on the CPU:
+	/// they take 20ms at a time from every speaker, which is the worst case
+	/// for handing work to another device.
+	pub recogniser_provider: Provider,
 	/// A fine-tuned keyword spotter to use instead of the stock one: a
 	/// directory laid out by `training/wake/export.sh`.
 	pub spotter: Option<PathBuf>,
@@ -66,7 +70,48 @@ impl SherpaConfig {
 			keyword_threshold: 0.25,
 			vad_threshold: 0.5,
 			recogniser_threads: 2,
+			recogniser_provider: Provider::Cpu,
 			spotter: None,
+		}
+	}
+}
+
+/// Where onnxruntime runs a model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Provider {
+	#[default]
+	Cpu,
+	/// Apple's Core ML, which picks among the CPU, the GPU and the Neural
+	/// Engine. Measured on the int8 SenseVoice over 15 real commands, it
+	/// averaged 52ms against 41ms for two CPU threads of the same build: most
+	/// of a quantised model's operations are not ones Core ML runs, so it
+	/// keeps handing them back.
+	CoreMl,
+}
+
+impl Provider {
+	pub fn parse(name: &str) -> Option<Self> {
+		match name.to_ascii_lowercase().as_str() {
+			"cpu" => Some(Self::Cpu),
+			"coreml" => Some(Self::CoreMl),
+			_ => None,
+		}
+	}
+
+	pub fn name(self) -> &'static str {
+		match self {
+			Self::Cpu => "cpu",
+			Self::CoreMl => "coreml",
+		}
+	}
+
+	/// Whether this build can run it. The static onnxruntime that is linked
+	/// by default has no Core ML in it, and sherpa-onnx would quietly fall
+	/// back to the CPU rather than say so.
+	pub fn available(self) -> bool {
+		match self {
+			Self::Cpu => true,
+			Self::CoreMl => cfg!(all(feature = "shared-onnxruntime", target_os = "macos")),
 		}
 	}
 }
@@ -156,7 +201,7 @@ pub fn load(config: &SherpaConfig) -> Result<(Arc<SherpaModels>, SenseVoice), Mo
 	let paths = ModelPaths::of(config);
 	paths.check()?;
 	let models = SherpaModels::load(&paths, config)?;
-	let recogniser = SenseVoice::load(&paths, config.recogniser_threads)?;
+	let recogniser = SenseVoice::load(&paths, config.recogniser_threads, config.recogniser_provider)?;
 	Ok((Arc::new(models), recogniser))
 }
 
@@ -319,7 +364,7 @@ const PADDING_MS: u32 = 300;
 unsafe impl Send for SenseVoice {}
 
 impl SenseVoice {
-	pub fn load(paths: &ModelPaths, threads: i32) -> Result<Self, ModelError> {
+	pub fn load(paths: &ModelPaths, threads: i32, provider: Provider) -> Result<Self, ModelError> {
 		let cstring = |text: String| {
 			CString::new(text).map_err(|_| ModelError::Load {
 				what: "SenseVoice",
@@ -329,7 +374,7 @@ impl SenseVoice {
 		let model = cstring(path_string(&paths.stt_model))?;
 		let tokens = cstring(path_string(&paths.stt_tokens))?;
 		let language = cstring("auto".to_owned())?;
-		let provider = cstring("cpu".to_owned())?;
+		let provider = cstring(provider.name().to_owned())?;
 		let decoding = cstring("greedy_search".to_owned())?;
 
 		// SAFETY: the config is plain C data — pointers, integers and floats —

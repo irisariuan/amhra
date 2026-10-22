@@ -170,6 +170,22 @@
    "maximum": 1,
    "default": 0.3,
    "description": "Music volume, as a fraction, from when the bot hears its name until the command has been heard. Default 0.3; 1 leaves the music alone. Restart to apply"
+  },
+  "VOICE_RECOGNISER_PROVIDER": {
+   "type": "string",
+   "enum": [
+    "cpu",
+    "coreml"
+   ],
+   "default": "cpu",
+   "description": "Where speech recognition runs. coreml needs a sidecar built with --features shared-onnxruntime on macOS (otherwise it stays on cpu), and measured slower than cpu on this model. Restart to apply"
+  },
+  "VOICE_RECOGNISER_THREADS": {
+   "type": "integer",
+   "minimum": 1,
+   "maximum": 32,
+   "default": 2,
+   "description": "Threads for speech recognition; more makes each command faster (4 roughly halves it). Restart to apply"
   }
  },
  "required": [

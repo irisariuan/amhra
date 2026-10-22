@@ -30,6 +30,8 @@
 //! - `--wake-keywords <file>`: the wake phrases, default
 //!   `data/wake-keywords.txt`;
 //! - `--recogniser-threads <n>`: threads for speech recognition, default 2;
+//! - `--recogniser-provider cpu|coreml`: where speech recognition runs,
+//!   default cpu; coreml needs a build with the `shared-onnxruntime` feature;
 //! - `--wake-model <dir>`: a fine-tuned keyword spotter from
 //!   `training/wake/export.sh`, instead of the stock one;
 //! - `--wake-clips <dir>`: save the second or so of audio each wake was heard
@@ -707,10 +709,13 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 		.map_err(|error| format!("cannot read {keywords}: {error}"))
 		.and_then(|keywords| {
 			let mut config = SherpaConfig::new(models.into(), keywords);
-			if let Some(threads) = option("--recogniser-threads").and_then(|threads| threads.parse().ok()) {
+			if let Some(threads) =
+				option("--recogniser-threads").and_then(|threads| threads.parse().ok()).filter(|threads| *threads >= 1)
+			{
 				config.recogniser_threads = threads;
 			}
 			config.spotter = option("--wake-model").map(Into::into);
+			config.recogniser_provider = recogniser_provider(events);
 			sherpa::load(&config).map_err(|error| error.to_string())
 		});
 	let (models, recogniser) = match loaded {
@@ -812,6 +817,30 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 			eprintln!("voice commands are off: could not start the recogniser: {error}");
 			None
 		}
+	}
+}
+
+/// The provider asked for, or the CPU, saying why when that is not what was
+/// asked for.
+#[cfg(feature = "voice-commands")]
+fn recogniser_provider(events: &Sender<Event>) -> amhra_sidecar::voice_commands::sherpa::Provider {
+	use amhra_sidecar::voice_commands::sherpa::Provider;
+	let Some(name) = option("--recogniser-provider") else { return Provider::Cpu };
+	let fallback = |message: String| {
+		eprintln!("{message}");
+		let _ = events.send(Event::Error { guild_id: None, message });
+		Provider::Cpu
+	};
+	match Provider::parse(&name) {
+		Some(provider) if provider.available() => {
+			eprintln!("voice commands: recognising on {}", provider.name());
+			provider
+		}
+		Some(provider) => fallback(format!(
+			"voice commands: {} is not in this build (it needs --features shared-onnxruntime, on macOS); recognising on the cpu",
+			provider.name()
+		)),
+		None => fallback(format!("voice commands: unknown recogniser provider {name:?}; recognising on the cpu")),
 	}
 }
 

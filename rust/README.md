@@ -273,6 +273,15 @@ scripts/download-voice-models.sh
 cargo build --release --manifest-path rust/Cargo.toml -p amhra-sidecar --features voice-commands
 ```
 
+or, faster, linking sherpa-onnx's shared build, whose onnxruntime recognises
+commands about 3.4 times as fast on the CPU and can use Core ML on macOS
+(below). Its libraries are copied next to the binary in `target/release/`, so
+keep them together:
+
+```bash
+cargo build --release --manifest-path rust/Cargo.toml -p amhra-sidecar --features shared-onnxruntime
+```
+
 Then set `VOICE_COMMANDS` in `data/setting.json` (or the dashboard) and
 restart the bot: it starts the sidecar with `--voice-commands` (which implies
 `--listen`), `--wake-model models/voice/kws-emhara` and `--wake-keywords
@@ -284,6 +293,7 @@ starts:
 | `--voice-models <dir>` | `models/voice` | where the download script put them (gitignored) |
 | `--wake-keywords <file>` | `data/wake-keywords.txt` | the wake phrases; edit and restart, no rebuild |
 | `--recogniser-threads <n>` | `2` | speech-recognition threads |
+| `--recogniser-provider <p>` | `cpu` | `cpu`, or `coreml` with `shared-onnxruntime` on macOS |
 | `--wake-model <dir>` | the stock spotter | a fine-tuned one from `training/wake` |
 | `--wake-clips <dir>` | off | save the audio each wake was heard in (below) |
 | `--wake-clips-max <n>` | `2000` | stop saving after this many clips (about 75MB) |
@@ -452,6 +462,33 @@ overfits: later epochs heard every take but woke 25–80 times an hour on
 sentences they had not seen. Recordings from more members are what would
 improve it; `training/wake/README.md` has the steps and every number.
 
+### CPU or Core ML
+
+Recognition time per command, over the same 15 real commands (the held-out
+evaluation takes and the training takes from `training/wake`), on an M5 Pro
+with `wake_wav --provider <p> --recogniser-threads <n>`:
+
+| build | provider | threads | mean | max |
+| --- | --- | --- | --- | --- |
+| static (default) | cpu | 2 | 141ms | 199ms |
+| static | cpu | 4 | 76ms | 105ms |
+| `shared-onnxruntime` | cpu | 2 | **41ms** | 57ms |
+| `shared-onnxruntime` | cpu | 4 | **26ms** | 35ms |
+| `shared-onnxruntime` | coreml | 2 | 52ms | 68ms |
+
+The shared build's onnxruntime is what makes the difference; Core ML does
+not. On the int8 model most operations are ones Core ML does not run, so it
+hands them back to the CPU, and it takes 2s to load against 0.5s. The model
+alone, through onnxruntime 1.31 in Python, told the same story (54ms on two
+CPU threads against 64ms on Core ML for a 3s window). The static library's
+onnxruntime has no Core ML in it at all: asking for it there is reported and
+recognition stays on the CPU. Only recognition can move; the spotter and the
+VAD take 20ms at a time from every speaker, which is the worst case for
+handing work to another device.
+
+Either way, 500ms of the wait after someone stops talking is the silence
+that tells the gate they have finished.
+
 ### In the bot
 
 Settings, in `data/setting.json` or the dashboard, read when the sidecar
@@ -466,6 +503,8 @@ starts:
 | `VOICE_LOG_TRANSCRIPTS` | off | log what was heard after the name, for tuning the matching |
 | `VOICE_WAKE_CHIME` | **on** | a chime in the call when the name is heard |
 | `VOICE_DUCK_VOLUME` | `0.3` | the music's volume from the name until the command is heard; 1 leaves it |
+| `VOICE_RECOGNISER_PROVIDER` | `cpu` | `cpu` or `coreml` |
+| `VOICE_RECOGNISER_THREADS` | `2` | threads for speech recognition |
 
 - **Per-server opt-in.** `/voicecommands enabled:true`, by default for members
   with Manage Server, kept in `data/guildSetting.json` (gitignored). It takes

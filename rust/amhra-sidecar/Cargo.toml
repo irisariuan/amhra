@@ -20,8 +20,10 @@ ts-rs = "10"
 # Voice commands: wake word, end of speech and speech to text, all through
 # sherpa-onnx. The build script downloads a prebuilt static library for the
 # target (about 20MB), which is why this is off by default.
-sherpa-onnx = { version = "1.13.8", optional = true }
-sherpa-onnx-sys = { version = "1.13.8", optional = true }
+# Linked statically unless `shared-onnxruntime` asks for the shared build: neither crate's
+# default is used, because the two modes cannot both be on.
+sherpa-onnx = { version = "1.13.8", optional = true, default-features = false }
+sherpa-onnx-sys = { version = "1.13.8", optional = true, default-features = false }
 
 [dev-dependencies]
 # The wake_live example joins a channel the way amhra-voice's examples do.
@@ -33,6 +35,11 @@ tokio-tungstenite = { version = "0.24", default-features = false, features = [
 
 [features]
 voice-commands = ["dep:sherpa-onnx", "dep:sherpa-onnx-sys"]
+# Link sherpa-onnx's shared build instead. Its onnxruntime recognised a
+# command 3.4x faster on the CPU here (41ms against 141ms on two threads), and
+# has Core ML on macOS for `--recogniser-provider coreml`. The libraries are
+# copied next to the binaries, and build.rs points them there.
+shared-onnxruntime = ["voice-commands", "sherpa-onnx/shared", "sherpa-onnx-sys/shared"]
 
 [[example]]
 name = "wake_wav"

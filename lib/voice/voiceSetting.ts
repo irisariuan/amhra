@@ -48,5 +48,12 @@ export function voiceCommandArgs(setting: Setting = readSetting()): string[] {
 	if (setting.VOICE_WAKE_CHIME !== false) args.push("--wake-chime");
 	const duck = setting.VOICE_DUCK_VOLUME ?? DEFAULT_DUCK_VOLUME;
 	if (duck < 1) args.push("--wake-duck", String(Math.max(0, duck)));
+	if (setting.VOICE_RECOGNISER_PROVIDER) {
+		args.push("--recogniser-provider", setting.VOICE_RECOGNISER_PROVIDER);
+	}
+	const threads = setting.VOICE_RECOGNISER_THREADS;
+	if (threads !== undefined && Number.isInteger(threads) && threads >= 1) {
+		args.push("--recogniser-threads", String(threads));
+	}
 	return args;
 }

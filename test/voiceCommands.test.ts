@@ -251,4 +251,24 @@ describe("sidecar flags", () => {
 		expect(quiet).not.toContain("--wake-chime");
 		expect(quiet).not.toContain("--wake-duck");
 	});
+
+	test("where recognition runs, and on how many threads", () => {
+		const allowed = { ...base, VOICE_COMMANDS: true };
+		const args = voiceCommandArgs({
+			...allowed,
+			VOICE_RECOGNISER_PROVIDER: "coreml",
+			VOICE_RECOGNISER_THREADS: 4,
+		});
+		expect(args.slice(-4)).toEqual([
+			"--recogniser-provider",
+			"coreml",
+			"--recogniser-threads",
+			"4",
+		]);
+		// Unset, the sidecar's own defaults stand; nonsense is not passed on.
+		expect(voiceCommandArgs(allowed)).not.toContain("--recogniser-provider");
+		expect(
+			voiceCommandArgs({ ...allowed, VOICE_RECOGNISER_THREADS: 0 }),
+		).not.toContain("--recogniser-threads");
+	});
 });

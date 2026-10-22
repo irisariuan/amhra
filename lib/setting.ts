@@ -118,4 +118,12 @@ export interface Setting {
 	 * been heard. Defaults to 0.3; 1 leaves it alone.
 	 */
 	VOICE_DUCK_VOLUME?: number;
+	/**
+	 * Where speech recognition runs. Core ML needs a sidecar built with
+	 * `--features shared-onnxruntime`, on macOS; otherwise it says so and
+	 * stays on the CPU. Defaults to the CPU, which measured faster.
+	 */
+	VOICE_RECOGNISER_PROVIDER?: "cpu" | "coreml";
+	/** Threads for speech recognition. Defaults to 2. */
+	VOICE_RECOGNISER_THREADS?: number;
 }
