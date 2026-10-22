@@ -46,6 +46,17 @@ describe("fadeSettings", () => {
 	});
 });
 
+describe("Sidecar errors", () => {
+	test("an error event with no one waiting on it does not throw", () => {
+		// A failed DAVE welcome arrives this way, outside any request that
+		// would be listening for it. Unhandled, EventEmitter throws it and the
+		// bot goes down with it.
+		const sidecar = new Sidecar();
+		const payload = { type: "error", guildId: "1", message: "dave DaveMlsWelcome: mls: GroupAlreadyExists" };
+		expect(() => sidecar.emit("error", payload)).not.toThrow();
+	});
+});
+
 describeBuilt("Sidecar", () => {
 	let running: Sidecar | null = null;
 

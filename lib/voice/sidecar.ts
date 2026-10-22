@@ -134,6 +134,14 @@ export class Sidecar extends EventEmitter {
 	/** Guilds the sidecar is connected to, so a restart can be reported. */
 	readonly guilds = new Set<string>();
 
+	constructor() {
+		super();
+		// An "error" emitted with nobody listening is thrown by EventEmitter,
+		// so one failed DAVE welcome would take the whole bot down. `track` has
+		// already logged it; listeners that care subscribe on their own.
+		this.on("error", () => {});
+	}
+
 	start() {
 		if (this.child) return;
 		this.stopping = false;

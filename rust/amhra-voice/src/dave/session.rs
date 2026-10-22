@@ -316,7 +316,11 @@ impl Session {
 			.wire_format_policy(PURE_PLAINTEXT_WIRE_FORMAT_POLICY)
 			.build();
 
-		let staged = StagedWelcome::new_from_welcome(&self.provider, &join_config, welcome, None)
+		// The welcome is for the group id the pending group was made under, and
+		// openmls 0.8 refuses to join over an existing group unless told to.
+		// The pending group was only ever a placeholder for this.
+		let staged = StagedWelcome::build_from_welcome(&self.provider, &join_config, welcome)
+			.and_then(|builder| builder.replace_old_group().build())
 			.map_err(|error| SessionError::Mls(format!("{error:?}")))?;
 
 		// The welcome must place us in a group that trusts the same external
@@ -537,6 +541,63 @@ mod tests {
 		// Still uninitialised: a bad payload must not half-open the session.
 		assert_eq!(session.status(), Status::Uninitialised);
 		assert!(matches!(session.process_welcome(&[1, 2, 3]), Err(SessionError::NoExternalSender)));
+	}
+
+	#[test]
+	fn a_welcome_takes_the_place_of_the_pending_group() {
+		const OTHER: u64 = 123_456_789_012_345_678;
+
+		let external_sender = ExternalSender::new(
+			vec![7u8; 65].into(),
+			BasicCredential::new(b"discord".to_vec()).into(),
+		);
+		let mut session = Session::new(1, USER, CHANNEL).unwrap();
+		session.set_external_sender(&external_sender.tls_serialize_detached().unwrap()).unwrap();
+		// The external sender leaves a placeholder group stored under the
+		// channel id — the same id the welcome is for.
+		assert_eq!(session.status(), Status::Pending);
+		let key_package = session.key_package().unwrap();
+
+		// Someone already in the call adds us, the way the voice server's
+		// proposals would have them do.
+		let provider = OpenMlsRustCrypto::default();
+		let signer = SignatureKeyPair::new(CIPHERSUITE.signature_algorithm()).unwrap();
+		signer.store(provider.storage()).unwrap();
+		let config = MlsGroupCreateConfig::builder()
+			.with_group_context_extensions(
+				Extensions::single(Extension::ExternalSenders(vec![external_sender])).unwrap(),
+			)
+			.ciphersuite(CIPHERSUITE)
+			.capabilities(capabilities())
+			.use_ratchet_tree_extension(true)
+			.wire_format_policy(PURE_PLAINTEXT_WIRE_FORMAT_POLICY)
+			.build();
+		let mut group = MlsGroup::new_with_group_id(
+			&provider,
+			&signer,
+			&config,
+			GroupId::from_slice(&CHANNEL.to_be_bytes()),
+			CredentialWithKey {
+				credential: BasicCredential::new(OTHER.to_be_bytes().to_vec()).into(),
+				signature_key: signer.public().into(),
+			},
+		)
+		.unwrap();
+		let key_package = KeyPackageIn::tls_deserialize_exact_bytes(&key_package)
+			.unwrap()
+			.validate(provider.crypto(), ProtocolVersion::Mls10)
+			.unwrap();
+		let (_commit, welcome, _group_info) =
+			group.add_members(&provider, &signer, &[key_package]).unwrap();
+		let MlsMessageBodyOut::Welcome(welcome) = welcome.body() else {
+			panic!("adding a member should produce a welcome");
+		};
+
+		session.process_welcome(&welcome.tls_serialize_detached().unwrap()).unwrap();
+		assert!(session.is_ready());
+		let mut members = session.member_ids();
+		members.sort_unstable();
+		assert_eq!(members, vec![OTHER, USER]);
 	}
 
 	#[test]
