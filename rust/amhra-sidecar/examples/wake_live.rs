@@ -121,7 +121,14 @@ async fn negotiate(args: &Args) -> ConnectionInfo {
 				socket.send(Message::Text(payload.to_string())).await.expect("heartbeat");
 			}
 			message = socket.next() => {
-				let Some(Ok(Message::Text(text))) = message else { continue };
+				let text = match message {
+					Some(Ok(Message::Text(text))) => text,
+					// Without this the next heartbeat fails with nothing to
+					// say why: a bad token is close code 4004.
+					Some(Ok(Message::Close(frame))) => panic!("the gateway closed the connection: {frame:?}"),
+					None => panic!("the gateway connection ended"),
+					_ => continue,
+				};
 				let frame: Value = serde_json::from_str(&text).expect("json");
 				if let Some(seq) = frame.get("s").and_then(Value::as_u64) {
 					sequence = Some(seq);
