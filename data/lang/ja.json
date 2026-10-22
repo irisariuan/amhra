@@ -293,6 +293,36 @@
 					"description": "ミックス中の曲をキューの曲と入れ替えます"
 				}
 			}
+		},
+		"voicecommands": {
+			"name": "音声コマンド",
+			"description": "ボイスチャンネルで名前を聞き取るかどうかを切り替えます",
+			"options": {
+				"enabled": {
+					"name": "有効",
+					"description": "「エムハラ」と呼ばれたら続くコマンドを実行します"
+				}
+			}
+		},
+		"transcript": {
+			"name": "文字起こし",
+			"description": "名前を呼んだ後に聞き取った内容を毎回表示します",
+			"options": {
+				"enabled": {
+					"name": "有効",
+					"description": "名前を呼んだときに発言をチャンネルに表示します"
+				}
+			}
+		},
+		"voicefeedback": {
+			"name": "音声フィードバック",
+			"description": "音声コマンドを実行するときに、何をするかを声で伝えます",
+			"options": {
+				"enabled": {
+					"name": "有効",
+					"description": "音声コマンドの動作を声で伝えます"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "違う曲でしたか？下から別の検索結果を選べます。",
@@ -338,5 +368,45 @@
 	"MIX_VOLUME_SET": "**[{title}]({url})** の音量を {volume}% に設定しました",
 	"MIX_SWAPPED": "入れ替えました: **[{title}]({url})** がキューの曲になり、**[{mixed}]({mixedUrl})** はミックスで再生を続けます",
 	"MIX_SWAP_NOTHING_PLAYING": "入れ替えるキューの曲が再生されていません",
-	"MIX_SWAP_FAILED": "入れ替えできませんでした。少し待ってからもう一度お試しください"
+	"MIX_SWAP_FAILED": "入れ替えできませんでした。少し待ってからもう一度お試しください",
+	"VOICE_COMMANDS_ON": "音声コマンドをオンにしました。「エムハラ」と呼んでからコマンドを言ってください。例:「エムハラ、スキップ」",
+	"VOICE_COMMANDS_OFF": "音声コマンドをオフにしました。このサーバーでは聞き取りをやめます。",
+	"VOICE_COMMANDS_ALREADY_ON": "音声コマンドはすでにオンです。",
+	"VOICE_COMMANDS_ALREADY_OFF": "音声コマンドはすでにオフです。",
+	"VOICE_COMMANDS_UNAVAILABLE": "このボットでは音声コマンドを使えません。オーナーが VOICE_COMMANDS と Rust 音声サイドカーを有効にする必要があります。",
+	"VOICE_LISTENING_NOTICE": "🎙️ **このチャンネルでは私の名前を聞き取っています。**「エムハラ」と呼んでからコマンドを言ってください(例:「エムハラ、一時停止」「エムハラ、スキップ」)。名前の直後に話した内容だけが文字に変換され、コマンドの実行にのみ使われます。`/transcript` をオンにした人は、話した内容もチャットに表示されます。サーバー管理権限のある人は `/voicecommands` でオフにできます。",
+	"VOICE_LISTENING_NOTICE_CLIPS": "🎙️ **このチャンネルでは私の名前を聞き取っています。**「エムハラ」と呼んでからコマンドを言ってください(例:「エムハラ、一時停止」「エムハラ、スキップ」)。名前の直後に話した内容だけが文字に変換され、コマンドの実行にのみ使われます。名前の聞き取りを改善するため、名前を聞き取った約1秒間の音声を保存します。`/transcript` をオンにした人は、話した内容もチャットに表示されます。サーバー管理権限のある人は `/voicecommands` でオフにできます。",
+	"VOICE_LISTENING_NEWCOMER": "🎙️ {users} さん、ここでは音声コマンドがオンなので、私の名前「エムハラ」を聞き取っています。詳しくは `/voicecommands`。",
+	"VOICE_HEARD": "-# 🎙️ {user}: {command}",
+	"VOICE_HEARD_TRANSCRIPT": "-# 🎙️ {user}:「{text}」→ {command}",
+	"VOICE_TRANSCRIPT_LISTENING": "-# 🎙️ {user}:聞いています…",
+	"VOICE_TRANSCRIPT_NOTHING": "-# 🎙️ {user}:聞き取れませんでした",
+	"VOICE_TRANSCRIPT_UNMATCHED": "-# 🎙️ {user}:「{text}」· コマンドではありません",
+	"TRANSCRIPT_ON": "これからは、私の名前を呼ぶと、聞き取った内容をチャンネルに表示します(音声コマンドがオンのすべてのサーバーで)。`/transcript enabled:false` でオフにできます。",
+	"TRANSCRIPT_OFF": "あなたの発言の表示をやめます。",
+	"VOICE_FEEDBACK_ON": "これからは、あなたの音声コマンドで何をするかを声で伝えます(ボットが話せる場合)。`/voicefeedback enabled:false` でオフにできます。",
+	"VOICE_FEEDBACK_OFF": "あなたの音声コマンドの動作を声で伝えるのをやめます。チャットには引き続き表示されます。",
+	"VOICE_SAY_PLAY": "{title}を再生します。",
+	"VOICE_SAY_PLAY_NEXT": "次に{title}を再生します。",
+	"VOICE_SAY_PLAY_QUEUED": "{title}をキューに追加しました。",
+	"VOICE_SAY_PAUSE": "一時停止しました。",
+	"VOICE_SAY_RESUME": "再生を再開します。",
+	"VOICE_SAY_SKIP": "スキップします。",
+	"VOICE_SAY_SKIP_AMOUNT": "{amount}曲スキップします。",
+	"VOICE_SAY_SKIPNONMUSIC": "音楽ではない部分をスキップします。",
+	"VOICE_SAY_AUTOSKIPNONMUSIC": "音楽ではない部分の自動スキップを切り替えます。",
+	"VOICE_SAY_AUTOSKIPNONMUSIC_ON": "これから音楽ではない部分を自動でスキップします。",
+	"VOICE_SAY_AUTOSKIPNONMUSIC_OFF": "音楽ではない部分の自動スキップをやめます。",
+	"VOICE_SAY_STOP": "停止します。",
+	"VOICE_SAY_DISCONNECT": "チャンネルから退出します。",
+	"VOICE_SAY_JOIN": "チャンネルに参加します。",
+	"VOICE_SAY_LOOP": "ループを切り替えます。",
+	"VOICE_SAY_LOOP_ON": "この曲をループします。",
+	"VOICE_SAY_LOOP_OFF": "ループをオフにしました。",
+	"VOICE_SAY_QUEUE": "キューを表示します。",
+	"VOICE_SAY_NOWPLAYING": "再生中の曲を表示します。",
+	"VOICE_SAY_REMOVE": "{index}曲目を削除します。",
+	"VOICE_SAY_VOLUME": "音量を{volume}パーセントにします。",
+	"VOICE_SAY_LYRICS": "歌詞を探します。",
+	"VOICE_SAY_RELOCATE": "{position}に移動します。"
 }

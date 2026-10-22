@@ -7,8 +7,14 @@ rust-version.workspace = true
 
 [dependencies]
 amhra-audio.workspace = true
+aes = "0.9"
 aes-gcm = { version = "0.11", features = ["aes"] }
 chacha20poly1305 = "0.11"
+# DAVE truncates its GCM tag to 8 bytes, below the 12 `aes-gcm` will accept, so
+# the receive side assembles GCM from its parts.
+ctr = "0.10"
+ghash = "0.6"
+subtle = "2"
 hmac = "0.13"
 sha2 = "0.11"
 futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }

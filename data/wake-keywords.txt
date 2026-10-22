@@ -1,0 +1,16 @@
+# Wake words for voice commands, one phrase per line. Read when the sidecar
+# starts (with --voice-commands); restart it after editing.
+#
+# Write plain words. They are spelled into the keyword model's word pieces at
+# load, and a word it cannot spell is refused with its line number.
+#
+# Optional settings follow the phrase:
+#   :<boost>      pulls the decoder towards this phrase (default 1.5)
+#   #<threshold>  confidence needed to fire, 0..1 (default 0.25); lower fires
+#                 more readily, and falsely more often
+#
+# The model hears sounds, not spellings, so each line is a way of *saying* the
+# name, written in English letters. The name is said "em-ha-ra", and to this
+# model "em" is the letter M: EMHARA spells as E-M-HA-RA, which nobody says.
+# Tuned on synthesised speech (rust/README.md has the numbers).
+M HARA #0.1

@@ -248,6 +248,30 @@
 					"description": "Make a mixed-in song the queue's song, and the queue's song mixed in"
 				}
 			}
+		},
+		"voicecommands": {
+			"description": "Turn listening for my name in voice channels on or off",
+			"options": {
+				"enabled": {
+					"description": "Listen for \"Amhra\" and act on what follows"
+				}
+			}
+		},
+		"transcript": {
+			"description": "Show what I hear after you say my name, every time",
+			"options": {
+				"enabled": {
+					"description": "Post your words in the channel when you say my name"
+				}
+			}
+		},
+		"voicefeedback": {
+			"description": "Hear me say what I'm doing when you give a voice command",
+			"options": {
+				"enabled": {
+					"description": "Say aloud what your voice commands do"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "Not the right song? Pick another result below.",
@@ -293,5 +317,45 @@
 	"MIX_VOLUME_SET": "Set **[{title}]({url})** to {volume}%",
 	"MIX_SWAPPED": "Swapped: **[{title}]({url})** is now the queue's song, and **[{mixed}]({mixedUrl})** plays on in the mix",
 	"MIX_SWAP_NOTHING_PLAYING": "Nothing in the queue is playing to swap with",
-	"MIX_SWAP_FAILED": "Couldn't swap, try again in a moment"
+	"MIX_SWAP_FAILED": "Couldn't swap, try again in a moment",
+	"VOICE_COMMANDS_ON": "Voice commands are on. Say \"Amhra\" (em-ha-ra) and then a command, like \"Amhra, skip this song\".",
+	"VOICE_COMMANDS_OFF": "Voice commands are off. I no longer listen in this server.",
+	"VOICE_COMMANDS_ALREADY_ON": "Voice commands are already on.",
+	"VOICE_COMMANDS_ALREADY_OFF": "Voice commands are already off.",
+	"VOICE_COMMANDS_UNAVAILABLE": "Voice commands are not available on this bot. Its owner has to turn on VOICE_COMMANDS and the Rust voice sidecar.",
+	"VOICE_LISTENING_NOTICE": "🎙️ **I'm listening for my name in this channel.** Say \"Amhra\" (em-ha-ra) and then a command: \"Amhra, pause\", \"Amhra, skip this song\", \"Amhra, play Bohemian Rhapsody\". Only what you say right after my name is turned into text, and that text is only used to run the command. Anyone who turns on `/transcript` also has what they said shown in the chat. Anyone with Manage Server can turn this off with `/voicecommands`.",
+	"VOICE_LISTENING_NOTICE_CLIPS": "🎙️ **I'm listening for my name in this channel.** Say \"Amhra\" (em-ha-ra) and then a command: \"Amhra, pause\", \"Amhra, skip this song\", \"Amhra, play Bohemian Rhapsody\". Only what you say right after my name is turned into text, and that text is only used to run the command. To help me hear my name better, the second or so of audio in which I hear it is saved. Anyone who turns on `/transcript` also has what they said shown in the chat. Anyone with Manage Server can turn this off with `/voicecommands`.",
+	"VOICE_LISTENING_NEWCOMER": "🎙️ Heads up, {users}: voice commands are on here, so I listen for my name, \"Amhra\". See `/voicecommands`.",
+	"VOICE_HEARD": "-# 🎙️ {user}: {command}",
+	"VOICE_HEARD_TRANSCRIPT": "-# 🎙️ {user}: “{text}” → {command}",
+	"VOICE_TRANSCRIPT_LISTENING": "-# 🎙️ {user}: listening…",
+	"VOICE_TRANSCRIPT_NOTHING": "-# 🎙️ {user}: didn't catch anything",
+	"VOICE_TRANSCRIPT_UNMATCHED": "-# 🎙️ {user}: “{text}” · not a command",
+	"VOICE_SAY_PLAY": "Playing {title}.",
+	"VOICE_SAY_PLAY_NEXT": "Playing {title} next.",
+	"VOICE_SAY_PLAY_QUEUED": "Added {title} to the queue.",
+	"VOICE_SAY_PAUSE": "Paused.",
+	"VOICE_SAY_RESUME": "Resuming.",
+	"VOICE_SAY_SKIP": "Skipping.",
+	"VOICE_SAY_SKIP_AMOUNT": "Skipping {amount} songs.",
+	"VOICE_SAY_SKIPNONMUSIC": "Skipping the part that isn't music.",
+	"VOICE_SAY_AUTOSKIPNONMUSIC": "Switching auto skip for parts that aren't music.",
+	"VOICE_SAY_AUTOSKIPNONMUSIC_ON": "Skipping parts that aren't music from now on.",
+	"VOICE_SAY_AUTOSKIPNONMUSIC_OFF": "No longer skipping parts that aren't music.",
+	"VOICE_SAY_STOP": "Stopping.",
+	"VOICE_SAY_DISCONNECT": "Leaving the channel.",
+	"VOICE_SAY_JOIN": "Joining.",
+	"VOICE_SAY_LOOP": "Switching the loop.",
+	"VOICE_SAY_LOOP_ON": "Looping this song.",
+	"VOICE_SAY_LOOP_OFF": "Loop off.",
+	"VOICE_SAY_QUEUE": "Here's the queue.",
+	"VOICE_SAY_NOWPLAYING": "Here's what's playing.",
+	"VOICE_SAY_REMOVE": "Removing song {index}.",
+	"VOICE_SAY_VOLUME": "Volume {volume} percent.",
+	"VOICE_SAY_LYRICS": "Finding the lyrics.",
+	"VOICE_SAY_RELOCATE": "Jumping to {position}.",
+	"TRANSCRIPT_ON": "From now on, when you say my name, I'll post what I heard in the channel, in every server with voice commands on. Turn it off with `/transcript enabled:false`.",
+	"TRANSCRIPT_OFF": "I'll stop posting what I hear from you.",
+	"VOICE_FEEDBACK_ON": "I'll say aloud what I do for your voice commands, where the bot speaks. Turn it off with `/voicefeedback enabled:false`.",
+	"VOICE_FEEDBACK_OFF": "I'll stop saying aloud what I do for your voice commands. The chat still shows it."
 }

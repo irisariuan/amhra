@@ -186,6 +186,34 @@ pub struct Speaking {
 /// priority.
 pub const SPEAKING_MICROPHONE: u8 = 1 << 0;
 
+/// `speaking (5)` as the server sends it: someone else's SSRC, and who it
+/// belongs to.
+///
+/// This is the only place the voice gateway ever ties an SSRC to a user, and it
+/// is sent when that user first transmits — so RTP from them can arrive before
+/// it does. Discord's docs describe only the client's half of this opcode; the
+/// fields here are the ones every receiving library reads.
+#[derive(Debug, Deserialize)]
+pub struct ServerSpeaking {
+	pub user_id: String,
+	pub ssrc: u32,
+	#[serde(default)]
+	pub speaking: u8,
+}
+
+/// `clients_connect (11)`: users who joined, by id. No SSRCs: those only come
+/// with `speaking`.
+#[derive(Debug, Deserialize)]
+pub struct ClientsConnect {
+	pub user_ids: Vec<String>,
+}
+
+/// `client_disconnect (13)`: one user left the call.
+#[derive(Debug, Deserialize)]
+pub struct ClientDisconnect {
+	pub user_id: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct DavePrepareTransition {
 	pub protocol_version: u8,

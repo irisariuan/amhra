@@ -28,7 +28,10 @@ export interface CommandLocale {
 
 function loadLanguage(
 	lang: Language,
-): { commands: Record<string, CommandLocale> } & Record<string, string> {
+): { commands: Record<string, CommandLocale> } & Record<
+	string,
+	string
+> {
 	return JSON.parse(
 		readFileSync(
 			join(process.cwd(), "data", "lang", `${lang}.json`),

@@ -106,4 +106,76 @@ export interface Setting {
 	 * lines later, negative sooner. Defaults to zero.
 	 */
 	LYRICS_DELAY_MS?: number;
+
+	/**
+	 * Let guilds turn on voice commands. Off by default: it needs the Rust
+	 * sidecar built with voice commands, and its models hold about 570MB.
+	 * Each guild still opts in with /voicecommands. Read when the sidecar
+	 * starts.
+	 */
+	VOICE_COMMANDS?: boolean;
+	/** The fine-tuned wake model; defaults to models/voice/kws-emhara */
+	VOICE_WAKE_MODEL?: string;
+	/** Its wake phrases; defaults to training/wake/keywords.txt */
+	VOICE_WAKE_KEYWORDS?: string;
+	/**
+	 * Keep the audio around each wake, from guilds with voice commands on, for
+	 * retraining the wake model. On unless set to false; members are told.
+	 */
+	VOICE_COLLECT_WAKE_CLIPS?: boolean;
+	/**
+	 * Log what was heard after the name, for tuning the command matching. Off
+	 * unless set: it writes what people said into the bot's log.
+	 */
+	VOICE_LOG_TRANSCRIPTS?: boolean;
+	/**
+	 * Say aloud what a voice command does: "Skipping.", "Playing bad guy.", in
+	 * the language of the command. Off unless set. Uses whichever speech
+	 * models `scripts/download-voice-models.sh --speech` put in models/voice.
+	 * A model is loaded only to make a phrase not said before, and the fixed
+	 * ones are saved under the cache, so it costs little after the first run;
+	 * see the sidecar's `speech` module.
+	 */
+	VOICE_SPEECH?: boolean;
+	/** CPU threads for making speech. Defaults to 1. */
+	VOICE_SPEECH_THREADS?: number;
+	/** Chime in the call when the bot hears its name. On unless false. */
+	VOICE_WAKE_CHIME?: boolean;
+	/**
+	 * The music's volume, as a fraction, from the name until the command has
+	 * been heard. Defaults to 0.3; 1 leaves it alone.
+	 */
+	VOICE_DUCK_VOLUME?: number;
+	/**
+	 * Where speech recognition runs. Core ML needs a sidecar built with
+	 * `--features shared-onnxruntime`, on macOS; otherwise it says so and
+	 * stays on the CPU. Defaults to the CPU, which measured faster.
+	 */
+	VOICE_RECOGNISER_PROVIDER?: "cpu" | "coreml";
+	/** Threads for speech recognition. Defaults to 2. */
+	VOICE_RECOGNISER_THREADS?: number;
+	/**
+	 * The language speech recognition listens for, in every server. "auto"
+	 * (the default) guesses per command and takes short ones for the wrong
+	 * language now and then; pinned, the others are not understood.
+	 */
+	VOICE_LANGUAGE?: "auto" | "en" | "zh" | "ja" | "ko" | "yue";
+	/**
+	 * How long after the name to wait for a command to start, in ms. Until
+	 * something is said after the chime, a pause does not end the command
+	 * either. Defaults to 2500.
+	 */
+	VOICE_WAIT_FOR_COMMAND_MS?: number;
+	/** Silence that ends a command, in ms. Defaults to 500. */
+	VOICE_END_SILENCE_MS?: number;
+	/** The longest command, in ms. Defaults to 8000. */
+	VOICE_MAX_COMMAND_MS?: number;
+	/**
+	 * An OpenAI-compatible server on this machine, as `http://host:port/v1`,
+	 * whose model decides what every voice command asks for. Unset, or when
+	 * the server does not answer, only command names said first are understood.
+	 */
+	VOICE_INTENT_MODEL_URL?: string;
+	/** The model that server should use. Defaults to Qwen3 4B in MLX. */
+	VOICE_INTENT_MODEL?: string;
 }

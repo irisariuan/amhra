@@ -3,7 +3,13 @@
 /**
  * What the bot asks this process to do.
  */
-export type Command = { "type": "connect", guildId: string, channelId: string, userId: string, sessionId: string, endpoint: string, token: string, } | { "type": "disconnect", guildId: string, } | { "type": "play", guildId: string, 
+export type Command = { "type": "connect", guildId: string, channelId: string, userId: string, sessionId: string, endpoint: string, token: string, 
+/**
+ * Whether this guild has voice commands on. Only a sidecar started
+ * with `--listen` or `--voice-commands` can hear anything at all; this
+ * says whether it may in this guild. Absent means no.
+ */
+listen: boolean, } | { "type": "setListen", guildId: string, listen: boolean, } | { "type": "disconnect", guildId: string, } | { "type": "play", guildId: string, 
 /**
  * The cache id, not a path: the sidecar owns the cache layout.
  */
@@ -17,7 +23,12 @@ stream: boolean, } | { "type": "setNext", guildId: string, trackId: string, stre
  * Chosen by the bot, and how every later layer command and event
  * names this one.
  */
-layerId: string, trackId: string, gain: number, startMs: number, stream: boolean, } | { "type": "removeLayer", guildId: string, layerId: string, } | { "type": "setLayerVolume", guildId: string, layerId: string, gain: number, } | { "type": "swapLayer", guildId: string, layerId: string, } | { "type": "setFades", guildId: string, crossfadeMs: number, skipFadeMs: number, } | { "type": "listSessions" } | { "type": "shutdown" };
+layerId: string, trackId: string, gain: number, startMs: number, stream: boolean, } | { "type": "removeLayer", guildId: string, layerId: string, } | { "type": "setLayerVolume", guildId: string, layerId: string, gain: number, } | { "type": "swapLayer", guildId: string, layerId: string, } | { "type": "setFades", guildId: string, crossfadeMs: number, skipFadeMs: number, } | { "type": "speak", guildId: string, text: string, 
+/**
+ * `en`, `ja`, `ko`, `zh` (Mandarin) or `yue` (Cantonese); anything
+ * else, or nothing, is English.
+ */
+language: string | null, } | { "type": "prepareSpeech", phrases: Array<Phrase>, } | { "type": "listSessions" } | { "type": "shutdown" };
 
 /**
  * What this process reports back.
@@ -30,7 +41,26 @@ trackId: string, positionMs: number,
 /**
  * What the layer is playing now: the queue's former track.
  */
-layerTrackId: string, layerPositionMs: number, } | { "type": "position", guildId: string, trackId: string, positionMs: number, } | { "type": "idle", guildId: string, } | { "type": "reconnecting", guildId: string, reason: string, } | { "type": "disconnected", guildId: string, reason: string, } | { "type": "error", guildId: string | null, message: string, } | { "type": "sessions", guilds: Array<SessionState>, };
+layerTrackId: string, layerPositionMs: number, } | { "type": "position", guildId: string, trackId: string, positionMs: number, } | { "type": "idle", guildId: string, } | { "type": "reconnecting", guildId: string, reason: string, } | { "type": "disconnected", guildId: string, reason: string, } | { "type": "error", guildId: string | null, message: string, } | { "type": "sessions", guilds: Array<SessionState>, } | { "type": "woke", guildId: string, userId: string, } | { "type": "nothingHeard", guildId: string, userId: string, } | { "type": "utterance", guildId: string, userId: string, text: string, 
+/**
+ * The language the recogniser detected: `en`, `ja`, `ko`, `zh` or
+ * `yue`, or null when it could not tell.
+ */
+lang: string | null, 
+/**
+ * Which phrase from the keywords file woke it, e.g. `M HARA`.
+ */
+wakeKeyword: string, 
+/**
+ * From the end of their speech to the text being ready, including the
+ * half second of silence that marks a command as finished.
+ */
+latencyMs: number, };
+
+/**
+ * Something the bot may say, for `PrepareSpeech`.
+ */
+export type Phrase = { text: string, language: string | null, };
 
 /**
  * One guild's state, for a bot that has just restarted and lost its own.

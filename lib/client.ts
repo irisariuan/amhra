@@ -119,6 +119,11 @@ client.on("interactionCreate", async (interaction) => {
 	}
 });
 
+/** A slash command by name, as currently loaded. */
+export function slashCommand(name: string) {
+	return commands.get(name);
+}
+
 client.on("shardError", (e) => {
 	dcb.log(`Shard Error: ${e}`);
 });

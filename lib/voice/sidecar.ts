@@ -7,6 +7,7 @@ import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { fadesFrom } from "./fades";
 import { nativeBinary } from "./nativeBinary";
+import { guildListens, voiceCommandArgs } from "./voiceSetting";
 import type {
 	Command as WireCommand,
 	Event as WireEvent,
@@ -92,7 +93,31 @@ const event = z.discriminatedUnion("type", [
 		message: z.string(),
 	}),
 	z.object({ type: z.literal("sessions"), guilds: z.array(sessionState) }),
+	// Someone in a listening guild said the name; an utterance or a
+	// nothingHeard from them follows.
+	z.object({ type: z.literal("woke"), guildId: z.string(), userId: z.string() }),
+	z.object({ type: z.literal("nothingHeard"), guildId: z.string(), userId: z.string() }),
+	// Only from a sidecar started with --voice-commands, and only for guilds
+	// that opted in. What was heard after the wake word, as text; turned into a
+	// command by lib/voice/voiceCommands.ts.
+	z.object({
+		type: z.literal("utterance"),
+		guildId: z.string(),
+		userId: z.string(),
+		text: z.string(),
+		lang: z.string().nullable(),
+		wakeKeyword: z.string(),
+		latencyMs: z.number(),
+	}),
 ]);
+
+/**
+ * Check one decoded frame against the protocol. Throws on anything the Rust
+ * side would not have sent.
+ */
+export function parseEvent(payload: unknown): SidecarEvent {
+	return event.parse(payload);
+}
 
 export type SidecarEvent = z.infer<typeof event>;
 export type SidecarSession = z.infer<typeof sessionState>;
@@ -134,13 +159,18 @@ export class Sidecar extends EventEmitter {
 	/** Guilds the sidecar is connected to, so a restart can be reported. */
 	readonly guilds = new Set<string>();
 
+	/** `extraArgs` are passed to the binary after the cache directory. */
+	constructor(private readonly extraArgs: string[] = []) {
+		super();
+	}
+
 	start() {
 		if (this.child) return;
 		this.stopping = false;
 
 		const binary = sidecarBin.path();
 		dcb.log(`Starting voice sidecar: ${binary}`);
-		const args = ["--cache-dir", `${process.cwd()}/cache`];
+		const args = ["--cache-dir", `${process.cwd()}/cache`, ...this.extraArgs];
 		// Streaming with caching off, the sidecar walks the same client ladder
 		// the fetcher does, so it is handed the same operator override.
 		const clients = `${process.cwd()}/data/youtube-clients.json`;
@@ -242,7 +272,7 @@ export class Sidecar extends EventEmitter {
 
 			let parsed: SidecarEvent;
 			try {
-				parsed = event.parse(JSON.parse(body.toString("utf8")));
+				parsed = parseEvent(JSON.parse(body.toString("utf8")));
 			} catch (error) {
 				// An unparseable event means the two sides disagree about the
 				// protocol, which is worth saying loudly and exactly once per
@@ -302,10 +332,13 @@ export function fadeSettings() {
 
 let shared: Sidecar | null = null;
 
-/** The process-wide sidecar, started on first use. */
+/**
+ * The process-wide sidecar, started on first use. With voice commands allowed
+ * it loads their models, so changing that setting needs a restart.
+ */
 export function sidecar() {
 	if (!shared) {
-		shared = new Sidecar();
+		shared = new Sidecar(voiceCommandArgs());
 		shared.start();
 	}
 	return shared;
@@ -432,6 +465,9 @@ export function joinVoiceViaSidecar(
 				sessionId,
 				endpoint,
 				token,
+				// Read now rather than when the join began: a guild that turned
+				// voice commands on or off in between gets what it asked for.
+				listen: guildListens(guild.id),
 			});
 			// Sent straight after connect rather than waiting for a ready
 			// event: the sidecar queues commands per guild, so this is applied

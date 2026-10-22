@@ -11,6 +11,7 @@
 //! receiver can parse backwards ([`frame`]). The derivations MLS specifies but
 //! `openmls` will not perform at DAVE's odd lengths live in [`kdf`].
 
+pub mod decryptor;
 pub mod driver;
 pub mod frame;
 pub mod kdf;

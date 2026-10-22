@@ -151,6 +151,111 @@
    "minimum": -10000,
    "maximum": 10000,
    "description": "Shift synced lyrics by this many milliseconds; positive shows each line later, negative sooner (default 0)"
+  },
+  "VOICE_COMMANDS": {
+   "type": "boolean",
+   "description": "Let servers turn on voice commands (\"Amhra, skip\"). Needs USE_RUST_VOICE, a sidecar built with --features voice-commands and the models from scripts/download-voice-models.sh; loads about 570MB of models. Restart to apply"
+  },
+  "VOICE_WAKE_MODEL": {
+   "type": "string",
+   "description": "Directory of the fine-tuned wake model; defaults to models/voice/kws-emhara. Restart to apply"
+  },
+  "VOICE_WAKE_KEYWORDS": {
+   "type": "string",
+   "description": "Wake phrases for that model; defaults to training/wake/keywords.txt. Restart to apply"
+  },
+  "VOICE_COLLECT_WAKE_CLIPS": {
+   "type": "boolean",
+   "default": true,
+   "description": "Save the second or so of audio each time the bot hears its name, in servers with voice commands on, to data/recordings/wake-clips for retraining the wake model. Members are told when it is on. Default on. Restart to apply"
+  },
+  "VOICE_LOG_TRANSCRIPTS": {
+   "type": "boolean",
+   "description": "Log what was heard after the bot's name, for tuning the command matching. Off by default: it writes what people said into the log"
+  },
+  "VOICE_SPEECH": {
+   "type": "boolean",
+   "default": false,
+   "description": "Say aloud what a voice command does (\"Skipping.\", \"Playing bad guy.\") in the command's language, over the lowered music: English, Japanese and Korean with Supertonic 3, Mandarin with Kokoro, Cantonese with a VITS voice, whichever scripts/download-voice-models.sh --speech fetched. Fixed phrases are made once and saved under the cache; a song name takes about half a second of CPU on a fast machine and a few on a Raspberry Pi. Default off. Restart to apply"
+  },
+  "VOICE_SPEECH_THREADS": {
+   "type": "integer",
+   "minimum": 1,
+   "maximum": 8,
+   "default": 1,
+   "description": "CPU threads for making speech. More makes a new phrase sooner but takes cores from playback and recognition. Restart to apply"
+  },
+  "VOICE_WAKE_CHIME": {
+   "type": "boolean",
+   "default": true,
+   "description": "Chime in the call when the bot hears its name. Default on. Restart to apply"
+  },
+  "VOICE_DUCK_VOLUME": {
+   "type": "number",
+   "minimum": 0,
+   "maximum": 1,
+   "default": 0.3,
+   "description": "Music volume, as a fraction, from when the bot hears its name until the command has been heard. Default 0.3; 1 leaves the music alone. Restart to apply"
+  },
+  "VOICE_RECOGNISER_PROVIDER": {
+   "type": "string",
+   "enum": [
+    "cpu",
+    "coreml"
+   ],
+   "default": "cpu",
+   "description": "Where speech recognition runs. coreml needs a sidecar built with --features shared-onnxruntime on macOS (otherwise it stays on cpu), and measured slower than cpu on this model. Restart to apply"
+  },
+  "VOICE_RECOGNISER_THREADS": {
+   "type": "integer",
+   "minimum": 1,
+   "maximum": 32,
+   "default": 2,
+   "description": "Threads for speech recognition; more makes each command faster (4 roughly halves it). Restart to apply"
+  },
+  "VOICE_LANGUAGE": {
+   "type": "string",
+   "enum": [
+    "auto",
+    "en",
+    "zh",
+    "ja",
+    "ko",
+    "yue"
+   ],
+   "default": "auto",
+   "description": "The language voice commands are heard in, in every server. auto guesses per command and sometimes takes a short one for another language; pinned, commands in other languages are not understood. Restart to apply"
+  },
+  "VOICE_WAIT_FOR_COMMAND_MS": {
+   "type": "integer",
+   "minimum": 500,
+   "maximum": 10000,
+   "default": 2500,
+   "description": "How long after the name to wait for a command to start, in milliseconds. A pause before the command, waiting for the chime, does not end it within this time. Restart to apply"
+  },
+  "VOICE_END_SILENCE_MS": {
+   "type": "integer",
+   "minimum": 200,
+   "maximum": 3000,
+   "default": 500,
+   "description": "Silence that ends a command, in milliseconds. Longer forgives pauses mid-command; every millisecond is added to the wait for an answer. Restart to apply"
+  },
+  "VOICE_MAX_COMMAND_MS": {
+   "type": "integer",
+   "minimum": 2000,
+   "maximum": 20000,
+   "default": 8000,
+   "description": "The longest command, in milliseconds, from just before the name ended. Restart to apply"
+  },
+  "VOICE_INTENT_MODEL_URL": {
+   "type": "string",
+   "default": "",
+   "description": "An OpenAI-compatible server on this machine (mlx_lm.server, LM Studio, Ollama), as http://host:port/v1, whose language model decides what each voice command asks for. Empty, or when the server does not answer within 3 seconds: only a command's own name said first (\"skip\", \"play <song>\") is understood"
+  },
+  "VOICE_INTENT_MODEL": {
+   "type": "string",
+   "default": "mlx-community/Qwen3-4B-4bit",
+   "description": "The model that server should use for voice commands"
   }
  },
  "required": [

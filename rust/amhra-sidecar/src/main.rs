@@ -20,6 +20,48 @@
 //! before asking for them. A command marked `stream` is the exception: with
 //! caching off, this process downloads the track itself, straight into the
 //! reader that plays it, and nothing is written to disk.
+//!
+//! `--listen` also decodes what everyone else in the channel says (see
+//! `listen.rs`). It is off by default and, alone, goes nowhere. Even with it,
+//! a guild is heard only while its `Connect` or a later `SetListen` says so:
+//! voice commands are opted into per guild, by the bot.
+//!
+//! `--voice-commands` listens for the wake word and transcribes what follows
+//! it, reporting `Utterance` events (see `voice_commands`). It implies
+//! `--listen`, needs a build with the `voice-commands` feature, and reads:
+//!
+//! - `--voice-models <dir>`: from `scripts/download-voice-models.sh`, default
+//!   `models/voice`;
+//! - `--wake-keywords <file>`: the wake phrases, default
+//!   `data/wake-keywords.txt`;
+//! - `--recogniser-threads <n>`: threads for speech recognition, default 2;
+//! - `--recogniser-language <lang>`: auto (the default), en, zh, ja, ko or
+//!   yue, for every guild;
+//! - `--recogniser-provider cpu|coreml`: where speech recognition runs,
+//!   default cpu; coreml needs a build with the `shared-onnxruntime` feature;
+//! - `--wake-model <dir>`: a fine-tuned keyword spotter from
+//!   `training/wake/export.sh`, instead of the stock one;
+//! - `--wake-clips <dir>`: save the second or so of audio each wake was heard
+//!   in, for retraining the spotter (see `voice_commands::clips`), at most
+//!   `--wake-clips-max <n>` of them, default 2000;
+//! - `--wake-chime`: chime in the call when the name is heard;
+//! - `--wake-duck <gain>`: lower the music to this from the name until what
+//!   follows has been heard (see `wake_feedback`);
+//! - `--wait-for-speech-ms`, `--end-silence-ms`, `--max-capture-ms`: how long
+//!   to wait for a command after the name, the silence that ends it, and the
+//!   longest one, overriding `GateConfig`'s defaults.
+//!
+//! `--speech` lets the bot speak (`Speak`, `PrepareSpeech`) with whichever
+//! speech models are unpacked under `--voice-models` (see `speech::models`:
+//! Supertonic 3 for English, Japanese and Korean, Kokoro for Mandarin, a VITS
+//! voice for Cantonese), on `--speech-threads <n>` CPU threads, default 1.
+//! Phrases are saved under `<cache-dir>/speech` and each model is loaded only
+//! to make new ones (see `speech`). It needs the `voice-commands` feature and
+//! lowers the music to `--wake-duck` meanwhile.
+//!
+//! Paths are relative to the directory the sidecar is started in. A model
+//! that will not load is reported once as an `Error` event and the sidecar
+//! carries on without voice commands: playback never depends on them.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,12 +74,25 @@ use amhra_fetch::Extractor;
 use amhra_fetch::download::DownloadOptions;
 use amhra_sidecar::framing::{read_frame, write_frame};
 use amhra_sidecar::protocol::{Command, Event, PROTOCOL_VERSION, SessionState};
+use amhra_sidecar::speech::{Speech, Voice};
 use amhra_sidecar::worker::{Worker, WorkerCommand};
+
+/// Each connected guild's audio thread, for what the voice-command threads
+/// need to tell it: they hear the name, but the guild map is the main loop's.
+type Workers = Arc<Mutex<HashMap<String, Sender<WorkerCommand>>>>;
 use amhra_voice::dave::driver::{Action, Driver};
 use amhra_voice::gateway::{self, ConnectionInfo, Event as GatewayEvent};
+use amhra_sidecar::listen::{ListenSetup, VoiceSink};
+use amhra_sidecar::voice_commands::engine::Engine;
 use amhra_voice::player::FadeSettings;
+use amhra_voice::receive::Membership;
 use amhra_voice::wire::EncryptionMode;
-use amhra_voice::{Session, VoiceUdp};
+use amhra_voice::{Opener, Session, VoiceUdp};
+
+/// Audio saved from before where the name ended, for `--wake-clips`. The
+/// name is about half a second; the rest is context, as the training cuts have.
+#[cfg(feature = "voice-commands")]
+const WAKE_CLIP_MS: u32 = 1000;
 
 /// How often the gateway task checks whether the audio thread wants the
 /// speaking flag changed. The flag is a courtesy to the client's UI, not part
@@ -68,6 +123,9 @@ struct GuildSession {
 	paused: bool,
 	gain: f32,
 	main_gain: f32,
+	/// Whether this guild's receive thread passes packets on. Shared with it,
+	/// so `SetListen` takes effect without a reconnect.
+	listening: Arc<AtomicBool>,
 }
 
 impl GuildSession {
@@ -149,17 +207,17 @@ impl Streamer {
 	}
 }
 
-/// The value after `flag` on the command line.
-fn argument(flag: &str) -> Option<String> {
-	std::env::args().skip_while(|argument| argument != flag).nth(1)
-}
-
 #[tokio::main]
 async fn main() {
 	let cache_dir =
-		std::path::PathBuf::from(argument("--cache-dir").unwrap_or_else(|| "cache".to_owned()));
-	let profiles = argument("--profiles").map(std::path::PathBuf::from);
+		std::path::PathBuf::from(option("--cache-dir").unwrap_or_else(|| "cache".to_owned()));
+	let profiles = option("--profiles").map(std::path::PathBuf::from);
 	let mut streamer = Streamer { profiles, extractor: None };
+	let voice_commands = flag("--voice-commands");
+	let listen = flag("--listen") || voice_commands;
+	if listen {
+		eprintln!("listening: other members' audio will be decrypted and decoded");
+	}
 
 	// Events are written by one thread so frames from the audio threads and the
 	// gateway tasks cannot interleave halfway through.
@@ -175,6 +233,10 @@ async fn main() {
 	});
 
 	let _ = events.send(Event::Hello { version: PROTOCOL_VERSION, pid: std::process::id() });
+
+	let workers: Workers = Arc::default();
+	let voice = if voice_commands { start_voice_commands(&events, &workers) } else { None };
+	let speech = start_speech(&cache_dir, &workers);
 
 	// stdin is blocking, so it gets its own thread rather than stalling the
 	// runtime that every gateway connection shares.
@@ -215,7 +277,14 @@ async fn main() {
 		if matches!(command, Command::Shutdown) {
 			break;
 		}
-		dispatch(command, &mut guilds, &events, &cache_dir, &mut streamer).await;
+		let context = Context {
+			cache_dir: &cache_dir,
+			listen,
+			voice: voice.as_ref(),
+			workers: &workers,
+			speech: speech.as_ref(),
+		};
+		dispatch(command, &mut guilds, &events, &context, &mut streamer).await;
 	}
 
 	eprintln!("shutting down {} guild(s)", guilds.len());
@@ -224,15 +293,25 @@ async fn main() {
 	}
 }
 
+/// What every command may need, set up once at startup.
+struct Context<'a> {
+	cache_dir: &'a std::path::Path,
+	listen: bool,
+	voice: Option<&'a Arc<Engine>>,
+	workers: &'a Workers,
+	speech: Option<&'a Speech>,
+}
+
 async fn dispatch(
 	command: Command,
 	guilds: &mut HashMap<String, GuildSession>,
 	events: &Sender<Event>,
-	cache_dir: &std::path::Path,
+	context: &Context<'_>,
 	streamer: &mut Streamer,
 ) {
+	let Context { cache_dir, listen, voice, workers, speech } = *context;
 	match command {
-		Command::Connect { guild_id, channel_id, user_id, session_id, endpoint, token } => {
+		Command::Connect { guild_id, channel_id, user_id, session_id, endpoint, token, listen: wanted } => {
 			// Reconnecting to the same guild replaces the old session rather
 			// than leaving two things sending to one channel.
 			if let Some(existing) = guilds.remove(&guild_id) {
@@ -260,6 +339,7 @@ async fn dispatch(
 			};
 			let (handle, gateway_events) = gateway::connect(info);
 			let alive = Arc::new(AtomicBool::new(true));
+			let listening = Arc::new(AtomicBool::new(wanted));
 
 			tokio::spawn(drive_connection(
 				guild_id.clone(),
@@ -271,8 +351,13 @@ async fn dispatch(
 				worker.command_sender(),
 				worker.speaking_flag(),
 				alive.clone(),
+				listen.then(|| listening.clone()),
+				voice.cloned(),
 			));
 
+			if let Ok(mut workers) = workers.lock() {
+				workers.insert(guild_id.clone(), worker.command_sender());
+			}
 			guilds.insert(
 				guild_id,
 				GuildSession {
@@ -285,11 +370,15 @@ async fn dispatch(
 					paused: false,
 					gain: 1.0,
 					main_gain: 1.0,
+					listening,
 				},
 			);
 		}
 
 		Command::Disconnect { guild_id } => {
+			if let Ok(mut workers) = workers.lock() {
+				workers.remove(&guild_id);
+			}
 			if let Some(session) = guilds.remove(&guild_id) {
 				session.stand_down().await;
 				let _ = events.send(Event::Disconnected {
@@ -397,6 +486,24 @@ async fn dispatch(
 			})
 		}
 
+		Command::SetListen { guild_id, listen } => {
+			with_guild(guilds, events, &guild_id, |session| {
+				session.listening.store(listen, Ordering::Relaxed);
+			})
+		}
+
+		Command::Speak { guild_id, text, language } => {
+			if let Some(speech) = speech {
+				speech.say(guild_id, text, Voice::for_language(language.as_deref()));
+			}
+		}
+		Command::PrepareSpeech { phrases } => {
+			for phrase in phrases {
+				if let Some(speech) = speech {
+					speech.prepare(phrase.text, Voice::for_language(phrase.language.as_deref()));
+				}
+			}
+		}
 		Command::ListSessions => {
 			let guilds = guilds
 				.iter()
@@ -506,8 +613,16 @@ async fn drive_connection(
 	worker: Sender<WorkerCommand>,
 	speaking: Arc<std::sync::atomic::AtomicBool>,
 	alive: Arc<AtomicBool>,
+	// The guild's switch, when this process can listen at all.
+	listen: Option<Arc<AtomicBool>>,
+	voice: Option<Arc<Engine>>,
 ) {
 	let mut ssrc = 0u32;
+	// Who owns which SSRC, as far as this connection has been told. Kept here
+	// as well as in the receive thread because `speaking` can arrive before
+	// the keys do, and a receive thread started later still needs to know.
+	let mut speakers: HashMap<u32, u64> = HashMap::new();
+	let mut membership: Option<std::sync::mpsc::Sender<Membership>> = None;
 	let mut udp: Option<VoiceUdp> = None;
 	let mut dave: Option<Arc<Mutex<Driver>>> = None;
 	// DAVE frames that arrived before the keys did. The driver cannot exist
@@ -638,10 +753,24 @@ async fn drive_connection(
 							early.clear();
 						}
 
+						let listen = if let Some(enabled) = &listen {
+							listen_setup(&mut membership, &speakers, mode, &secret_key, ssrc, enabled.clone())
+								.map(|mut setup| {
+									if let Some(engine) = &voice {
+										setup.sink = voice_sink(engine, &events, &guild_id);
+									}
+									setup
+								})
+								.map_err(|error| fail(&events, &guild_id, error))
+								.ok()
+						} else {
+							None
+						};
 						let _ = worker.send(WorkerCommand::Attach {
 							socket,
 							session: Box::new(session),
 							dave: dave.clone(),
+							listen,
 						});
 						let _ = events.send(Event::Ready {
 							guild_id: guild_id.clone(),
@@ -663,6 +792,24 @@ async fn drive_connection(
 						feed_dave(driver, &handle, &events, &guild_id, opcode, &data, &payload).await;
 					}
 
+					GatewayEvent::Speaking { user_id, ssrc: theirs, flags: _ } => {
+						speakers.insert(theirs, user_id);
+						if let Some(membership) = &membership {
+							let _ = membership.send(Membership::Speaking { user_id, ssrc: theirs });
+						}
+					}
+
+					GatewayEvent::ClientDisconnect { user_id } => {
+						speakers.retain(|_, speaker| *speaker != user_id);
+						if let Some(membership) = &membership {
+							let _ = membership.send(Membership::Disconnect { user_id });
+						}
+					}
+
+					// Joining tells us nothing a receiver can use: SSRCs only
+					// arrive with `speaking`.
+					GatewayEvent::ClientsConnect { .. } => {}
+
 					GatewayEvent::Reconnecting { reason, resumable } => {
 						// Only a session that is starting over gets a new socket
 						// and new keys, and only that one is worth detaching for.
@@ -677,6 +824,9 @@ async fn drive_connection(
 							// driver of a call that no longer exists.
 							dave = None;
 							early.clear();
+							// A new session hands out new SSRCs.
+							speakers.clear();
+							membership = None;
 						}
 						let _ = events
 							.send(Event::Reconnecting { guild_id: guild_id.clone(), reason });
@@ -694,6 +844,265 @@ async fn drive_connection(
 			}
 		}
 	}
+}
+
+/// Everything the worker needs to start a receive thread for this session.
+///
+/// The membership channel is new each time — the previous receive thread ends
+/// with its attachment — and is primed with every SSRC already announced.
+fn listen_setup(
+	membership: &mut Option<std::sync::mpsc::Sender<Membership>>,
+	speakers: &HashMap<u32, u64>,
+	mode: EncryptionMode,
+	secret_key: &[u8],
+	own_ssrc: u32,
+	enabled: Arc<AtomicBool>,
+) -> Result<ListenSetup, String> {
+	let opener =
+		Opener::new(mode, secret_key).map_err(|error| format!("listen: bad session key: {error}"))?;
+	let (sender, receiver) = std::sync::mpsc::channel();
+	for (&ssrc, &user_id) in speakers {
+		let _ = sender.send(Membership::Speaking { user_id, ssrc });
+	}
+	*membership = Some(sender);
+	// Decoded and let go, unless voice commands replace this.
+	Ok(ListenSetup { opener, own_ssrc, membership: receiver, sink: Box::new(|_| {}), enabled })
+}
+
+/// A gate thread for this call's voice, or — if one cannot be started —
+/// nowhere, said once.
+fn voice_sink(engine: &Engine, events: &Sender<Event>, guild_id: &str) -> VoiceSink {
+	engine.listen(guild_id).unwrap_or_else(|error| {
+		fail(events, guild_id, format!("could not start voice commands: {error}"));
+		Box::new(|_| {})
+	})
+}
+
+/// Load the models and start the recogniser. Slow — the speech model is a
+/// quarter of a gigabyte — so it happens once, at startup, before any guild
+/// connects.
+#[cfg(feature = "voice-commands")]
+fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc<Engine>> {
+	use amhra_sidecar::voice_commands::clips::ClipStore;
+	use amhra_sidecar::voice_commands::engine::Notice;
+	use amhra_sidecar::voice_commands::gate::GateConfig;
+	use amhra_sidecar::voice_commands::sherpa::{self, SherpaConfig};
+
+	let models = option("--voice-models").unwrap_or_else(|| "models/voice".to_owned());
+	let keywords = option("--wake-keywords").unwrap_or_else(|| "data/wake-keywords.txt".to_owned());
+	let started = std::time::Instant::now();
+	let loaded = std::fs::read_to_string(&keywords)
+		.map_err(|error| format!("cannot read {keywords}: {error}"))
+		.and_then(|keywords| {
+			let mut config = SherpaConfig::new(models.into(), keywords);
+			if let Some(threads) =
+				option("--recogniser-threads").and_then(|threads| threads.parse().ok()).filter(|threads| *threads >= 1)
+			{
+				config.recogniser_threads = threads;
+			}
+			config.spotter = option("--wake-model").map(Into::into);
+			config.recogniser_provider = recogniser_provider(events);
+			if let Some(language) = option("--recogniser-language") {
+				config.recogniser_language = language;
+			}
+			sherpa::load(&config).map_err(|error| error.to_string())
+		});
+	let (models, recogniser) = match loaded {
+		Ok(loaded) => loaded,
+		Err(message) => {
+			let message = format!("voice commands are off: {message}");
+			eprintln!("{message}");
+			let _ = events.send(Event::Error { guild_id: None, message });
+			return None;
+		}
+	};
+
+	// A clip store that will not open costs the clips, not voice commands.
+	let clips = option("--wake-clips").and_then(|dir| {
+		let max = option("--wake-clips-max").and_then(|max| max.parse().ok()).unwrap_or(2000);
+		ClipStore::open(dir.clone().into(), max)
+			.map_err(|error| eprintln!("voice commands: not saving wake clips: cannot use {dir}: {error}"))
+			.ok()
+	});
+	let defaults = GateConfig::default();
+	let ms = |name, default| option(name).and_then(|ms| ms.parse().ok()).unwrap_or(default);
+	let gate = GateConfig {
+		wait_for_speech_ms: ms("--wait-for-speech-ms", defaults.wait_for_speech_ms),
+		end_silence_ms: ms("--end-silence-ms", defaults.end_silence_ms),
+		max_capture_ms: ms("--max-capture-ms", defaults.max_capture_ms),
+		name_clip_ms: if clips.is_some() { WAKE_CLIP_MS } else { 0 },
+		..defaults
+	};
+	if let Some(clips) = &clips {
+		eprintln!("voice commands: saving wake clips to {}", clips.dir().display());
+	}
+	let clips = clips.map(Mutex::new);
+	let chime = flag("--wake-chime");
+	let duck = option("--wake-duck").and_then(|gain| gain.parse::<f32>().ok()).unwrap_or(1.0);
+	let workers = Arc::clone(workers);
+	let tell = move |guild_id: &str, command: WorkerCommand| {
+		if let Some(worker) = workers.lock().ok().and_then(|workers| workers.get(guild_id).cloned()) {
+			let _ = worker.send(command);
+		}
+	};
+
+	let events = events.clone();
+	let report = Arc::new(move |notice: Notice| match notice {
+		Notice::Utterance { guild_id, user_id, keyword, text, lang, latency_ms, recognition_ms, audio_ms } => {
+			// What was said goes to the bot only, not into the log.
+			eprintln!(
+				"[{guild_id}] voice: {user_id} after {keyword}: {audio_ms}ms of speech, {} chars, {}, text {latency_ms}ms after they stopped ({recognition_ms}ms recognising)",
+				text.chars().count(),
+				lang.as_deref().unwrap_or("language unknown"),
+			);
+			tell(&guild_id, WorkerCommand::Heard);
+			let _ = events.send(Event::Utterance {
+				guild_id,
+				user_id: user_id.to_string(),
+				text,
+				lang,
+				wake_keyword: keyword,
+				latency_ms,
+			});
+		}
+		Notice::Woke { guild_id, user_id, keyword } => {
+			eprintln!("[{guild_id}] voice: {user_id} said {keyword}");
+			tell(&guild_id, WorkerCommand::Woke { chime, duck });
+			let _ = events.send(Event::Woke { guild_id, user_id: user_id.to_string() });
+		}
+		Notice::TimedOut { guild_id, user_id, keyword } => {
+			eprintln!("[{guild_id}] voice: {user_id} said {keyword} and nothing after it");
+			tell(&guild_id, WorkerCommand::Heard);
+			let _ = events.send(Event::NothingHeard { guild_id, user_id: user_id.to_string() });
+		}
+		Notice::Name { guild_id, user_id, samples, .. } => {
+			let Some(Ok(mut clips)) = clips.as_ref().map(Mutex::lock) else { return };
+			let at = std::time::SystemTime::now()
+				.duration_since(std::time::UNIX_EPOCH)
+				.map_or(0, |since| since.as_millis());
+			match clips.save(&guild_id, user_id, &samples, at) {
+				Ok(Some(path)) => eprintln!("[{guild_id}] voice: saved wake clip {}", path.display()),
+				Ok(None) => {}
+				Err(error) => eprintln!("[{guild_id}] voice: could not save a wake clip: {error}"),
+			}
+		}
+		Notice::Unintelligible { guild_id, user_id, keyword } => {
+			eprintln!("[{guild_id}] voice: {user_id} said {keyword}, then nothing recognisable");
+			tell(&guild_id, WorkerCommand::Heard);
+			let _ = events.send(Event::NothingHeard { guild_id, user_id: user_id.to_string() });
+		}
+		Notice::Dropped { guild_id, what, count } => {
+			eprintln!("[{guild_id}] voice: behind, dropped {count} {what}");
+			// A dropped command is a wake that will never be heard.
+			if what == "commands" {
+				for _ in 0..count {
+					tell(&guild_id, WorkerCommand::Heard);
+				}
+			}
+		}
+		Notice::Failed { guild_id, message } => fail(&events, &guild_id, format!("voice commands: {message}")),
+	});
+	match Engine::start(models, Box::new(recogniser), gate, report) {
+		Ok(engine) => {
+			eprintln!("voice commands: models loaded in {:?}", started.elapsed());
+			Some(Arc::new(engine))
+		}
+		Err(error) => {
+			eprintln!("voice commands are off: could not start the recogniser: {error}");
+			None
+		}
+	}
+}
+
+/// The provider asked for, or the CPU, saying why when that is not what was
+/// asked for.
+#[cfg(feature = "voice-commands")]
+fn recogniser_provider(events: &Sender<Event>) -> amhra_sidecar::voice_commands::sherpa::Provider {
+	use amhra_sidecar::voice_commands::sherpa::Provider;
+	let Some(name) = option("--recogniser-provider") else { return Provider::Cpu };
+	let fallback = |message: String| {
+		eprintln!("{message}");
+		let _ = events.send(Event::Error { guild_id: None, message });
+		Provider::Cpu
+	};
+	match Provider::parse(&name) {
+		Some(provider) if provider.available() => {
+			eprintln!("voice commands: recognising on {}", provider.name());
+			provider
+		}
+		Some(provider) => fallback(format!(
+			"voice commands: {} is not in this build (it needs --features shared-onnxruntime, on macOS); recognising on the cpu",
+			provider.name()
+		)),
+		None => fallback(format!("voice commands: unknown recogniser provider {name:?}; recognising on the cpu")),
+	}
+}
+
+#[cfg(not(feature = "voice-commands"))]
+fn start_voice_commands(events: &Sender<Event>, _workers: &Workers) -> Option<Arc<Engine>> {
+	let message = "voice commands are off: this sidecar was built without the voice-commands feature".to_owned();
+	eprintln!("{message}");
+	let _ = events.send(Event::Error { guild_id: None, message });
+	None
+}
+
+/// The speech thread, if `--speech` asks for one and any speech model is
+/// there. The models themselves are not loaded until something new has to be
+/// said.
+#[cfg(feature = "voice-commands")]
+fn start_speech(cache_dir: &std::path::Path, workers: &Workers) -> Option<Speech> {
+	use amhra_sidecar::speech::models;
+
+	if !flag("--speech") {
+		return None;
+	}
+	let dir = option("--voice-models").unwrap_or_else(|| "models/voice".to_owned());
+	let threads = option("--speech-threads").and_then(|threads| threads.parse().ok()).filter(|n| *n >= 1).unwrap_or(1);
+	let found = models::under(std::path::Path::new(&dir), threads);
+	if found.is_empty() {
+		eprintln!(
+			"speech is off: none of {}, {} or {} is in {dir}; run scripts/download-voice-models.sh --speech",
+			models::SUPERTONIC,
+			models::KOKORO,
+			models::CANTONESE
+		);
+		return None;
+	}
+	for model in &found {
+		let voices: Vec<&str> = model.voices.iter().map(|voice| voice.name()).collect();
+		eprintln!("speech: {} for {}, on {threads} thread(s) when a phrase is new", model.name, voices.join(", "));
+	}
+	let duck = option("--wake-duck").and_then(|gain| gain.parse::<f32>().ok()).unwrap_or(1.0);
+	let workers = Arc::clone(workers);
+	let deliver = Box::new(move |guild_id: &str, pcm| {
+		if let Some(worker) = workers.lock().ok().and_then(|workers| workers.get(guild_id).cloned()) {
+			let _ = worker.send(WorkerCommand::Say { pcm, duck });
+		}
+	});
+	match Speech::start(found, Some(cache_dir.join("speech")), deliver) {
+		Ok(speech) => Some(speech),
+		Err(error) => {
+			eprintln!("speech is off: {error}");
+			None
+		}
+	}
+}
+
+#[cfg(not(feature = "voice-commands"))]
+fn start_speech(_cache_dir: &std::path::Path, _workers: &Workers) -> Option<Speech> {
+	if flag("--speech") {
+		eprintln!("speech is off: this sidecar was built without the voice-commands feature");
+	}
+	None
+}
+
+/// The value after `name` on the command line.
+fn option(name: &str) -> Option<String> {
+	std::env::args().skip_while(|argument| argument != name).nth(1)
+}
+
+fn flag(name: &str) -> bool {
+	std::env::args().any(|argument| argument == name)
 }
 
 /// Hand one DAVE frame to the driver and send back whatever it answers with.

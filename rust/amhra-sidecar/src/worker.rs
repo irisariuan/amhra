@@ -22,11 +22,14 @@ use std::time::{Duration, Instant};
 
 use amhra_audio::CacheReader;
 use amhra_voice::dave::driver::Driver;
+use amhra_voice::dsp::Volume;
 use amhra_voice::mixer::{Frame, LayerEvent, Mixer};
 use amhra_voice::player::{Event as PlayerEvent, FadeSettings, Player, Tick};
 use amhra_voice::{SILENCE_FRAME, Session};
 
+use crate::listen::{self, ListenHandle, ListenSetup};
 use crate::protocol::Event;
+use crate::wake_feedback::{Clip, Clips, Duck, FRAME_PCM};
 
 /// One audio frame's worth of time.
 const TICK: Duration = Duration::from_millis(20);
@@ -37,11 +40,13 @@ const STACK_SIZE: usize = 512 * 1024;
 
 /// What the main thread tells a guild worker to do.
 pub enum WorkerCommand {
-	/// The voice connection is up; here is everything needed to send on it.
+	/// The voice connection is up; here is everything needed to send on it,
+	/// and, when listening, to hear it.
 	Attach {
 		socket: std::net::UdpSocket,
 		session: Box<Session>,
 		dave: Option<Arc<Mutex<Driver>>>,
+		listen: Option<ListenSetup>,
 	},
 	/// The connection dropped; stop sending until another `Attach`.
 	Detach,
@@ -68,6 +73,14 @@ pub enum WorkerCommand {
 	SetLayerVolume { layer_id: String, gain: f32 },
 	SwapLayer(String),
 	SetFades(FadeSettings),
+	/// Someone said the bot's name: chime, if `chime`, and lower the music to
+	/// `duck` until a matching `Heard`.
+	Woke { chime: bool, duck: f32 },
+	/// A wake has been dealt with; the music may come back up.
+	Heard,
+	/// Say this, after anything already being said, with the music lowered
+	/// to `duck` meanwhile. Interleaved stereo PCM at the Opus rate.
+	Say { pcm: Arc<[i16]>, duck: f32 },
 	Shutdown,
 }
 
@@ -136,6 +149,9 @@ struct Attachment {
 	socket: std::net::UdpSocket,
 	session: Session,
 	dave: Option<Arc<Mutex<Driver>>>,
+	/// The receive thread on this same socket, if listening. Held only to be
+	/// dropped: a detach or a re-attach ends it along with the connection.
+	_listener: Option<ListenHandle>,
 }
 
 fn run(
@@ -146,8 +162,13 @@ fn run(
 ) {
 	let mut player = Player::new();
 	let mut mixer = Mixer::new();
+	let mut output = Output::default();
 	let mut attachment: Option<Attachment> = None;
 	let mut paused = false;
+	// Whether the last frames sent were the player's, as opposed to a chime
+	// played over nothing: only the player going quiet is news to the bot.
+	let mut player_spoke = false;
+	let mut overlay = [0i16; FRAME_PCM];
 	let mut packet = Vec::with_capacity(1400);
 	let mut e2ee = Vec::with_capacity(1400);
 	let mut ticks = 0u32;
@@ -176,6 +197,7 @@ fn run(
 						command,
 						&mut player,
 						&mut mixer,
+						&mut output,
 						&mut attachment,
 						&mut paused,
 						&guild_id,
@@ -200,7 +222,14 @@ fn run(
 		}
 
 		ticks = ticks.wrapping_add(1);
-		if paused {
+		let now = Instant::now();
+		let playing = output.clips.next_frame(&mut overlay, &mut output.duck, now);
+		output.update(now);
+		let overlay = playing.then_some(&overlay[..]);
+
+		// A chime or speech still plays over a paused track: the name is often
+		// said to ask for it back.
+		if paused && overlay.is_none() {
 			speaking.store(false, Ordering::Relaxed);
 			continue;
 		}
@@ -215,25 +244,44 @@ fn run(
 			continue;
 		}
 
-		let tick = player.tick();
+		// Paused, the queue and its layers hold their place; only a chime or
+		// speech is left to send.
+		let tick = if paused { Tick::Idle } else { player.tick() };
 		// A stalled queue track is not an ending, even with nothing to send.
 		let stalled = matches!(tick, Tick::Starving);
 		let main = match tick {
 			Tick::Frame { bytes, samples } => Some(Frame { bytes, samples }),
 			Tick::Starving | Tick::Idle => None,
 		};
+		let mixed = if paused { Ok(None) } else { mixer.mix(main) };
 
-		let silent = match mixer.mix(main) {
+		let silent = match mixed {
 			Ok(Some(frame)) => {
 				speaking.store(true, Ordering::Relaxed);
-				if let Err(message) = send_frame(attached, frame.bytes, &mut e2ee, &mut packet) {
-					report(&events, &guild_id, message);
-				} else {
-					attached.session.advance(frame.samples);
+				player_spoke = true;
+				// The duck and anything said over the music go on last, over the
+				// whole mix, so they reach every layer alike.
+				match output.volume.process_with(frame.bytes, overlay) {
+					Ok(scaled) => {
+						if let Err(message) = send_frame(attached, scaled, &mut e2ee, &mut packet) {
+							report(&events, &guild_id, message);
+						} else {
+							attached.session.advance(frame.samples);
+						}
+					}
+					Err(error) => report(&events, &guild_id, format!("gain failed: {error}")),
 				}
 				false
 			}
-			Ok(None) => true,
+			Ok(None) => match overlay {
+				// Nothing playing, or a stall: the chime or speech goes out alone.
+				Some(overlay) => {
+					speaking.store(true, Ordering::Relaxed);
+					send_alone(attached, &mut output.volume, overlay, &mut e2ee, &mut packet, &guild_id, &events);
+					false
+				}
+				None => true,
+			},
 			Err(error) => {
 				report(&events, &guild_id, format!("mix failed: {error}"));
 				false
@@ -250,7 +298,10 @@ fn run(
 				let _ = send_frame(attached, &SILENCE_FRAME, &mut e2ee, &mut packet);
 				attached.session.advance(960);
 			}
-			let _ = events.send(Event::Idle { guild_id: guild_id.clone() });
+			// A chime over nothing ending is not the queue going quiet.
+			if std::mem::take(&mut player_spoke) && !paused {
+				let _ = events.send(Event::Idle { guild_id: guild_id.clone() });
+			}
 		}
 
 		for event in player.drain_events() {
@@ -298,6 +349,49 @@ fn run(
 	}
 }
 
+/// The volume stage, and what answering the name does to it: the chime and
+/// speech mixed in and the music lowered.
+#[derive(Default)]
+struct Output {
+	volume: Volume,
+	clips: Clips,
+	duck: Duck,
+	/// What the volume was last set to, so it is only touched on a change.
+	applied: Option<f32>,
+}
+
+impl Output {
+	/// Set the volume to the duck, if that moved. The listener's own volume is
+	/// the mixer's master, upstream of this.
+	fn update(&mut self, now: Instant) {
+		let gain = self.duck.factor(now);
+		if self.applied != Some(gain) {
+			self.applied = Some(gain);
+			self.volume.set_gain(gain);
+		}
+	}
+}
+
+/// Encode a frame of PCM with nothing under it and send it.
+fn send_alone(
+	attached: &mut Attachment,
+	volume: &mut Volume,
+	pcm: &[i16],
+	e2ee: &mut Vec<u8>,
+	packet: &mut Vec<u8>,
+	guild_id: &str,
+	events: &Sender<Event>,
+) {
+	let encoded = match volume.encode_alone(pcm) {
+		Ok(encoded) => encoded,
+		Err(error) => return report(events, guild_id, format!("chime failed: {error}")),
+	};
+	match send_frame(attached, encoded, e2ee, packet) {
+		Ok(()) => attached.session.advance(960),
+		Err(message) => report(events, guild_id, message),
+	}
+}
+
 /// Encrypt and send one Opus frame.
 fn send_frame(
 	attached: &mut Attachment,
@@ -338,18 +432,36 @@ fn send_frame(
 	}
 }
 
+// Every argument is a separate piece of the worker's state that a command may
+// touch; bundling them would only move the borrow splitting somewhere else.
+#[allow(clippy::too_many_arguments)]
 fn apply(
 	command: WorkerCommand,
 	player: &mut Player,
 	mixer: &mut Mixer,
+	output: &mut Output,
 	attachment: &mut Option<Attachment>,
 	paused: &mut bool,
 	guild_id: &str,
 	events: &Sender<Event>,
 ) {
 	match command {
-		WorkerCommand::Attach { socket, session, dave } => {
-			*attachment = Some(Attachment { socket, session: *session, dave });
+		WorkerCommand::Attach { socket, session, dave, listen } => {
+			// The old attachment, and its receive thread, go first: two
+			// threads reading one socket would each get half the packets.
+			*attachment = None;
+			let listener = listen.and_then(|setup| {
+				let started =
+					socket.try_clone().and_then(|clone| listen::spawn(guild_id, clone, setup, dave.clone()));
+				match started {
+					Ok(handle) => Some(handle),
+					Err(error) => {
+						report(events, guild_id, format!("could not start listening: {error}"));
+						None
+					}
+				}
+			});
+			*attachment = Some(Attachment { socket, session: *session, dave, _listener: listener });
 		}
 		WorkerCommand::Detach => *attachment = None,
 		WorkerCommand::Play { track_id, mut reader, start_ms } => {
@@ -413,6 +525,20 @@ fn apply(
 				Err(error) => report(events, guild_id, format!("cannot swap: {error}")),
 			}
 		}
+		WorkerCommand::Woke { chime, duck } => {
+			if chime {
+				output.clips.push(Clip::chime());
+			}
+			if duck < 1.0 {
+				output.duck.woke(duck, Instant::now());
+			}
+			output.update(Instant::now());
+		}
+		WorkerCommand::Heard => {
+			output.duck.heard();
+			output.update(Instant::now());
+		}
+		WorkerCommand::Say { pcm, duck } => output.clips.push(Clip::new(pcm, (duck < 1.0).then_some(duck))),
 		WorkerCommand::SetFades(fades) => player.set_fades(fades),
 		WorkerCommand::Shutdown => {}
 	}

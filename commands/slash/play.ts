@@ -27,6 +27,7 @@ import {
 	requestSchedule,
 } from "../../lib/voice/schedule";
 import { readSetting } from "../../lib/setting";
+import { reportFound } from "../../lib/voice/voiceInteraction";
 
 const setting = readSetting();
 
@@ -115,8 +116,9 @@ export default {
 		// find if there is cache, cache is saved in YoutubeVideo form
 		// resultUrl could be a video or playlist
 		let resultUrl: string;
-		// Shown as the link text in the reply. Left unset for a pasted video
-		// link, whose title is only looked up if the reply needs it.
+		// Shown as the link text in the reply, and said by a voice command.
+		// Left unset for a pasted video link, whose title is only looked up if
+		// the reply needs it, so a voice command says it only if it starts now.
 		let resultTitle: string | undefined;
 		// Set only when the input was a free-text search, so the user can be
 		// offered the other hits once something is already playing
@@ -210,6 +212,10 @@ export default {
 			alternatives = { results: searchResults, chosenUrl: resultUrl };
 		}
 
+		if (resultTitle) {
+			reportFound(interaction, { title: resultTitle, queued: player.isPlaying, next });
+		}
+
 		// start playing if the player is not playing
 		if (!player.isPlaying) {
 			dcb.log("Started to play music");
@@ -227,6 +233,9 @@ export default {
 					);
 				}
 				player.playResource(data);
+				if (!resultTitle) {
+					reportFound(interaction, { title: data.title, queued: false, next });
+				}
 
 				dcb.log(`Playing Searched URL ${videoUrl}`);
 				await interaction.editReply({

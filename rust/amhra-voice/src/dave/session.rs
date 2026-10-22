@@ -1,13 +1,13 @@
 //! The MLS group session behind DAVE.
 //!
-//! This is a *sender-only* member. The protocol lets a client that never
-//! decrypts skip receive-side frame handling, identity fingerprint checks and
-//! persistent signature keys — a music bot talks and never listens, so all
-//! three are left out and the signature key is generated fresh per session.
+//! The bot is a full member: it sends, and it decrypts what everyone else
+//! sends. Identity fingerprint checks and persistent signature keys are still
+//! left out — nobody verifies a music bot's safety number — so the signature
+//! key is generated fresh per session.
 //!
-//! What cannot be skipped is group membership: to send, the bot must really be
-//! in the MLS group, tracking every epoch change, because the media key is
-//! exported from the group secret.
+//! Group membership is what both directions rest on: the media keys are
+//! exported from the group secret, one per member, so every epoch change means
+//! re-exporting ours for sending and everyone else's for receiving.
 //!
 //! The join sequence, in the order the gateway drives it:
 //!
@@ -18,6 +18,11 @@
 //! op29 announce commit  ->  process_commit()        (epoch moved)
 //! op21/22 transitions   ->  the caller drives ready/execute
 //! ```
+//!
+//! Each of the epoch-moving steps re-exports a base secret per member: ours
+//! restarts the encryptor, and each other member's is appended to their
+//! [`Decryptor`], which keeps the previous epoch for a few seconds so frames
+//! already in flight still open.
 
 use openmls::prelude::*;
 use openmls::prelude::hash_ref::ProposalRef;
@@ -26,6 +31,10 @@ use openmls_traits::OpenMlsProvider;
 use openmls_basic_credential::SignatureKeyPair;
 use tls_codec::{DeserializeBytes, Serialize};
 
+use std::collections::HashMap;
+use std::time::Instant;
+
+use super::decryptor::{self, DecryptError, Decrypted, Decryptor};
 use super::frame::{Encryptor, FrameError};
 use super::{MEDIA_KEY_BASE_LABEL, MEDIA_KEY_BASE_LEN, PROTOCOL_VERSION};
 
@@ -89,6 +98,8 @@ pub struct Session {
 	external_sender_payload: Option<Vec<u8>>,
 	group: Option<MlsGroup>,
 	encryptor: Encryptor,
+	/// Every other member's keys, by user id.
+	decryptors: HashMap<u64, Decryptor>,
 	status: Status,
 }
 
@@ -136,6 +147,7 @@ impl Session {
 			external_sender_payload: None,
 			group: None,
 			encryptor: Encryptor::new(vec![0u8; MEDIA_KEY_BASE_LEN]),
+			decryptors: HashMap::new(),
 			status: Status::Uninitialised,
 		})
 	}
@@ -316,7 +328,11 @@ impl Session {
 			.wire_format_policy(PURE_PLAINTEXT_WIRE_FORMAT_POLICY)
 			.build();
 
-		let staged = StagedWelcome::new_from_welcome(&self.provider, &join_config, welcome, None)
+		// The welcome is for the group id the pending group was made under, and
+		// openmls 0.8 refuses to join over an existing group unless told to.
+		// The pending group was only ever a placeholder for this.
+		let staged = StagedWelcome::build_from_welcome(&self.provider, &join_config, welcome)
+			.and_then(|builder| builder.replace_old_group().build())
 			.map_err(|error| SessionError::Mls(format!("{error:?}")))?;
 
 		// The welcome must place us in a group that trusts the same external
@@ -384,15 +400,7 @@ impl Session {
 
 	/// Everyone currently in the group, by user id.
 	pub fn member_ids(&self) -> Vec<u64> {
-		let Some(group) = &self.group else { return Vec::new() };
-		group
-			.members()
-			.filter_map(|member| {
-				<[u8; 8]>::try_from(member.credential.serialized_content())
-					.ok()
-					.map(u64::from_be_bytes)
-			})
-			.collect()
+		self.group.as_ref().map(member_ids_of).unwrap_or_default()
 	}
 
 	fn create_pending_group(&mut self) -> Result<(), SessionError> {
@@ -423,22 +431,80 @@ impl Session {
 		Ok(())
 	}
 
-	/// Re-export our sender secret after any epoch change and hand it to the
-	/// encryptor, which restarts its ratchet and nonce.
+	/// Re-export every member's sender secret after an epoch change.
+	///
+	/// Ours restarts the encryptor and its nonce. Everyone else's becomes a new
+	/// epoch in their decryptor, and members who left lose theirs: a user id
+	/// that is no longer in the group has nothing it could legitimately send.
 	fn refresh_keys(&mut self) -> Result<(), SessionError> {
 		let group = self.group.as_ref().ok_or(SessionError::NotEstablished)?;
-		let base_secret = group
-			.export_secret(
-				self.provider.crypto(),
-				MEDIA_KEY_BASE_LABEL,
-				// Little-endian here, big-endian in the credential. Not a typo.
-				&self.user_id.to_le_bytes(),
-				MEDIA_KEY_BASE_LEN,
-			)
-			.map_err(|error| SessionError::Mls(format!("{error:?}")))?;
-		self.encryptor.set_base_secret(base_secret);
+		let export = |user_id: u64| {
+			group
+				.export_secret(
+					self.provider.crypto(),
+					MEDIA_KEY_BASE_LABEL,
+					// Little-endian here, big-endian in the credential. Not a
+					// typo.
+					&user_id.to_le_bytes(),
+					MEDIA_KEY_BASE_LEN,
+				)
+				.map_err(|error| SessionError::Mls(format!("{error:?}")))
+		};
+
+		self.encryptor.set_base_secret(export(self.user_id)?);
+
+		let now = Instant::now();
+		let members = member_ids_of(group);
+		for &member in &members {
+			if member == self.user_id {
+				continue;
+			}
+			let base_secret = export(member)?;
+			self.decryptors.entry(member).or_default().add_epoch(base_secret, now);
+		}
+		self.decryptors.retain(|member, _| members.contains(member));
 		Ok(())
 	}
+
+	/// Decrypt a frame `user_id` sent.
+	///
+	/// `passthrough` is whether a frame without DAVE's trailer is acceptable
+	/// right now — a question about the call's transitions, which the driver
+	/// tracks and this does not.
+	pub fn decrypt(
+		&mut self,
+		user_id: u64,
+		frame: &[u8],
+		out: &mut Vec<u8>,
+		now: Instant,
+		passthrough: bool,
+	) -> Result<Decrypted, DecryptError> {
+		match self.decryptors.get_mut(&user_id) {
+			Some(decryptor) => decryptor.decrypt(frame, out, now, passthrough),
+			// Someone the group does not know yet. Cleartext from them is as
+			// acceptable as from anyone; anything encrypted is under a key we
+			// were never given.
+			None if super::frame::parse_frame(frame).is_none() => {
+				decryptor::pass_through(frame, out, passthrough)
+			}
+			None => Err(DecryptError::NoDecryptor(user_id)),
+		}
+	}
+
+	/// Whether this session holds keys for `user_id`.
+	pub fn has_keys_for(&self, user_id: u64) -> bool {
+		self.decryptors.contains_key(&user_id)
+	}
+}
+
+/// Every member of `group`, by the user id in their credential.
+fn member_ids_of(group: &MlsGroup) -> Vec<u64> {
+	group
+		.members()
+		.filter_map(|member| {
+			<[u8; 8]>::try_from(member.credential.serialized_content()).ok().map(u64::from_be_bytes)
+		})
+		.collect()
 }
 
 /// Decode a TLS-serialised value that arrived over the gateway.
@@ -537,6 +603,62 @@ mod tests {
 		// Still uninitialised: a bad payload must not half-open the session.
 		assert_eq!(session.status(), Status::Uninitialised);
 		assert!(matches!(session.process_welcome(&[1, 2, 3]), Err(SessionError::NoExternalSender)));
+	}
+
+	fn external_sender() -> Vec<u8> {
+		let key: SignaturePublicKey = vec![7u8; 65].into();
+		let credential: Credential = BasicCredential::new(b"discord".to_vec()).into();
+		ExternalSender::new(key, credential).tls_serialize_detached().unwrap()
+	}
+
+	/// Two real members of one group, the way the server would leave them:
+	/// `first` committed an add for `second`, and `second` joined from the
+	/// welcome. Built directly with openmls rather than through proposals,
+	/// because the part under test is what happens after the epoch moves.
+	fn two_members(first_id: u64, second_id: u64) -> (Session, Session) {
+		let mut first = Session::new(1, first_id, CHANNEL).unwrap();
+		let mut second = Session::new(1, second_id, CHANNEL).unwrap();
+		first.set_external_sender(&external_sender()).unwrap();
+		second.set_external_sender(&external_sender()).unwrap();
+
+		let key_package = KeyPackageIn::tls_deserialize_exact_bytes(&second.key_package().unwrap())
+			.unwrap()
+			.validate(first.provider.crypto(), ProtocolVersion::Mls10)
+			.unwrap();
+		let group = first.group.as_mut().unwrap();
+		let (_commit, welcome, _info) =
+			group.add_members(&first.provider, &first.signer, &[key_package]).unwrap();
+		group.merge_pending_commit(&first.provider).unwrap();
+		first.status = Status::Active;
+		first.refresh_keys().unwrap();
+
+		let MlsMessageBodyOut::Welcome(welcome) = welcome.body() else { panic!("a welcome") };
+		second.process_welcome(&welcome.tls_serialize_detached().unwrap()).unwrap();
+		(first, second)
+	}
+
+	#[test]
+	fn members_decrypt_each_other_after_the_epoch_moves() {
+		let (mut first, mut second) = two_members(USER, 42);
+		assert!(first.has_keys_for(42));
+		assert!(second.has_keys_for(USER));
+		assert!(!first.has_keys_for(USER), "nobody decrypts themselves");
+
+		let now = Instant::now();
+		let mut frame = Vec::new();
+		let mut out = Vec::new();
+		// Each direction, so both exporter contexts are exercised.
+		first.encrypt_opus(&[0xfc, 1, 2, 3], &mut frame).unwrap();
+		assert_eq!(second.decrypt(USER, &frame, &mut out, now, false), Ok(Decrypted::Opened));
+		assert_eq!(out, [0xfc, 1, 2, 3]);
+
+		second.encrypt_opus(&[0xfc, 9], &mut frame).unwrap();
+		assert_eq!(first.decrypt(42, &frame, &mut out, now, false), Ok(Decrypted::Opened));
+		assert_eq!(out, [0xfc, 9]);
+
+		// A frame attributed to the wrong sender is under the wrong key.
+		first.encrypt_opus(&[0xfc, 4], &mut frame).unwrap();
+		assert_eq!(second.decrypt(7, &frame, &mut out, now, false), Err(DecryptError::NoDecryptor(7)));
 	}
 
 	#[test]

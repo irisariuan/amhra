@@ -31,7 +31,16 @@ pub enum Command {
 		session_id: String,
 		endpoint: String,
 		token: String,
+		/// Whether this guild has voice commands on. Only a sidecar started
+		/// with `--listen` or `--voice-commands` can hear anything at all; this
+		/// says whether it may in this guild. Absent means no.
+		#[serde(default)]
+		listen: bool,
 	},
+	/// Turn hearing this guild on or off without reconnecting. Off, packets
+	/// from other members are dropped before they are decrypted.
+	#[serde(rename_all = "camelCase")]
+	SetListen { guild_id: String, listen: bool },
 	/// Leave, releasing the guild's thread and sockets.
 	#[serde(rename_all = "camelCase")]
 	Disconnect { guild_id: String },
@@ -104,11 +113,36 @@ pub enum Command {
 	SwapLayer { guild_id: String, layer_id: String },
 	#[serde(rename_all = "camelCase")]
 	SetFades { guild_id: String, crossfade_ms: u16, skip_fade_ms: u16 },
+	/// Say `text` in the call, over the music, lowered meanwhile. Only a
+	/// sidecar started with `--speech` speaks; others ignore it.
+	#[serde(rename_all = "camelCase")]
+	Speak {
+		guild_id: String,
+		text: String,
+		/// `en`, `ja`, `ko`, `zh` (Mandarin) or `yue` (Cantonese); anything
+		/// else, or nothing, is English.
+		#[serde(default)]
+		language: Option<String>,
+	},
+	/// Have these phrases ready, so saying them never waits on the model:
+	/// what is not yet saved is synthesised in the background, once.
+	#[serde(rename_all = "camelCase")]
+	PrepareSpeech { phrases: Vec<Phrase> },
 	/// Ask for one `Sessions` event. Used after the bot restarts, to find out
 	/// what this process is still doing.
 	ListSessions,
 	/// Shut down cleanly.
 	Shutdown,
+}
+
+/// Something the bot may say, for `PrepareSpeech`.
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "protocol.d.ts")]
+pub struct Phrase {
+	pub text: String,
+	#[serde(default)]
+	pub language: Option<String>,
 }
 
 /// What this process reports back.
@@ -168,6 +202,36 @@ pub enum Event {
 	/// Answer to `ListSessions`.
 	#[serde(rename_all = "camelCase")]
 	Sessions { guilds: Vec<SessionState> },
+	/// Someone said the wake word. Only sent by a sidecar started with
+	/// `--voice-commands`; an `Utterance` or a `NothingHeard` from the same
+	/// person follows.
+	#[serde(rename_all = "camelCase")]
+	Woke { guild_id: String, user_id: String },
+	/// The wake came to nothing: no speech followed it, or none that could be
+	/// made out.
+	#[serde(rename_all = "camelCase")]
+	NothingHeard { guild_id: String, user_id: String },
+	/// Someone said the wake word and then something, transcribed. Only sent
+	/// by a sidecar started with `--voice-commands`, and only for speech that
+	/// followed the wake word: nothing else anyone says is transcribed.
+	///
+	/// The text is what was heard, not an instruction — it often still starts
+	/// with the tail of the name, and deciding what it asks for is the bot's
+	/// job.
+	#[serde(rename_all = "camelCase")]
+	Utterance {
+		guild_id: String,
+		user_id: String,
+		text: String,
+		/// The language the recogniser detected: `en`, `ja`, `ko`, `zh` or
+		/// `yue`, or null when it could not tell.
+		lang: Option<String>,
+		/// Which phrase from the keywords file woke it, e.g. `M HARA`.
+		wake_keyword: String,
+		/// From the end of their speech to the text being ready, including the
+		/// half second of silence that marks a command as finished.
+		latency_ms: u32,
+	},
 }
 
 /// One guild's state, for a bot that has just restarted and lost its own.
@@ -209,8 +273,10 @@ impl Command {
 			| Self::RemoveLayer { guild_id, .. }
 			| Self::SetLayerVolume { guild_id, .. }
 			| Self::SwapLayer { guild_id, .. }
-			| Self::SetFades { guild_id, .. } => Some(guild_id),
-			Self::ListSessions | Self::Shutdown => None,
+			| Self::SetFades { guild_id, .. }
+			| Self::SetListen { guild_id, .. }
+			| Self::Speak { guild_id, .. } => Some(guild_id),
+			Self::PrepareSpeech { .. } | Self::ListSessions | Self::Shutdown => None,
 		}
 	}
 }
@@ -255,6 +321,17 @@ mod tests {
 	}
 
 	#[test]
+	fn a_connect_without_listen_does_not_listen() {
+		// An older bot never sends the field, and must not have its guilds
+		// heard because a newer sidecar was started with voice commands.
+		let command: Command = serde_json::from_str(
+			r#"{"type":"connect","guildId":"1","channelId":"2","userId":"3","sessionId":"s","endpoint":"e","token":"t"}"#,
+		)
+		.unwrap();
+		assert!(matches!(command, Command::Connect { listen: false, .. }));
+	}
+
+	#[test]
 	fn events_serialise_with_their_tag() {
 		let event = Event::Started {
 			guild_id: "1".to_owned(),
@@ -280,6 +357,22 @@ mod tests {
 	}
 
 	#[test]
+	fn an_utterance_carries_its_language_or_null() {
+		let event = Event::Utterance {
+			guild_id: "1".to_owned(),
+			user_id: "2".to_owned(),
+			text: "skip this song.".to_owned(),
+			lang: None,
+			wake_keyword: "AMHRA".to_owned(),
+			latency_ms: 640,
+		};
+		let encoded = serde_json::to_string(&event).unwrap();
+		assert!(encoded.contains("\"type\":\"utterance\""));
+		assert!(encoded.contains("\"wakeKeyword\":\"AMHRA\""));
+		assert!(encoded.contains("\"lang\":null"), "{encoded}");
+	}
+
+	#[test]
 	fn unknown_commands_are_rejected_rather_than_guessed() {
 		assert!(serde_json::from_str::<Command>(r#"{"type":"explode","guildId":"1"}"#).is_err());
 		assert!(serde_json::from_str::<Command>(r#"{"guildId":"1"}"#).is_err());
@@ -299,6 +392,8 @@ mod tests {
 			r#"{"type":"removeLayer","guildId":"g","layerId":"l"}"#,
 			r#"{"type":"setLayerVolume","guildId":"g","layerId":"l","gain":0.2}"#,
 			r#"{"type":"swapLayer","guildId":"g","layerId":"l"}"#,
+			r#"{"type":"setListen","guildId":"g","listen":true}"#,
+			r#"{"type":"speak","guildId":"g","text":"Skipping."}"#,
 		];
 		for json in commands {
 			let command: Command = serde_json::from_str(json).unwrap();
