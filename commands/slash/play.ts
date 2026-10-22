@@ -15,11 +15,12 @@ import {
 	getAudioPlayer,
 	getBotVoiceChannel,
 	getConnection,
+	getVideoInfo,
 	isPlaylist,
 	isVideo,
 } from "../../lib/voice/core";
 import { sendInteractionSkipMessage } from "../../lib/voice/segment";
-import { sendSearchAlternatives } from "../../lib/voice/searchPick";
+import { offerQueueAlternatives } from "../../lib/voice/searchPick";
 import {
 	discordTime,
 	findUpcoming,
@@ -114,6 +115,9 @@ export default {
 		// find if there is cache, cache is saved in YoutubeVideo form
 		// resultUrl could be a video or playlist
 		let resultUrl: string;
+		// Shown as the link text in the reply. Left unset for a pasted video
+		// link, whose title is only looked up if the reply needs it.
+		let resultTitle: string | undefined;
 		// Set only when the input was a free-text search, so the user can be
 		// offered the other hits once something is already playing
 		let alternatives: {
@@ -150,6 +154,7 @@ export default {
 				next ? 0 : undefined,
 			);
 			resultUrl = playlist.url;
+			resultTitle = playlist.title;
 		} else if (isVideo(input)) {
 			// A premiere cannot be played before it starts, so rather than
 			// queueing something that will fail, it is set to cut in when it does
@@ -188,6 +193,7 @@ export default {
 			const cached = client.cache.get(input);
 			if (cached?.isVideo()) {
 				resultUrl = cached.value.url;
+				resultTitle = cached.value.title;
 			} else {
 				const query = await searchYouTube(input);
 				if (!query.length) {
@@ -197,6 +203,7 @@ export default {
 				}
 				client.cache.set(input, query[0], "video");
 				resultUrl = query[0].url;
+				resultTitle = query[0].title;
 				searchResults = query;
 			}
 			player.addToQueue(resultUrl, false, next ? 0 : undefined);
@@ -227,9 +234,10 @@ export default {
 						title: data.title,
 						url: videoUrl,
 					}),
+					flags: ["SuppressEmbeds"],
 				});
 				if (alternatives) {
-					await sendSearchAlternatives({
+					await offerQueueAlternatives({
 						interaction,
 						player,
 						...alternatives,
@@ -260,18 +268,24 @@ export default {
 		const baseText = isPlaylist(input)
 			? "playlist_add_to_queue"
 			: "add_to_queue";
+		const title =
+			resultTitle ??
+			(await getVideoInfo(resultUrl).catch(() => null))?.video_details
+				.title ??
+			input;
 		const reply = await interaction.editReply({
 			content: languageText(
 				next ? `${baseText}_next` : baseText,
 				language,
 				{
-					input,
+					title,
 					url: resultUrl,
 				},
 			),
+			flags: ["SuppressEmbeds"],
 		});
 		if (alternatives) {
-			await sendSearchAlternatives({
+			await offerQueueAlternatives({
 				interaction,
 				player,
 				...alternatives,

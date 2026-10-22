@@ -6,9 +6,12 @@ import {
 	type CacheType,
 } from "discord.js";
 import type { CustomAudioPlayer } from "../custom";
+import type { Language } from "../interaction";
 import { languageText } from "../language";
 import { dcb, globalApp } from "../misc";
 import { createResource, timeFormat } from "./core";
+import { replaceLayerFromInput } from "./mix";
+import type { MixLayer } from "./mixPlan";
 import type { YouTubeVideo } from "../youtube";
 
 /** Alternatives offered besides the one already queued */
@@ -26,29 +29,32 @@ function trim(text: string, max: number) {
 }
 
 /**
- * Offer the other search hits after the best one has already been queued.
+ * Offer the other search hits after the best one has already been used.
  *
  * Searching plays something immediately rather than making everyone wait on a
  * menu, so this is the escape hatch for when the top hit was the wrong song:
- * picking here swaps it in place, whether it is already playing or still in the
- * queue. Ephemeral, so only the person who ran the command sees or can use it.
+ * picking here hands the old and new URL to `swap`, which puts the new one in
+ * the old one's place — the queue's track for /play, a mix layer for /mix.
+ * `swap` resolves false when the old one is gone, and throws when the switch
+ * failed. Ephemeral, so only the person who ran the command sees or can use it.
  */
-export async function sendSearchAlternatives({
+async function sendSearchAlternatives({
 	interaction,
-	player,
+	language,
 	results,
 	chosenUrl,
+	swap,
 }: {
 	interaction: ChatInputCommandInteraction<CacheType>;
-	player: CustomAudioPlayer;
+	language: Language;
 	results: YouTubeVideo[];
 	chosenUrl: string;
+	swap: (currentUrl: string, nextUrl: string) => Promise<boolean>;
 }) {
 	const choices = results.slice(0, MAX_CHOICES);
 	// Nothing to switch between
 	if (choices.length < 2) return;
 
-	const language = player.currentLanguage;
 	/** The menu with `selectedUrl` shown as the current pick. */
 	const optionsFor = (selectedUrl: string) =>
 		choices.map((video, index) => ({
@@ -118,7 +124,7 @@ export async function sendSearchAlternatives({
 		if (!acknowledged) return;
 
 		try {
-			const swapped = await swapTrack(player, currentUrl, picked.url);
+			const swapped = await swap(currentUrl, picked.url);
 			if (!swapped) {
 				await component.editReply({
 					content: languageText("search_pick_gone", language),
@@ -135,6 +141,7 @@ export async function sendSearchAlternatives({
 					title: picked.title,
 					url: picked.url,
 				}),
+				flags: ["SuppressEmbeds"],
 				// Keep the menu so a second guess is one click away
 				components: [
 					new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
@@ -163,8 +170,50 @@ export async function sendSearchAlternatives({
 	});
 }
 
+interface Alternatives {
+	interaction: ChatInputCommandInteraction<CacheType>;
+	results: YouTubeVideo[];
+	chosenUrl: string;
+}
+
+/** For /play: a pick replaces the queued song, playing or not. */
+export function offerQueueAlternatives({
+	player,
+	...alternatives
+}: Alternatives & { player: CustomAudioPlayer }) {
+	return sendSearchAlternatives({
+		...alternatives,
+		language: player.currentLanguage,
+		swap: (currentUrl, nextUrl) => swapTrack(player, currentUrl, nextUrl),
+	});
+}
+
+/** For /mix add: a pick replaces the mixed-in song, at its volume and place. */
+export function offerLayerAlternatives({
+	guildId,
+	layer,
+	language,
+	...alternatives
+}: Alternatives & { guildId: string; layer: MixLayer; language: Language }) {
+	// Follows the replacements, since each one is a new layer
+	let current = layer;
+	return sendSearchAlternatives({
+		...alternatives,
+		language,
+		swap: async (_currentUrl, nextUrl) => {
+			const replaced = await replaceLayerFromInput(guildId, current, nextUrl);
+			if ("error" in replaced) {
+				if (replaced.error === "gone") return false;
+				throw new Error(`Could not replace mix layer: ${replaced.error}`);
+			}
+			current = replaced.layer;
+			return true;
+		},
+	});
+}
+
 /**
- * Point playback at `nextUrl` wherever `currentUrl` currently sits.
+ * Point the queue at `nextUrl` wherever `currentUrl` currently sits.
  *
  * Returns false when the track is neither playing nor queued any more, which
  * happens if it finished or was skipped while the picker was open.

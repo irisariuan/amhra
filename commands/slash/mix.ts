@@ -2,7 +2,7 @@ import { SlashCommandBuilder } from "discord.js";
 import { type Command } from "../../lib/interaction";
 import { languageText } from "../../lib/language";
 import { dcb, misc } from "../../lib/misc";
-import { searchYouTube } from "../../lib/youtube";
+import { searchYouTube, type YouTubeVideo } from "../../lib/youtube";
 import {
 	ensureVoiceConnection,
 	getAudioPlayer,
@@ -21,6 +21,7 @@ import {
 	nativeVoiceActive,
 } from "../../lib/voice/native";
 import { addLayerFromInput, swapLayerWithMain } from "../../lib/voice/mix";
+import { offerLayerAlternatives } from "../../lib/voice/searchPick";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -190,11 +191,13 @@ export default {
 			connection.subscribe(player);
 
 			let url = input;
+			// Kept so the user can switch to another hit afterwards
+			let searchResults: YouTubeVideo[] = [];
 			if (!isVideo(input)) {
-				const results = await searchYouTube(input);
-				if (!results[0])
+				searchResults = await searchYouTube(input);
+				if (!searchResults[0])
 					return interaction.editReply(languageText("mix_not_found", language));
-				url = results[0].url;
+				url = searchResults[0].url;
 			}
 			const result = await addLayerFromInput(guildId, url, volume);
 			if ("error" in result) {
@@ -207,7 +210,7 @@ export default {
 				);
 			}
 			dcb.log(`Mixed ${result.layer.url} into ${guildId} from /mix`);
-			return interaction.editReply({
+			const reply = await interaction.editReply({
 				content: languageText("mix_added", language, {
 					title: result.layer.title,
 					url: result.layer.url,
@@ -215,6 +218,17 @@ export default {
 				}),
 				flags: ["SuppressEmbeds"],
 			});
+			await offerLayerAlternatives({
+				interaction,
+				language,
+				guildId,
+				layer: result.layer,
+				results: searchResults,
+				// The search's URL rather than the layer's, which is the
+				// video's canonical form and may not match it
+				chosenUrl: url,
+			});
+			return reply;
 		}
 
 		if (!getConnection(guildId))

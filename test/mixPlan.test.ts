@@ -83,6 +83,21 @@ describe("GuildMix", () => {
 		expect(mix.swap("missing", before!)).toBeNull();
 	});
 
+	test("a replacement keeps the layer's place but takes a fresh id", () => {
+		// The replaced song's layerFinished may still arrive, and must not
+		// remove the song that took its place.
+		const mix = new GuildMix();
+		const first = mix.add(track(1))!;
+		mix.add(track(2));
+		const replaced = mix.replace(first.id, track(3))!;
+		expect(replaced.id).not.toBe(first.id);
+		expect(mix.at(1)?.title).toBe("Song 3");
+		expect(mix.forget(first.id)).toBe(false);
+		expect(mix.size).toBe(2);
+
+		expect(mix.replace(first.id, track(4))).toBeNull();
+	});
+
 	test("starts the queue song at full volume", () => {
 		expect(new GuildMix().mainVolume).toBe(100);
 	});

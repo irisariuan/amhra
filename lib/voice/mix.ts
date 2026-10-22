@@ -4,7 +4,12 @@ import { getYouTubeVideoId } from "../youtube";
 import { updateLastUsed } from "./cache";
 import { createResource, getVideoInfo, isVideo } from "./core";
 import type { MixLayer } from "./mixPlan";
-import { getMix, nativeAddLayer, nativeSwapLayer } from "./native";
+import {
+	getMix,
+	nativeAddLayer,
+	nativeReplaceLayer,
+	nativeSwapLayer,
+} from "./native";
 import { nativeFetchReady } from "./nativeFetch";
 
 export type AddLayerResult =
@@ -24,12 +29,40 @@ export async function addLayerFromInput(
 	volume: number,
 	startMs = 0,
 ): Promise<AddLayerResult> {
-	const trackId = isVideo(url) ? getYouTubeVideoId(url) : null;
-	if (!trackId) return { error: "not_found" };
 	// Checked before the download as well as after, so a full mix does not
 	// cost a fetch it will then refuse.
 	if (getMix(guildId).isFull()) return { error: "full" };
+	const track = await fetchLayerTrack(url);
+	if ("error" in track) return track;
 
+	const layer = nativeAddLayer(guildId, { ...track, volume }, startMs);
+	return layer ? { layer } : { error: "full" };
+}
+
+/**
+ * Download a video and play it in place of `layer`, keeping its volume and
+ * its number in the list. For switching to another search result after
+ * `/mix add` picked the wrong one.
+ */
+export async function replaceLayerFromInput(
+	guildId: string,
+	layer: MixLayer,
+	url: string,
+): Promise<AddLayerResult | { error: "gone" }> {
+	const track = await fetchLayerTrack(url);
+	if ("error" in track) return track;
+	// Read after the download: the layer may have been removed or have ended
+	// while it ran.
+	const replaced = nativeReplaceLayer(guildId, layer, track);
+	return replaced ? { layer: replaced } : { error: "gone" };
+}
+
+/** A video's details, once enough of it is cached for the sidecar to play. */
+async function fetchLayerTrack(
+	url: string,
+): Promise<Omit<MixLayer, "id" | "volume"> | { error: "not_found" | "failed" }> {
+	const trackId = isVideo(url) ? getYouTubeVideoId(url) : null;
+	if (!trackId) return { error: "not_found" };
 	const info = await getVideoInfo(url).catch(() => null);
 	if (!info) return { error: "not_found" };
 	try {
@@ -40,18 +73,7 @@ export async function addLayerFromInput(
 	}
 	// Marked as used so the cache sweep does not delete a file being played.
 	await updateLastUsed([trackId]).catch(() => {});
-
-	const layer = nativeAddLayer(
-		guildId,
-		{
-			trackId,
-			title: info.video_details.title,
-			url: info.video_details.url,
-			volume,
-		},
-		startMs,
-	);
-	return layer ? { layer } : { error: "full" };
+	return { trackId, title: info.video_details.title, url: info.video_details.url };
 }
 
 export type SwapResult =
