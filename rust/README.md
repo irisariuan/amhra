@@ -249,7 +249,7 @@ unless the bot's owner allows it and each server opts in.
 
 ```text
 16 kHz PCM ─▶ keyword spotter ──"Amhra"──▶ window ─▶ end of speech ─▶ SenseVoice ─▶ utterance
-per speaker   (streaming, always on)       (pre-roll) (Silero, 700ms)  (one thread)
+per speaker   (streaming, always on)  (from the name's end) (Silero, 700ms)  (one thread)
 ```
 
 Nothing anyone says is transcribed unless it follows the wake word. Only the
@@ -353,10 +353,19 @@ recogniser calls the C API directly. That is the one `unsafe` block, in
 
 ### Behaviour
 
-- **Window.** It starts 400ms before the point where the spotter says the name
-  *ended*, not where it fired. The spotter fires about 300–500ms late, by which
-  time the command has often begun. The window closes on 700ms of silence or
-  at 8s. With no speech within 2.5s of the name, it times out quietly.
+- **Window.** It starts where the spotter says the name *ended*, not where
+  it fired. The spotter fires about 300–500ms late, by which time the command
+  has often begun. The window closes on 700ms of silence or at 8s. With no
+  speech within 2.5s of the name, it times out quietly.
+- **None of the name in the window.** It used to start 300–400ms before the
+  name's end, to be sure of a command's first syllable. But whatever of the
+  name SenseVoice hears throws it off the word after: live, "skip non music"
+  came back as "musicic." and "skipip, no music.", and "skip this song" as
+  "tip us song." and "keep us on.". Spliced after the tails of 12 live wakes,
+  a synthesised "skip" was heard 16 times in 48 with 400ms of the name before
+  it, 36 with 200ms, 42 with 100ms and 46 with none; said in the same breath
+  as the name, 34 in 48 with 300ms and 44 with none. Loudness and how the
+  name's audio ends made no difference; silence in its place fixed it.
 - **Waiting for the chime.** People tend to say the name, wait for the
   chime, then go on. The VAD often hears the name's tail as speech, so before
   this the pause closed the window on the name alone ("Ahara.", "Emharra."
@@ -369,8 +378,9 @@ recogniser calls the C API directly. That is the one `unsafe` block, in
   goes quiet, so the gate thread feeds zeros in its place, for about a second
   after someone stops and for as long as a command is open. Otherwise a command
   would never end, and a name said last would never be recognised.
-- **The name comes off the text.** The window starts before the name
-  ends, so the recogniser hears its tail and writes it however it likes
+- **The name comes off the text.** When the spotter puts the end early,
+  or with `--preroll-ms` in `wake_wav`, the recogniser hears some of the name
+  and writes it however it likes
   ("T, skip a song.", "Para, skip this song.", "Per, play the song."). It
   also stamps each token with when it began, and the gate knows where in the
   window the spotter put the name's end, so words that began at least 50ms

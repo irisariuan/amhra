@@ -19,8 +19,8 @@
 //! spotter is only sure of a word some time after it was said, and people say
 //! the command straight after the name, so by the time the detection arrives
 //! the command has often begun. The gate keeps a short history and starts the
-//! window [`GateConfig::preroll`] before the point the spotter says the keyword
-//! *ended* — not before the moment it fired.
+//! window where the spotter says the keyword *ended* — not at the moment it
+//! fired — less [`GateConfig::preroll_ms`], which is none by default.
 //!
 //! Whether anything was said after the name is decided on the audio after the
 //! keyword's end only. Counting the pre-roll would count the name itself as
@@ -34,9 +34,13 @@ use super::{Detection, FRAME_SAMPLES, Spotter, Vad, samples};
 /// Timings, in milliseconds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct GateConfig {
-	/// Audio kept from before the keyword's end. Usually catches the tail of
-	/// the name, which the recogniser handles fine, and the start of a command
-	/// said in the same breath, which it otherwise would not hear at all.
+	/// Audio kept from before the keyword's end. None by default: any of the
+	/// name left in the window throws the recogniser off the word after it.
+	/// Spliced after the tails of 12 live wakes, a synthesised "skip" came
+	/// back as "S" or "Sip" all but 16 times in 48 with 400ms of the name
+	/// before it, and was heard 46 times in 48 with none. A command said in
+	/// the same breath fared best with none too, 44 in 48, against 34 with
+	/// 300ms.
 	pub preroll_ms: u32,
 	/// How long after the name is heard to wait for the command to start.
 	/// People tend to wait for the chime before going on, so until they have
@@ -65,7 +69,7 @@ pub struct GateConfig {
 impl Default for GateConfig {
 	fn default() -> Self {
 		Self {
-			preroll_ms: 400,
+			preroll_ms: 0,
 			wait_for_speech_ms: 2500,
 			min_speech_ms: 100,
 			end_silence_ms: 700,
@@ -392,8 +396,10 @@ mod tests {
 	/// 20ms frames.
 	const MS_PER_FRAME: usize = 20;
 
+	/// With a pre-roll, so where the window starts can be seen.
 	fn gate(lag: usize) -> Gate {
-		Gate::new(GateConfig::default(), Box::new(FakeSpotter { lag }), Box::new(FakeVad))
+		let config = GateConfig { preroll_ms: 400, ..GateConfig::default() };
+		Gate::new(config, Box::new(FakeSpotter { lag }), Box::new(FakeVad))
 	}
 
 	fn feed(gate: &mut Gate, frames: &[Vec<f32>]) -> Vec<GateEvent> {
@@ -460,6 +466,25 @@ mod tests {
 		assert_eq!(captures[0].samples.len(), samples(400) + samples(400) + samples(200));
 		// So the window opens on the name, not on the quiet before it.
 		assert!(captures[0].samples[..samples(400)].iter().all(|&sample| sample >= LOUD));
+	}
+
+	#[test]
+	fn by_default_none_of_the_name_is_in_the_window() {
+		let mut gate =
+			Gate::new(GateConfig::default(), Box::new(FakeSpotter { lag: samples(200) }), Box::new(FakeVad));
+		let mut audio = frames(0.0, 50);
+		audio.extend(frames(LOUD, 20)); // the name
+		audio.extend(frames(0.0, 9)); // 180ms…
+		audio.push(keyword_frame()); // …and the detection, 20ms later
+		let mut events = feed(&mut gate, &audio);
+		events.extend(feed(&mut gate, &frames(LOUD, 600 / MS_PER_FRAME)));
+		events.extend(feed(&mut gate, &frames(0.0, 800 / MS_PER_FRAME)));
+
+		let captures = captured(&events);
+		assert_eq!(captures.len(), 1, "{events:?}");
+		assert_eq!(captures[0].name_end, 0);
+		assert_eq!(captures[0].samples.len(), samples(200 + 600 + 200));
+		assert!(captures[0].samples[..samples(180)].iter().all(|&sample| sample == 0.0));
 	}
 
 	#[test]
