@@ -397,5 +397,11 @@
 	"VOICE_SAY_REMOVE": "{index}번째 곡을 삭제합니다.",
 	"VOICE_SAY_VOLUME": "볼륨을 {volume}퍼센트로 설정합니다.",
 	"VOICE_SAY_LYRICS": "가사를 찾습니다.",
-	"VOICE_SAY_RELOCATE": "{position} 지점으로 이동합니다."
+	"VOICE_SAY_RELOCATE": "{position} 지점으로 이동합니다.",
+	"VOICE_SAY_MIX_ADD": "믹스에 추가합니다.",
+	"VOICE_SAY_MIX_REMOVE": "믹스의 {layer}번째 곡을 멈춥니다.",
+	"VOICE_SAY_MIX_VOLUME": "믹스의 {layer}번째 곡을 {volume}퍼센트로 설정합니다.",
+	"VOICE_SAY_MIX_MAIN": "재생 목록 곡을 {volume}퍼센트로 설정합니다.",
+	"VOICE_SAY_MIX_SWAP": "믹스의 {layer}번째 곡과 바꿉니다.",
+	"VOICE_SAY_MIX_LIST": "믹스 목록입니다."
 }

@@ -65,6 +65,23 @@ function phrase(intent: VoiceIntent): [string, Record<string, string | number>?]
 			return ["voice_say_volume", { volume: options.volume as number }];
 		case "relocate":
 			return ["voice_say_relocate", { position: options.position as string }];
+		case "mix":
+			switch (intent.subcommand) {
+				case "remove":
+				case "swap":
+					return [`voice_say_mix_${intent.subcommand}`, { layer: options.layer as number }];
+				case "volume":
+					return [
+						"voice_say_mix_volume",
+						{ layer: options.layer as number, volume: options.volume as number },
+					];
+				case "main":
+					return ["voice_say_mix_main", { volume: options.volume as number }];
+				case "list":
+					return ["voice_say_mix_list"];
+				default:
+					return ["voice_say_mix_add"];
+			}
 		default:
 			return [`voice_say_${intent.command}`];
 	}
@@ -108,6 +125,12 @@ export function prepared(): Phrase[] {
 	for (const command of MUSIC_COMMANDS) {
 		const base = `voice_say_${command}`;
 		if (command === "play") continue;
+		// Mix is said by subcommand; these two are the ones without a number.
+		if (command === "mix") {
+			ids.add(`${base}_add`);
+			ids.add(`${base}_list`);
+			continue;
+		}
 		ids.add(base);
 		if (command === "loop" || command === "autoskipnonmusic") {
 			ids.add(`${base}_on`);

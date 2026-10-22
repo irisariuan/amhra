@@ -116,6 +116,22 @@ describe("a heard command runs the slash command handler", () => {
 });
 
 describe("the voice interaction", () => {
+	test("a subcommand is asked for by name, and shown in the heading", async () => {
+		const { channel, sent } = fakeChannel();
+		const interaction = voiceInteraction(fakeMember(), channel, {
+			command: "mix",
+			subcommand: "remove",
+			language: Language.English,
+			options: { layer: 2 },
+		});
+		expect(interaction.options.getSubcommand()).toBe("remove");
+		expect(interaction.options.getInteger("layer")).toBe(2);
+		await interaction.reply({ content: "done" });
+		expect(sent[0].content?.split("\n")[0]).toBe(
+			languageText("voice_heard", Language.English, { user: "<@42>", command: "/mix remove layer:2" }),
+		);
+	});
+
 	test("a song request is the play command's search option", () => {
 		const { channel } = fakeChannel();
 		const interaction = voiceInteraction(fakeMember(), channel, {

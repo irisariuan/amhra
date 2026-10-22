@@ -408,5 +408,11 @@
 	"VOICE_SAY_REMOVE": "{index}曲目を削除します。",
 	"VOICE_SAY_VOLUME": "音量を{volume}パーセントにします。",
 	"VOICE_SAY_LYRICS": "歌詞を探します。",
-	"VOICE_SAY_RELOCATE": "{position}に移動します。"
+	"VOICE_SAY_RELOCATE": "{position}に移動します。",
+	"VOICE_SAY_MIX_ADD": "ミックスに追加します。",
+	"VOICE_SAY_MIX_REMOVE": "ミックスの{layer}曲目を止めます。",
+	"VOICE_SAY_MIX_VOLUME": "ミックスの{layer}曲目を{volume}パーセントにします。",
+	"VOICE_SAY_MIX_MAIN": "キューの曲を{volume}パーセントにします。",
+	"VOICE_SAY_MIX_SWAP": "ミックスの{layer}曲目と入れ替えます。",
+	"VOICE_SAY_MIX_LIST": "ミックスを表示します。"
 }

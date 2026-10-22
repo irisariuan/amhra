@@ -687,7 +687,8 @@ starts:
   the same machine, which answers with any of the bot's music commands —
   play, pause, resume, skip, skipnonmusic, autoskipnonmusic, stop,
   disconnect, join, loop, queue, nowplaying, remove, volume, lyrics,
-  relocate — with its options, or none. It is told each command's options
+  relocate, and mix with its subcommands ("mix in some rain at 30
+  percent", "stop the second mixed in song") — with its options, or none. It is told each command's options
   from the slash command itself, and what it gives back is held to them:
   an option of the wrong type or out of range is left out, a command missing
   a required one is not run. To run one on a Mac:

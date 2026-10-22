@@ -25,6 +25,14 @@ describe("what is said for each command", () => {
 		[{ command: "remove", language: en, options: { index: 2 } }, "Removing song 2."],
 		[{ command: "relocate", language: en, options: { position: "1:20" } }, "Jumping to 1:20."],
 		[{ command: "disconnect", language: en }, "Leaving the channel."],
+		[{ command: "mix", subcommand: "add", language: en, options: { search: "rain" } }, "Mixing it in."],
+		[{ command: "mix", subcommand: "remove", language: en, options: { layer: 2 } }, "Stopping mixed-in song 2."],
+		[
+			{ command: "mix", subcommand: "volume", language: en, options: { layer: 1, volume: 30 } },
+			"Mixed-in song 1 at 30 percent.",
+		],
+		[{ command: "mix", subcommand: "main", language: en, options: { volume: 50 } }, "The queue's song at 50 percent."],
+		[{ command: "mix", subcommand: "list", language: en }, "Here's the mix."],
 	] as [VoiceIntent, string][])("%p", (intent, expected) => {
 		expect(said(intent)).toEqual({ text: expected, language: "en" });
 	});

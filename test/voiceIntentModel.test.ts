@@ -62,6 +62,25 @@ const COMMANDS: Record<string, Command<SlashCommandBuilder>> = {
 			.setDescription("Set song to play from the wanted position")
 			.addStringOption((o) => o.setName("position").setDescription("Position").setRequired(true)),
 	),
+	mix: command((b) =>
+		b
+			.setName("mix")
+			.setDescription("Play songs on top of the queue")
+			.addSubcommand((s) =>
+				s
+					.setName("add")
+					.setDescription("Play a song alongside")
+					.addStringOption((o) => o.setName("search").setDescription("Search").setRequired(true))
+					.addNumberOption((o) => o.setName("volume").setDescription("Volume").setMinValue(0).setMaxValue(500)),
+			)
+			.addSubcommand((s) =>
+				s
+					.setName("remove")
+					.setDescription("Stop a mixed-in song")
+					.addIntegerOption((o) => o.setName("layer").setDescription("Layer").setMinValue(1).setRequired(true)),
+			)
+			.addSubcommand((s) => s.setName("list").setDescription("Show what is mixed in")),
+	) as unknown as Command<SlashCommandBuilder>,
 	// Not about the music: never offered, never taken.
 	superreset: command((b) => b.setName("superreset").setDescription("Reset everything")),
 };
@@ -90,6 +109,12 @@ describe("what the model is told", () => {
 		expect(told).toContain("amount (whole number, 1 to …, optional)");
 		expect(told).toContain("volume (number, 0 to 500, required): a percentage");
 		expect(told).toContain("- relocate:");
+		// Subcommands are offered by name, each with its own options.
+		expect(told).toContain('- mix: Play songs or sounds on top of the queue\'s song, each at its own volume. Give "subcommand" as one of:');
+		expect(told).toContain("    add: Play a song alongside");
+		expect(told).toContain("        search (text, required): the song or sound to mix in");
+		expect(told).toContain("        layer (whole number, 1 to …, required): which mixed-in song");
+		expect(told).toContain("    list: Show what is mixed in");
 		// Options for fixing things by hand, and commands that are not about
 		// the music, are left out.
 		expect(told).not.toContain("force (true or false, optional): Skip the cache");
@@ -112,6 +137,15 @@ describe("what the model's answer is taken to mean", () => {
 		['{"command": "volume", "volume": "40"}', { command: "volume", options: { volume: 40 } }],
 		['{"command": "loop", "enabled": false}', { command: "loop", options: { enabled: false } }],
 		['{"command": "relocate", "position": "1:20"}', { command: "relocate", options: { position: "1:20" } }],
+		[
+			'{"command": "mix", "subcommand": "add", "search": "rain sounds", "volume": 30}',
+			{ command: "mix", subcommand: "add", options: { search: "rain sounds", volume: 30 } },
+		],
+		[
+			'{"command": "mix", "subcommand": "Remove", "layer": 2}',
+			{ command: "mix", subcommand: "remove", options: { layer: 2 } },
+		],
+		['{"command": "mix", "subcommand": "list"}', { command: "mix", subcommand: "list" }],
 		['<think>\n\n</think>\n\n{"command": "pause"}', { command: "pause" }],
 		['Sure: {"command": "pause"} because they said pause', { command: "pause" }],
 	])("%p", (answer, expected) => {
@@ -144,6 +178,12 @@ describe("what the model's answer is taken to mean", () => {
 		['{"command": "volume"}'],
 		['{"command": "volume", "volume": 9000}'],
 		['{"command": "relocate"}'],
+		// A subcommand is needed, must be one there is, and brings its own
+		// required options: another subcommand's do not count.
+		['{"command": "mix", "search": "rain"}'],
+		['{"command": "mix", "subcommand": "shuffle"}'],
+		['{"command": "mix", "subcommand": "remove"}'],
+		['{"command": "mix", "subcommand": "add", "layer": 1}'],
 		['{"command": "skip",'],
 	])("%p is no command", (answer) => {
 		expect(read(answer)).toBeNull();

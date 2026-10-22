@@ -41,6 +41,7 @@ export const MUSIC_COMMANDS = [
 	"volume",
 	"lyrics",
 	"relocate",
+	"mix",
 ] as const;
 export type MusicCommandName = (typeof MUSIC_COMMANDS)[number];
 
@@ -48,7 +49,13 @@ export type MusicCommandName = (typeof MUSIC_COMMANDS)[number];
 export type VoiceOptions = Record<string, string | number | boolean>;
 
 export type VoiceIntent =
-	| { command: Exclude<MusicCommandName, "play">; language: Language; options?: VoiceOptions }
+	| {
+			command: Exclude<MusicCommandName, "play">;
+			language: Language;
+			/** For a command with subcommands (mix), the one asked for. */
+			subcommand?: string;
+			options?: VoiceOptions;
+	  }
 	| { command: "play"; query: string; language: Language; options?: VoiceOptions };
 
 /** The languages the recogniser reports, as the bot's own. */

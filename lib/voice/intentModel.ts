@@ -59,6 +59,14 @@ const HINTS: Record<string, string> = {
 	"volume.volume": "a percentage, 100 being normal; only a number they said",
 	"lyrics.search": "a song to look up instead of the one playing",
 	"relocate.position": "where in the song to play from, as seconds or M:SS",
+	mix: "Play songs or sounds on top of the queue's song, each at its own volume",
+	"mix.add.search": "the song or sound to mix in, as they said it",
+	"mix.add.volume": "a percentage, 100 being normal; only a number they said",
+	"mix.remove.layer": "which mixed-in song, from 1, in the order they were mixed in",
+	"mix.volume.layer": "which mixed-in song, from 1, in the order they were mixed in",
+	"mix.volume.volume": "a percentage, 100 being normal; only a number they said",
+	"mix.main.volume": "a percentage, 100 being normal; only a number they said",
+	"mix.swap.layer": "which mixed-in song, from 1, in the order they were mixed in",
 };
 
 /** Options the model is not to set: they are for fixing things by hand. */
@@ -77,31 +85,62 @@ type OptionSpec = APIApplicationCommandOption & {
 	max_value?: number;
 };
 
-/** The options of a command the model may set. */
-function optionsOf(name: string, lookup: Lookup): OptionSpec[] {
+type SubcommandSpec = APIApplicationCommandOption & { options?: OptionSpec[] };
+
+/** A command's subcommands, such as mix's add and remove; none for most. */
+function subcommandsOf(name: string, lookup: Lookup): SubcommandSpec[] {
 	const command = lookup(name);
 	if (!command) return [];
-	return ((command.data.toJSON().options ?? []) as OptionSpec[]).filter(
-		(option) => TYPES[option.type] && !HIDDEN.has(`${name}.${option.name}`),
+	return ((command.data.toJSON().options ?? []) as SubcommandSpec[]).filter(
+		(option) => option.type === ApplicationCommandOptionType.Subcommand,
 	);
+}
+
+/**
+ * The options of a command, or of one of its subcommands, the model may set.
+ * `path` is how hints and hidden options name them: `play`, or `mix.add`.
+ */
+function optionsOf(name: string, lookup: Lookup, subcommand?: string): OptionSpec[] {
+	const command = lookup(name);
+	if (!command) return [];
+	const path = subcommand ? `${name}.${subcommand}` : name;
+	const options = subcommand
+		? (subcommandsOf(name, lookup).find((sub) => sub.name === subcommand)?.options ?? [])
+		: ((command.data.toJSON().options ?? []) as OptionSpec[]);
+	return options.filter((option) => TYPES[option.type] && !HIDDEN.has(`${path}.${option.name}`));
+}
+
+/** One option as the model is told it, under `path` for its hint. */
+function optionLine(option: OptionSpec, path: string, indent: string) {
+	const range =
+		option.min_value !== undefined || option.max_value !== undefined
+			? `, ${option.min_value ?? "…"} to ${option.max_value ?? "…"}`
+			: "";
+	const need = option.required ? "required" : "optional";
+	return `${indent}${option.name} (${TYPES[option.type]}${range}, ${need}): ${
+		HINTS[`${path}.${option.name}`] ?? option.description
+	}`;
 }
 
 /** The commands and their options, as the model is told them. */
 export function catalogue(lookup: Lookup): string {
 	return MUSIC_COMMANDS.filter((name) => lookup(name))
 		.map((name) => {
-			const lines = [`- ${name}: ${HINTS[name] ?? lookup(name)?.data.description}`];
+			const description = HINTS[name] ?? lookup(name)?.data.description;
+			const subcommands = subcommandsOf(name, lookup);
+			if (subcommands.length) {
+				const lines = [`- ${name}: ${description}. Give "subcommand" as one of:`];
+				for (const sub of subcommands) {
+					lines.push(`    ${sub.name}: ${HINTS[`${name}.${sub.name}`] ?? sub.description}`);
+					for (const option of optionsOf(name, lookup, sub.name)) {
+						lines.push(optionLine(option, `${name}.${sub.name}`, "        "));
+					}
+				}
+				return lines.join("\n");
+			}
+			const lines = [`- ${name}: ${description}`];
 			for (const option of optionsOf(name, lookup)) {
-				const range =
-					option.min_value !== undefined || option.max_value !== undefined
-						? `, ${option.min_value ?? "…"} to ${option.max_value ?? "…"}`
-						: "";
-				const need = option.required ? "required" : "optional";
-				lines.push(
-					`    ${option.name} (${TYPES[option.type]}${range}, ${need}): ${
-						HINTS[`${name}.${option.name}`] ?? option.description
-					}`,
-				);
+				lines.push(optionLine(option, name, "    "));
 			}
 			return lines.join("\n");
 		})
@@ -120,7 +159,7 @@ ${catalogue(lookup)}
 
 Anything else — chatter, only the name, a question that is not one of these, a request the bot cannot do, or something unclear — is none.
 
-The transcript may be in English, Japanese, Korean or Chinese. Answer with one line of JSON and nothing else: the command under "command", and each option they gave under its name. Leave out options they did not give. When in doubt, answer {"command": "none"}.
+The transcript may be in English, Japanese, Korean or Chinese. Answer with one line of JSON and nothing else: the command under "command", its subcommand under "subcommand" for a command that has them, and each option they gave under its name. Leave out options they did not give. When in doubt, answer {"command": "none"}.
 
 Examples:
 "Amra, next one please." -> {"command": "skip"}
@@ -134,6 +173,9 @@ Examples:
 "what song is this" -> {"command": "nowplaying"}
 "take the third song off the queue" -> {"command": "remove", "index": 3}
 "go to one minute twenty" -> {"command": "relocate", "position": "1:20"}
+"mix in some rain sounds at 30 percent" -> {"command": "mix", "subcommand": "add", "search": "rain sounds", "volume": 30}
+"stop the second mixed in song" -> {"command": "mix", "subcommand": "remove", "layer": 2}
+"what's in the mix" -> {"command": "mix", "subcommand": "list"}
 "Imra, leave the call" -> {"command": "disconnect"}
 "Ehra." -> {"command": "none"}
 "what's for dinner" -> {"command": "none"}
@@ -221,8 +263,17 @@ export function intentFrom(answer: string, language: Language, lookup: Lookup): 
 	const command = MUSIC_COMMANDS.find((known) => known === name);
 	if (!command || !lookup(command)) return null;
 
+	// A command with subcommands is nothing without one of them.
+	const subcommands = subcommandsOf(command, lookup);
+	let subcommand: string | undefined;
+	if (subcommands.length) {
+		const asked = typeof raw.subcommand === "string" ? raw.subcommand.trim().toLowerCase() : "";
+		subcommand = subcommands.find((sub) => sub.name === asked)?.name;
+		if (!subcommand) return null;
+	}
+
 	const options: VoiceOptions = {};
-	for (const spec of optionsOf(command, lookup)) {
+	for (const spec of optionsOf(command, lookup, subcommand)) {
 		const value = fit(spec, raw[spec.name]);
 		if (value !== undefined) options[spec.name] = value;
 		else if (spec.required && !(command === "play" && spec.name === "search")) return null;
@@ -234,7 +285,12 @@ export function intentFrom(answer: string, language: Language, lookup: Lookup): 
 			? { command, query, language, ...given(options) }
 			: { command: "resume", language };
 	}
-	return { command: command as Exclude<MusicCommandName, "play">, language, ...given(options) };
+	return {
+		command: command as Exclude<MusicCommandName, "play">,
+		language,
+		...(subcommand ? { subcommand } : {}),
+		...given(options),
+	};
 }
 
 function given(options: VoiceOptions) {

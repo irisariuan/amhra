@@ -65,8 +65,11 @@ export function voiceInteraction(
 		.filter(([option]) => !(intent.command === "play" && option === "search"))
 		.map(([option, value]) => ` ${option}:${value}`)
 		.join("");
+	const subcommand = intent.command === "play" ? undefined : intent.subcommand;
 	const command =
-		intent.command === "play" ? `/${name} ${intent.query}${given}` : `/${name}${given}`;
+		intent.command === "play"
+			? `/${name} ${intent.query}${given}`
+			: `/${name}${subcommand ? ` ${subcommand}` : ""}${given}`;
 	const heading = transcript
 		? languageText("voice_heard_transcript", intent.language, {
 				user: `<@${member.id}>`,
@@ -119,6 +122,7 @@ export function voiceInteraction(
 			getBoolean: option,
 			getInteger: option,
 			getNumber: option,
+			getSubcommand: () => subcommand ?? null,
 		},
 		get replied() {
 			return reply !== null;
