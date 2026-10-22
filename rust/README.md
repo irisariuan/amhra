@@ -371,6 +371,12 @@ recogniser calls the C API directly. That is the one `unsafe` block, in
   too early the name survives and the bot's matching strips it; when too
   late, a command's first word is lost and nothing runs. On the real takes
   in `training/wake` it cleaned every command that followed the name.
+  sherpa-onnx only counts the keyword's timestamps from the start of the
+  stream until its first detection; after the reset that follows, they come
+  back measured from somewhere else, and the lag worked out from them is
+  nonsense. A lag outside 0.1–1s is taken to be the typical 0.45s instead,
+  which kept later wakes on a stream as clean as the first. The bot also
+  strips name-like words from what it shows and logs, for whatever is left.
 - **Padding.** SenseVoice drops the first syllables of audio that starts
   mid-speech. Measured: a whole clip came back as "Amra, skip this song.", but
   the gate's window of it came back as "Sip this song.". Each window gets 300ms

@@ -307,6 +307,13 @@ impl Models for SherpaModels {
 	}
 }
 
+/// The spotter's usual lag, in seconds, for when its own report of one cannot
+/// be believed. Measured: 280–480ms on synthesised speech, and 360 and 560ms
+/// on the first wake of a real recording.
+const TYPICAL_LAG: f64 = 0.45;
+/// Lags outside this, in seconds, are not lags.
+const PLAUSIBLE_LAG: std::ops::RangeInclusive<f64> = 0.1..=1.0;
+
 struct SherpaSpotter {
 	spotter: Arc<KeywordSpotter>,
 	stream: OnlineStream,
@@ -327,11 +334,21 @@ impl Spotter for SherpaSpotter {
 			{
 				// The last token's time is where the keyword ended, near
 				// enough; everything fed after it is the spotter's lag.
-				let end = result.timestamps.last().copied().unwrap_or(result.start_time);
-				let end = (f64::from(end.max(0.0)) * f64::from(SAMPLE_RATE)) as usize;
+				//
+				// Only the first wake on a stream can be measured that way.
+				// After a reset the timestamps count from somewhere
+				// sherpa-onnx does not say (`start_time` stays 0): on a
+				// recording with nine wakes, every one after the first put
+				// the name's end under a second "in", wherever it was, for
+				// lags of three to five seconds. Believed, those opened the
+				// window a second early and left the name inside the
+				// command, so an implausible lag gives way to the usual one.
+				let end = f64::from(result.timestamps.last().copied().unwrap_or(result.start_time).max(0.0));
+				let measured = self.fed as f64 / f64::from(SAMPLE_RATE) - end;
+				let lag = if PLAUSIBLE_LAG.contains(&measured) { measured } else { TYPICAL_LAG };
 				detection = Some(Detection {
 					keyword: keywords::phrase(&result.keyword),
-					lag: self.fed.saturating_sub(end),
+					lag: (lag * f64::from(SAMPLE_RATE)) as usize,
 				});
 				self.spotter.reset(&self.stream);
 			}

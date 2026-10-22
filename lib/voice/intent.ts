@@ -95,6 +95,58 @@ export function parseVoiceCommand(
 	return null;
 }
 
+/**
+ * `text` without whatever is left of the name at its start, for showing and
+ * logging what someone asked for. The sidecar already cuts the name by when
+ * it was said; this catches what timing cannot, such as the name said twice
+ * ("I'm Har, play some music." after an "Em-ha-ra" that woke it). Matching
+ * does not use it: the parser makes the same allowances itself.
+ */
+export function withoutName(
+	text: string,
+	lang: string | null,
+	vocabularyOf: (language: Language) => VoiceVocabulary | null = languageVoice,
+): string {
+	const language = (lang && RECOGNISER_LANGUAGES[lang]) || Language.English;
+	const vocabulary = vocabularyOf(language) ?? vocabularyOf(Language.English);
+	if (!vocabulary) return text;
+	return (vocabulary.words ? wordsWithoutName : charactersWithoutName)(text, vocabulary);
+}
+
+function wordsWithoutName(text: string, vocabulary: VoiceVocabulary) {
+	const heard = words(text);
+	const wake = new Set(vocabulary.wake.map(plain));
+	const isName = (word: Word) => wake.has(word.plain) || nameLike(word.plain);
+	let from = 0;
+	for (;;) {
+		const start = from;
+		while (from < Math.min(MAX_LEAD_WORDS, heard.length) && isName(heard[from])) from++;
+		// Anything up to a comma among the first few words is the name too,
+		// however it was written.
+		const paused = heard.findIndex((word, index) => index >= from && word.pause);
+		if (paused !== -1 && paused < MAX_LEAD_WORDS && paused < heard.length - 1) from = paused + 1;
+		if (from === start) break;
+	}
+	return from === 0 ? text : tidy(heard.slice(from).map((word) => word.original).join(" "));
+}
+
+function charactersWithoutName(text: string, vocabulary: VoiceVocabulary) {
+	const original = [...text.normalize("NFKC")];
+	const heard = characters(original.join(""));
+	const latin = /^[a-z]+/i.exec(heard.text)?.[0].length ?? 0;
+	let from = stripStart(heard.text, latin, heard.text.length, longestFirst(vocabulary.wake));
+	const paused = heard.pauses.find((at) => at >= from && at <= from + 6 && at < heard.text.length);
+	if (paused !== undefined && from === 0) from = paused;
+	if (from === 0) return text;
+	if (from >= heard.text.length) return "";
+	return tidy(original.slice(heard.at[from]).join(""));
+}
+
+/** Without punctuation or space left at the front. */
+function tidy(text: string) {
+	return text.replace(/^[\p{P}\s]+/u, "");
+}
+
 type Found =
 	| { command: Exclude<VoiceCommandName, "play"> }
 	| { command: "play"; query: string };
