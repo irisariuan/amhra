@@ -2,7 +2,7 @@
   "dependencies": {
     "@discordjs/opus": "^0.10.0",
     "@discordjs/voice": "^0.19.2",
-    "@distube/ytdl-core": "^4.16.12",
+    "@distube/ytdl-core": "^5.0.1",
     "@inquirer/prompts": "^8.7.4",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
