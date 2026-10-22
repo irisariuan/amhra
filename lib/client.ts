@@ -31,6 +31,18 @@ client.on("ready", () => {
 
 client.on("interactionCreate", async (interaction) => {
 	const language = parseLocale(interaction.locale);
+	if (interaction.isAutocomplete()) {
+		const command = commands.get(interaction.commandName);
+		try {
+			await command?.autocomplete?.({ interaction, client, language });
+		} catch (e) {
+			globalApp.err(e);
+		}
+		// Discord keeps the spinner up until it gets an answer, so one that
+		// failed or was never given still gets an empty list.
+		if (!interaction.responded) await interaction.respond([]).catch(() => {});
+		return;
+	}
 	if (interaction.isUserContextMenuCommand()) {
 		const command = contextCommands.get(interaction.commandName);
 		if (!command) {

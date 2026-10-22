@@ -1,4 +1,5 @@
 import {
+	AutocompleteInteraction,
 	ChatInputCommandInteraction,
 	ContextMenuCommandBuilder,
 	Locale,
@@ -28,4 +29,12 @@ export interface Command<
 > {
 	data: T;
 	execute: (params: InteractionReactParams<T>) => unknown | Promise<unknown>;
+	/** Suggests values for options built with `.setAutocomplete(true)`. */
+	autocomplete?: (params: AutocompleteParams) => unknown | Promise<unknown>;
+}
+
+interface AutocompleteParams {
+	interaction: AutocompleteInteraction;
+	client: CustomClient;
+	language: Language;
 }

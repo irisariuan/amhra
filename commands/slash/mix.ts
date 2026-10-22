@@ -11,7 +11,9 @@ import {
 	isPlaylist,
 	isVideo,
 } from "../../lib/voice/core";
+import { indexChoices } from "../../lib/autocompletePlan";
 import {
+	findMix,
 	getMix,
 	nativeRemoveLayer,
 	nativeSetLayerVolume,
@@ -51,7 +53,8 @@ export default {
 						.setName("layer")
 						.setDescription("The number shown by /mix list")
 						.setMinValue(1)
-						.setRequired(true),
+						.setRequired(true)
+						.setAutocomplete(true),
 				),
 		)
 		.addSubcommand((sub) =>
@@ -63,7 +66,8 @@ export default {
 						.setName("layer")
 						.setDescription("The number shown by /mix list")
 						.setMinValue(1)
-						.setRequired(true),
+						.setRequired(true)
+						.setAutocomplete(true),
 				)
 				.addNumberOption((opt) =>
 					opt
@@ -83,7 +87,8 @@ export default {
 						.setName("layer")
 						.setDescription("The number shown by /mix list")
 						.setMinValue(1)
-						.setRequired(true),
+						.setRequired(true)
+						.setAutocomplete(true),
 				),
 		)
 		.addSubcommand((sub) =>
@@ -102,6 +107,14 @@ export default {
 		.addSubcommand((sub) =>
 			sub.setName("list").setDescription("Show what is mixed in"),
 		),
+	async autocomplete({ interaction }) {
+		// Only "layer" is autocompleted, in remove, volume and swap alike.
+		const mix = interaction.guildId ? findMix(interaction.guildId) : undefined;
+		const labels = (mix?.list() ?? []).map(
+			(layer) => `${layer.title} (${layer.volume}%)`,
+		);
+		return interaction.respond(indexChoices(labels, interaction.options.getFocused()));
+	},
 	async execute({ interaction, client, language }) {
 		if (!interaction.guild)
 			return await interaction.reply({
