@@ -19,13 +19,10 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant;
 
-use amhra_sidecar::speech::kokoro;
+use amhra_sidecar::speech::models;
 use amhra_sidecar::voice_commands::sherpa::{ModelPaths, Provider, SenseVoice};
 use amhra_sidecar::voice_commands::{SAMPLE_RATE, Transcriber};
-use sherpa_onnx::{
-	GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsModelConfig, OfflineTtsSupertonicModelConfig,
-	OfflineTtsVitsModelConfig,
-};
+use sherpa_onnx::{GenerationConfig, OfflineTts};
 
 fn main() {
 	let mut engine = String::from("kokoro");
@@ -55,9 +52,9 @@ fn main() {
 	let phrases: Vec<&str> = phrases.lines().map(str::trim).filter(|line| !line.is_empty()).collect();
 
 	let config = match engine.as_str() {
-		"kokoro" => kokoro::config(&model, threads, "cpu", None),
-		"supertonic" => supertonic(&model, threads),
-		"vits" => vits(&model, threads),
+		"kokoro" => models::kokoro_config(&model, threads, "cpu", None),
+		"supertonic" => models::supertonic_config(&model, threads),
+		"vits" => models::vits_config(&model, threads),
 		other => panic!("unknown engine {other}"),
 	};
 	let loading = Instant::now();
@@ -95,66 +92,6 @@ fn main() {
 		});
 		println!("{line}");
 	}
-}
-
-fn supertonic(dir: &str, threads: i32) -> OfflineTtsConfig {
-	let file = |name: &str| Some(format!("{dir}/{name}"));
-	OfflineTtsConfig {
-		model: OfflineTtsModelConfig {
-			supertonic: OfflineTtsSupertonicModelConfig {
-				duration_predictor: file("duration_predictor.int8.onnx"),
-				text_encoder: file("text_encoder.int8.onnx"),
-				vector_estimator: file("vector_estimator.int8.onnx"),
-				vocoder: file("vocoder.int8.onnx"),
-				tts_json: file("tts.json"),
-				unicode_indexer: file("unicode_indexer.bin"),
-				voice_style: file("voice.bin"),
-			},
-			..cpu(threads)
-		},
-		max_num_sentences: 1,
-		..OfflineTtsConfig::default()
-	}
-}
-
-fn vits(dir: &str, threads: i32) -> OfflineTtsConfig {
-	let file = |name: &str| Path::new(dir).join(name).is_file().then(|| format!("{dir}/{name}"));
-	let fsts: Vec<String> = std::fs::read_dir(dir)
-		.map(|entries| {
-			entries
-				.filter_map(|entry| entry.ok()?.file_name().into_string().ok())
-				.filter(|name| name.ends_with(".fst"))
-				.map(|name| format!("{dir}/{name}"))
-				.collect()
-		})
-		.unwrap_or_default();
-	let model = std::fs::read_dir(dir)
-		.expect("cannot read the model directory")
-		.filter_map(|entry| entry.ok()?.file_name().into_string().ok())
-		.find(|name| name.ends_with(".onnx"))
-		.expect("no .onnx in the model directory");
-	OfflineTtsConfig {
-		model: OfflineTtsModelConfig {
-			vits: OfflineTtsVitsModelConfig {
-				model: Some(format!("{dir}/{model}")),
-				lexicon: file("lexicon.txt"),
-				tokens: file("tokens.txt"),
-				data_dir: file("espeak-ng-data"),
-				dict_dir: file("dict"),
-				..OfflineTtsVitsModelConfig::default()
-			},
-			..cpu(threads)
-		},
-		rule_fsts: (!fsts.is_empty()).then(|| fsts.join(",")),
-		max_num_sentences: 1,
-		..OfflineTtsConfig::default()
-	}
-}
-
-fn cpu(threads: i32) -> OfflineTtsModelConfig {
-	let mut config = kokoro::config("", threads, "cpu", None).model;
-	config.kokoro = Default::default();
-	config
 }
 
 /// To the recogniser's rate, by linear interpolation: enough to be heard.

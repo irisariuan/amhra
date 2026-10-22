@@ -46,11 +46,13 @@
 //!   to wait for a command after the name, the silence that ends it, and the
 //!   longest one, overriding `GateConfig`'s defaults.
 //!
-//! `--speech-model <dir>` lets the bot speak (`Speak`, `PrepareSpeech`) with
-//! the unpacked `kokoro-multi-lang-v1_0` there, on `--speech-threads <n>`
-//! CPU threads, default 1. Phrases are saved under `<cache-dir>/speech` and
-//! the model is loaded only to make new ones (see `speech`). It needs the
-//! `voice-commands` feature and lowers the music to `--wake-duck` meanwhile.
+//! `--speech` lets the bot speak (`Speak`, `PrepareSpeech`) with whichever
+//! speech models are unpacked under `--voice-models` (see `speech::models`:
+//! Supertonic 3 for English, Japanese and Korean, Kokoro for Mandarin, a VITS
+//! voice for Cantonese), on `--speech-threads <n>` CPU threads, default 1.
+//! Phrases are saved under `<cache-dir>/speech` and each model is loaded only
+//! to make new ones (see `speech`). It needs the `voice-commands` feature and
+//! lowers the music to `--wake-duck` meanwhile.
 //!
 //! Paths are relative to the directory the sidecar is started in. A model
 //! that will not load is reported once as an `Error` event and the sidecar
@@ -899,12 +901,32 @@ fn start_voice_commands(events: &Sender<Event>, _workers: &Workers) -> Option<Ar
 	None
 }
 
-/// The speech thread, if `--speech-model` asks for one. The model itself is
-/// not loaded until something new has to be said.
+/// The speech thread, if `--speech` asks for one and any speech model is
+/// there. The models themselves are not loaded until something new has to be
+/// said.
 #[cfg(feature = "voice-commands")]
 fn start_speech(cache_dir: &std::path::Path, workers: &Workers) -> Option<Speech> {
-	let model = option("--speech-model")?;
+	use amhra_sidecar::speech::models;
+
+	if !flag("--speech") {
+		return None;
+	}
+	let dir = option("--voice-models").unwrap_or_else(|| "models/voice".to_owned());
 	let threads = option("--speech-threads").and_then(|threads| threads.parse().ok()).filter(|n| *n >= 1).unwrap_or(1);
+	let found = models::under(std::path::Path::new(&dir), threads);
+	if found.is_empty() {
+		eprintln!(
+			"speech is off: none of {}, {} or {} is in {dir}; run scripts/download-voice-models.sh --speech",
+			models::SUPERTONIC,
+			models::KOKORO,
+			models::CANTONESE
+		);
+		return None;
+	}
+	for model in &found {
+		let voices: Vec<&str> = model.voices.iter().map(|voice| voice.name()).collect();
+		eprintln!("speech: {} for {}, on {threads} thread(s) when a phrase is new", model.name, voices.join(", "));
+	}
 	let duck = option("--wake-duck").and_then(|gain| gain.parse::<f32>().ok()).unwrap_or(1.0);
 	let workers = Arc::clone(workers);
 	let deliver = Box::new(move |guild_id: &str, pcm| {
@@ -912,12 +934,8 @@ fn start_speech(cache_dir: &std::path::Path, workers: &Workers) -> Option<Speech
 			let _ = worker.send(WorkerCommand::Say { pcm, duck });
 		}
 	});
-	let load = amhra_sidecar::speech::kokoro::load(model.clone(), threads);
-	match Speech::start(load, Some(cache_dir.join("speech")), deliver) {
-		Ok(speech) => {
-			eprintln!("speech: on, with {model} on {threads} thread(s) when a phrase is new");
-			Some(speech)
-		}
+	match Speech::start(found, Some(cache_dir.join("speech")), deliver) {
+		Ok(speech) => Some(speech),
 		Err(error) => {
 			eprintln!("speech is off: {error}");
 			None
@@ -927,7 +945,7 @@ fn start_speech(cache_dir: &std::path::Path, workers: &Workers) -> Option<Speech
 
 #[cfg(not(feature = "voice-commands"))]
 fn start_speech(_cache_dir: &std::path::Path, _workers: &Workers) -> Option<Speech> {
-	if option("--speech-model").is_some() {
+	if flag("--speech") {
 		eprintln!("speech is off: this sidecar was built without the voice-commands feature");
 	}
 	None

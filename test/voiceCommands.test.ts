@@ -285,11 +285,9 @@ describe("sidecar flags", () => {
 
 	test("speech, only when asked for", () => {
 		const allowed = { ...base, VOICE_COMMANDS: true };
-		expect(voiceCommandArgs(allowed)).not.toContain("--speech-model");
+		expect(voiceCommandArgs(allowed)).not.toContain("--speech");
 		const speaking = voiceCommandArgs({ ...allowed, VOICE_SPEECH: true, VOICE_SPEECH_THREADS: 2 });
-		expect(speaking.join(" ")).toContain(
-			"--speech-model models/voice/kokoro-multi-lang-v1_0 --speech-threads 2",
-		);
+		expect(speaking.join(" ")).toContain("--speech --speech-threads 2");
 		// Not without voice commands, which it answers.
 		expect(voiceCommandArgs({ ...base, VOICE_SPEECH: true })).toEqual([]);
 	});

@@ -75,13 +75,13 @@ pub enum Command {
 	#[serde(rename_all = "camelCase")]
 	SetFades { guild_id: String, crossfade_ms: u16, skip_fade_ms: u16 },
 	/// Say `text` in the call, over the music, lowered meanwhile. Only a
-	/// sidecar started with `--speech-model` speaks; others ignore it.
+	/// sidecar started with `--speech` speaks; others ignore it.
 	#[serde(rename_all = "camelCase")]
 	Speak {
 		guild_id: String,
 		text: String,
-		/// `zh` or `yue` for the Chinese voice; anything else, or nothing, is
-		/// English.
+		/// `en`, `ja`, `ko`, `zh` (Mandarin) or `yue` (Cantonese); anything
+		/// else, or nothing, is English.
 		#[serde(default)]
 		language: Option<String>,
 	},

@@ -13,9 +13,6 @@ export const DEFAULT_DUCK_VOLUME = 0.3;
 /** Where the sidecar puts the wake clips, relative to where it starts. */
 export const WAKE_CLIPS_DIR = "data/recordings/wake-clips";
 
-/** Where the speech model is, relative to where the sidecar starts. */
-export const DEFAULT_SPEECH_MODEL = "models/voice/kokoro-multi-lang-v1_0";
-
 /** The bot's owner allows voice commands at all. */
 export function voiceCommandsAllowed(setting: Setting = readSetting()) {
 	return setting.VOICE_COMMANDS === true;
@@ -67,7 +64,7 @@ export function voiceCommandArgs(setting: Setting = readSetting()): string[] {
 		args.push("--recogniser-threads", String(threads));
 	}
 	if (speaksAnswers(setting)) {
-		args.push("--speech-model", setting.VOICE_SPEECH_MODEL ?? DEFAULT_SPEECH_MODEL);
+		args.push("--speech");
 		const threads = setting.VOICE_SPEECH_THREADS;
 		if (threads !== undefined && Number.isInteger(threads) && threads >= 1) {
 			args.push("--speech-threads", String(threads));

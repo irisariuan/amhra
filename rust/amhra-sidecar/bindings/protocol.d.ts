@@ -15,8 +15,8 @@ listen: boolean, } | { "type": "setListen", guildId: string, listen: boolean, } 
  */
 trackId: string, startMs: number, } | { "type": "setNext", guildId: string, trackId: string, } | { "type": "clearNext", guildId: string, } | { "type": "skip", guildId: string, } | { "type": "stop", guildId: string, } | { "type": "pause", guildId: string, } | { "type": "resume", guildId: string, } | { "type": "seek", guildId: string, positionMs: number, } | { "type": "setVolume", guildId: string, gain: number, } | { "type": "setFades", guildId: string, crossfadeMs: number, skipFadeMs: number, } | { "type": "speak", guildId: string, text: string, 
 /**
- * `zh` or `yue` for the Chinese voice; anything else, or nothing, is
- * English.
+ * `en`, `ja`, `ko`, `zh` (Mandarin) or `yue` (Cantonese); anything
+ * else, or nothing, is English.
  */
 language: string | null, } | { "type": "prepareSpeech", phrases: Array<Phrase>, } | { "type": "listSessions" } | { "type": "shutdown" };
 

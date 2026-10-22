@@ -162,12 +162,7 @@
   "VOICE_SPEECH": {
    "type": "boolean",
    "default": false,
-   "description": "Say aloud what a voice command does (\"Skipping.\", \"Playing bad guy.\"), in English or Chinese, over the lowered music. Needs the Kokoro model (scripts/download-voice-models.sh). Fixed phrases are made once and saved under the cache; a song name takes a second or so of CPU on a fast machine and several on a Raspberry Pi. Default off. Restart to apply"
-  },
-  "VOICE_SPEECH_MODEL": {
-   "type": "string",
-   "default": "models/voice/kokoro-multi-lang-v1_0",
-   "description": "The unpacked kokoro-multi-lang-v1_0 (fp32; the int8 one says nothing on Apple silicon). Restart to apply"
+   "description": "Say aloud what a voice command does (\"Skipping.\", \"Playing bad guy.\") in the command's language, over the lowered music: English, Japanese and Korean with Supertonic 3, Mandarin with Kokoro, Cantonese with a VITS voice, whichever scripts/download-voice-models.sh --speech fetched. Fixed phrases are made once and saved under the cache; a song name takes about half a second of CPU on a fast machine and a few on a Raspberry Pi. Default off. Restart to apply"
   },
   "VOICE_SPEECH_THREADS": {
    "type": "integer",

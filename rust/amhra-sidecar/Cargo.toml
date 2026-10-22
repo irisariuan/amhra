@@ -24,6 +24,8 @@ ts-rs = "10"
 # default is used, because the two modes cannot both be on.
 sherpa-onnx = { version = "1.13.8", optional = true, default-features = false }
 sherpa-onnx-sys = { version = "1.13.8", optional = true, default-features = false }
+# The Cantonese voice's lexicon has simplified characters only.
+fast2s = { version = "0.3", optional = true }
 
 [dev-dependencies]
 # The wake_live example joins a channel the way amhra-voice's examples do.
@@ -34,7 +36,7 @@ tokio-tungstenite = { version = "0.24", default-features = false, features = [
 ] }
 
 [features]
-voice-commands = ["dep:sherpa-onnx", "dep:sherpa-onnx-sys"]
+voice-commands = ["dep:sherpa-onnx", "dep:sherpa-onnx-sys", "dep:fast2s"]
 # Link sherpa-onnx's shared build instead. Its onnxruntime recognised a
 # command 3.4x faster on the CPU here (41ms against 141ms on two threads), and
 # has Core ML on macOS for `--recogniser-provider coreml`. The libraries are

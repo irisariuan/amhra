@@ -78,22 +78,35 @@ describe("in a language the speech model has", () => {
 		).toEqual({ text: "播放周杰倫 Jay Chou。", language: "zh" });
 	});
 
-	test("Japanese and Korean are answered in English", () => {
-		expect(said({ command: "skip", language: Language.Japanese })).toEqual({ text: "Skipping.", language: "en" });
-		expect(said({ command: "skip", language: Language.Korean })).toEqual({ text: "Skipping.", language: "en" });
+	test("Japanese and Korean are answered in Japanese and Korean", () => {
+		expect(said({ command: "skip", language: Language.Japanese })).toEqual({ text: "スキップします。", language: "ja" });
+		expect(said({ command: "skip", language: Language.Korean })).toEqual({ text: "건너뜁니다.", language: "ko" });
+		expect(
+			foundAnnouncement({ title: "YOASOBI「アイドル」(Official Music Video)", queued: true, next: false }, Language.Japanese),
+		).toEqual({ text: "YOASOBI「アイドル」をキューに追加しました。", language: "ja" });
+	});
+
+	test("Cantonese is answered in Chinese, in the Cantonese voice", () => {
+		expect(announcement({ command: "pause", language: Language.TraditionalChinese }, "yue")).toEqual({
+			text: "已暫停。",
+			language: "yue",
+		});
+		expect(announcement({ command: "pause", language: Language.TraditionalChinese }, "zh")?.language).toBe("zh");
 	});
 });
 
 describe("the phrases kept ready", () => {
 	const phrases = prepared();
 
-	test("every fixed phrase, in both languages", () => {
+	test("every fixed phrase, in every voice", () => {
 		expect(phrases).toContainEqual({ text: "Skipping.", language: "en" });
 		expect(phrases).toContainEqual({ text: "Loop off.", language: "en" });
+		expect(phrases).toContainEqual({ text: "一時停止しました。", language: "ja" });
+		expect(phrases).toContainEqual({ text: "반복을 껐습니다.", language: "ko" });
 		expect(phrases).toContainEqual({ text: "已暫停。", language: "zh" });
-		expect(phrases.filter((phrase) => phrase.language === "en").length).toBe(
-			phrases.filter((phrase) => phrase.language === "zh").length,
-		);
+		expect(phrases).toContainEqual({ text: "已暫停。", language: "yue" });
+		const count = (code: string) => phrases.filter((phrase) => phrase.language === code).length;
+		for (const code of ["ja", "ko", "zh", "yue"]) expect(count(code)).toBe(count("en"));
 	});
 
 	test("none with a song or a number left to fill in", () => {

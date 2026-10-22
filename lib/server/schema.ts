@@ -243,7 +243,6 @@ export const GlobalSettingSchema = z
 		VOICE_COLLECT_WAKE_CLIPS: z.boolean().optional(),
 		VOICE_LOG_TRANSCRIPTS: z.boolean().optional(),
 		VOICE_SPEECH: z.boolean().optional(),
-		VOICE_SPEECH_MODEL: z.string().optional(),
 		VOICE_SPEECH_THREADS: z.number().int().min(1).max(8).optional(),
 		VOICE_WAKE_CHIME: z.boolean().optional(),
 		VOICE_DUCK_VOLUME: z.number().min(0).max(1).optional(),

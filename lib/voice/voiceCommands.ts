@@ -208,14 +208,15 @@ async function onUtterance(
 	// leaving would never be heard. A command that is then refused says why
 	// in the chat. Play is said once its search has found something.
 	const speaks = speaksAnswers() && userSetting(userId).spokenAnswers !== false;
-	const said = speaks ? announcement(intent) : null;
+	const said = speaks ? announcement(intent, lang) : null;
 	if (said) sidecar().send({ type: "speak", guildId, ...said });
 	await command.execute({
 		interaction: voiceInteraction(member, channel, intent, {
 			message: waiting,
 			transcript: showTranscript ? text : undefined,
 			onFound: speaks
-				? (found) => sidecar().send({ type: "speak", guildId, ...foundAnnouncement(found, intent.language) })
+				? (found) =>
+						sidecar().send({ type: "speak", guildId, ...foundAnnouncement(found, intent.language, lang) })
 				: undefined,
 		}),
 		client,

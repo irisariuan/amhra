@@ -535,15 +535,26 @@ says nothing. The phrases are the `VOICE_SAY_*` strings in `data/lang`,
 chosen in `lib/voice/announce.ts`. Each member can turn it off for their own
 commands with `/voicefeedback enabled:false`.
 
-The model is Kokoro (`kokoro-multi-lang-v1_0`, fetched by
-`scripts/download-voice-models.sh --speech`) through sherpa-onnx, in
-`src/speech.rs`. It has English and Chinese voices (af_heart, zf_xiaoxiao),
-so a command in Chinese is answered in Chinese and every other one in
-English: its Japanese voice was not intelligible even told the language, and
-it has no Korean. It reads traditional characters as well as simplified.
+A command is answered in its own language, each with its own model through
+sherpa-onnx (`src/speech.rs`), all fetched by
+`scripts/download-voice-models.sh --speech` into models/voice:
 
-On an M5 Pro, one CPU thread makes a second of speech in 0.8 to 0.95s (0.7
-for a long sentence), and the model takes 727MB loaded. Core ML saves
+| language | model | voice |
+| --- | --- | --- |
+| English, Japanese, Korean | Supertonic 3, int8 (145MB) | the first of its ten, female |
+| Mandarin | Kokoro v1.0, fp32 (330MB) | zf_xiaoxiao |
+| Cantonese | `vits-cantonese-hf-xiaomaiiwn` (114MB) | its one voice |
+
+The sidecar uses whichever are there: without Supertonic, English falls to
+Kokoro (af_heart) and Japanese and Korean are not said; without the
+Cantonese voice, Cantonese is read by the Mandarin one. Chinese answers are
+the bot's traditional-character strings, which Kokoro reads as they are and
+the Cantonese voice is given in simplified characters (its lexicon has no
+others). Each model trims the silence around what it says: Supertonic pads
+every phrase with nearly half a second either side.
+
+Kokoro, on an M5 Pro, makes a second of speech in 0.8 to 0.95s on one CPU
+thread (0.7 for a long sentence), and takes 727MB loaded. Core ML saves
 nothing: the fp32 model ran on the same CPU, and the int8 one aborts on Core
 ML and produces only NaN on the CPU. A Raspberry Pi class board, which this
 is meant to run on, has several times less per core, so a new phrase takes
@@ -557,9 +568,10 @@ seconds there. So:
   the command comes, on the one speech thread, ahead of any preparing, and
   remembered (64 phrases) but not saved, so the store never grows past the
   fixed phrases. One that is not ready within 8s is not said.
-- **The model only while it is needed.** It is loaded for the first phrase
-  that is not saved and let go after a minute without another, so the 700MB
-  is not held while nothing new is being said.
+- **Each model only while it is needed.** It is loaded for the first phrase
+  in its languages that is not saved and let go after a minute without
+  another, so Kokoro's 700MB is not held while nothing new is said in
+  Mandarin.
 - **One thread** by default (`VOICE_SPEECH_THREADS`), so speech never takes
   more than a core from playback and recognition.
 
@@ -585,7 +597,8 @@ simplified characters:
 | Supertonic 3 | ko | 451ms | 0.23 | 3.6% | 36% |
 | `vits-cantonese-hf-xiaomaiiwn` (114MB) | yue | 614ms | 0.54 | 11% | 15% |
 
-Supertonic 3 is three times Kokoro's speed and as clear, but has no Chinese.
+Supertonic 3 is three times Kokoro's speed and as clear, but has no Chinese,
+which is how the models above were chosen.
 Its titles suffer from names in Latin letters read in Japanese or Korean
 ("BTS" came back 비스, "Lemon" レメヌ), which SenseVoice also struggles to
 spell back. It speaks more slowly than Kokoro, 24s against 16s for the same
@@ -617,8 +630,7 @@ starts:
 | `VOICE_MAX_COMMAND_MS` | `8000` | the longest command |
 | `VOICE_INTENT_MODEL_URL` | empty | an OpenAI-compatible server whose model reads every command; empty, only command names said first are understood |
 | `VOICE_INTENT_MODEL` | `mlx-community/Qwen3-4B-4bit` | the model that server uses |
-| `VOICE_SPEECH` | off | say aloud what a voice command does (see Speaking) |
-| `VOICE_SPEECH_MODEL` | `models/voice/kokoro-multi-lang-v1_0` | |
+| `VOICE_SPEECH` | off | say aloud what a voice command does, with the models in models/voice (see Speaking) |
 | `VOICE_SPEECH_THREADS` | `1` | CPU threads for making speech |
 
 - **Per-server opt-in.** `/voicecommands enabled:true`, by default for members

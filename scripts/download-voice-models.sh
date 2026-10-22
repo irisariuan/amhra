@@ -5,8 +5,8 @@
 #
 # Idempotent: anything already in place is left alone, so rerunning after a
 # partial download only fetches what is missing. About 180MB to download and
-# 260MB unpacked, nearly all of it SenseVoice. `--speech` also fetches Kokoro,
-# for VOICE_SPEECH: another 330MB or so.
+# 260MB unpacked, nearly all of it SenseVoice. `--speech` also fetches the
+# speech models for VOICE_SPEECH: about 380MB more to download, 600MB unpacked.
 #
 # The sidecar finds them with `--voice-models <dir>` (default models/voice,
 # relative to the directory it is started in).
@@ -30,9 +30,14 @@ KWS="sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
 STT="sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
 # End of speech.
 VAD="silero_vad.onnx"
-# Speech, for answering aloud: English and Chinese, 24 kHz. The fp32 export:
-# the int8 one produces only NaN on Apple silicon.
-TTS="kokoro-multi-lang-v1_0"
+# Speech, for answering aloud (see the sidecar's speech::models). English,
+# Japanese and Korean: Supertonic 3, int8.
+TTS_SUPERTONIC="sherpa-onnx-supertonic-3-tts-int8-2026-05-11"
+# Mandarin: Kokoro, the fp32 export; the int8 one produces only NaN on Apple
+# silicon.
+TTS_KOKORO="kokoro-multi-lang-v1_0"
+# Cantonese: the one Cantonese voice sherpa-onnx has.
+TTS_CANTONESE="vits-cantonese-hf-xiaomaiiwn"
 
 mkdir -p "$TARGET"
 cd "$TARGET"
@@ -77,7 +82,9 @@ else
 fi
 
 if [[ "$SPEECH" == 1 ]]; then
-	fetch_archive tts-models "$TTS"
+	fetch_archive tts-models "$TTS_SUPERTONIC"
+	fetch_archive tts-models "$TTS_KOKORO"
+	fetch_archive tts-models "$TTS_CANTONESE"
 fi
 
 # The test clips and the full-precision weights are not used at runtime.

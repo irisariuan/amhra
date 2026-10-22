@@ -9,19 +9,40 @@ import type { Found } from "./voiceInteraction";
  * "Volume 40 percent.", and for play the title of what the search found,
  * "Playing Billie Eilish - bad guy.", once it has found it.
  *
- * The speech model reads English and Chinese, so a command in Chinese is
- * answered in Chinese and every other one in English. Most of what is said is
- * the same few phrases, which the sidecar is told about once (`prepared`) so
- * it can keep them ready; a song or a number makes a phrase it synthesises
- * when it is said.
+ * A command is answered in the language it was given in: English, Japanese,
+ * Korean or Chinese, the last in Cantonese when that is what was heard. The
+ * sidecar has a voice for each (Supertonic, Kokoro for Mandarin, a Cantonese
+ * one). Most of what is said is the same few phrases, which the sidecar is
+ * told about once (`prepared`) so it can keep them ready; a song or a number
+ * makes a phrase it synthesises when it is said.
  */
 
-/** The language a command is answered aloud in, as the sidecar takes it. */
-function spokenLanguage(language: Language) {
-	return language === Language.TraditionalChinese
-		? { language: Language.TraditionalChinese, code: "zh" }
-		: { language: Language.English, code: "en" };
+/**
+ * The language a command is answered aloud in: the bot's, for the text, and
+ * the sidecar's code, for the voice. `heard` is what the recogniser reported,
+ * which tells Cantonese from Mandarin where the bot's language does not.
+ */
+function spokenLanguage(language: Language, heard?: string | null) {
+	switch (language) {
+		case Language.TraditionalChinese:
+			return { language, code: heard === "yue" ? "yue" : "zh" };
+		case Language.Japanese:
+			return { language, code: "ja" };
+		case Language.Korean:
+			return { language, code: "ko" };
+		default:
+			return { language: Language.English, code: "en" };
+	}
 }
+
+/** Every language and voice the bot answers aloud in. */
+const SPOKEN: [Language, string | null][] = [
+	[Language.English, null],
+	[Language.Japanese, null],
+	[Language.Korean, null],
+	[Language.TraditionalChinese, "zh"],
+	[Language.TraditionalChinese, "yue"],
+];
 
 /** The phrase's id, and what fills it in, for what `intent` asks. */
 function phrase(intent: VoiceIntent): [string, Record<string, string | number>?] {
@@ -53,16 +74,16 @@ function phrase(intent: VoiceIntent): [string, Record<string, string | number>?]
  * What to say as `intent` starts, and the language to say it in. Nothing for
  * play, which is said when its search has found something (`foundAnnouncement`).
  */
-export function announcement(intent: VoiceIntent): Phrase | null {
+export function announcement(intent: VoiceIntent, heard?: string | null): Phrase | null {
 	if (intent.command === "play") return null;
-	const { language, code } = spokenLanguage(intent.language);
+	const { language, code } = spokenLanguage(intent.language, heard);
 	const [id, replace] = phrase(intent);
 	return { text: languageText(id, language, replace), language: code };
 }
 
 /** What to say when a play command's search found `found`. */
-export function foundAnnouncement(found: Found, language: Language): Phrase {
-	const spoken = spokenLanguage(language);
+export function foundAnnouncement(found: Found, language: Language, heard?: string | null): Phrase {
+	const spoken = spokenLanguage(language, heard);
 	const id = found.next ? "voice_say_play_next" : found.queued ? "voice_say_play_queued" : "voice_say_play";
 	return { text: languageText(id, spoken.language, { title: spokenTitle(found.title) }), language: spoken.code };
 }
@@ -94,8 +115,8 @@ export function prepared(): Phrase[] {
 		}
 	}
 	const phrases: Phrase[] = [];
-	for (const language of [Language.English, Language.TraditionalChinese]) {
-		const { code } = spokenLanguage(language);
+	for (const [bot, heard] of SPOKEN) {
+		const { language, code } = spokenLanguage(bot, heard);
 		for (const id of ids) {
 			const text = languageText(id, language);
 			if (text && !text.includes("{")) phrases.push({ text, language: code });
