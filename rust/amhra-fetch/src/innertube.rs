@@ -93,6 +93,9 @@ pub struct Extractor {
 
 impl Extractor {
 	pub fn new(profiles: Vec<Profile>) -> Result<Self, ExtractError> {
+		// reqwest panics on build without a process-wide provider. Installing
+		// over an existing one is a no-op, so a caller's choice wins.
+		let _ = rustls::crypto::ring::default_provider().install_default();
 		let client = reqwest::Client::builder()
 			// The player call is small and latency-bound; the download that
 			// follows reuses this pool, so keep connections warm.

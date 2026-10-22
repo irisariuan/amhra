@@ -18,7 +18,7 @@
 //! 8 bytes of overhead per 20ms frame is 3.2kbit/s that would otherwise be
 //! spent twice.
 
-use aes_gcm::aead::AeadInPlace;
+use aes_gcm::aead::AeadInOut;
 use aes_gcm::{Aes128Gcm, KeyInit, Nonce};
 
 use super::ratchet::{HashRatchet, RatchetError};
@@ -128,7 +128,7 @@ impl Encryptor {
 		// Opus frames are encrypted whole, so there is no additional
 		// authenticated data and no unencrypted ranges to serialise.
 		let tag = cipher
-			.encrypt_in_place_detached(Nonce::from_slice(&nonce_buffer), &[], out.as_mut_slice())
+			.encrypt_inout_detached(&Nonce::from(nonce_buffer), &[], out.as_mut_slice().into())
 			.map_err(|_| FrameError::Encrypt)?;
 
 		out.extend_from_slice(&tag[..TRUNCATED_TAG_LEN]);
@@ -209,7 +209,7 @@ mod tests {
 		// directly; re-encrypt and compare instead.
 		let cipher = Aes128Gcm::new_from_slice(&material.key).unwrap();
 		let full = cipher
-			.encrypt(Nonce::from_slice(&nonce_buffer), Payload { msg: &plaintext, aad: &[] })
+			.encrypt(&Nonce::from(nonce_buffer), Payload { msg: &plaintext, aad: &[] })
 			.unwrap();
 		assert_eq!(&out[..plaintext.len()], &full[..plaintext.len()], "ciphertext differs");
 		assert_eq!(

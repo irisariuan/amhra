@@ -13,12 +13,15 @@ path = "src/main.rs"
 amhra-audio.workspace = true
 bytes = "1"
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
-reqwest = { version = "0.12", default-features = false, features = [
-	"rustls-tls",
+# `rustls` would pull in aws-lc-rs; amhra-voice already settles on ring, so
+# bring no provider here and install ring before building the client.
+reqwest = { version = "0.13", default-features = false, features = [
+	"rustls-no-provider",
 	"gzip",
 	"json",
 	"http2",
 ] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror.workspace = true

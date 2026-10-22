@@ -213,7 +213,7 @@ async fn session(
 				"seq_ack": *sequence_ack,
 			}
 		});
-		socket.send(Message::Text(payload.to_string())).await?;
+		socket.send(Message::Text(payload.to_string().into())).await?;
 	} else {
 		let payload = json!({
 			"op": Opcode::Identify as u8,
@@ -225,7 +225,7 @@ async fn session(
 				"max_dave_protocol_version": info.max_dave_protocol_version,
 			}
 		});
-		socket.send(Message::Text(payload.to_string())).await?;
+		socket.send(Message::Text(payload.to_string().into())).await?;
 	}
 
 	// Hello sets the real interval; until it arrives nothing is due.
@@ -250,7 +250,7 @@ async fn session(
 					"op": Opcode::Heartbeat as u8,
 					"d": { "t": nonce, "seq_ack": *sequence_ack }
 				});
-				socket.send(Message::Text(payload.to_string())).await?;
+				socket.send(Message::Text(payload.to_string().into())).await?;
 			}
 
 			command = commands.recv() => {
@@ -263,7 +263,7 @@ async fn session(
 								"data": { "address": address, "port": port, "mode": mode }
 							}
 						});
-						socket.send(Message::Text(payload.to_string())).await?;
+						socket.send(Message::Text(payload.to_string().into())).await?;
 					}
 					Some(Command::Speaking(speaking)) => {
 						let payload = json!({
@@ -274,15 +274,15 @@ async fn session(
 								"ssrc": *ssrc,
 							}
 						});
-						socket.send(Message::Text(payload.to_string())).await?;
+						socket.send(Message::Text(payload.to_string().into())).await?;
 					}
 					Some(Command::Json { opcode, data }) => {
 						let payload = json!({ "op": opcode as u8, "d": data });
-						socket.send(Message::Text(payload.to_string())).await?;
+						socket.send(Message::Text(payload.to_string().into())).await?;
 					}
 					Some(Command::Binary { opcode, payload }) => {
 						let frame = wire::encode_binary(opcode, &payload);
-						socket.send(Message::Binary(frame)).await?;
+						socket.send(Message::Binary(frame.into())).await?;
 					}
 					// The owner is done, or dropped the handle.
 					Some(Command::Close) | None => {

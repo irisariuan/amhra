@@ -16,8 +16,8 @@
 //! why the counter wrapping is treated as a fatal condition rather than a
 //! wrap-around.
 
-use aes_gcm::aead::{AeadInPlace, KeyInit};
-use aes_gcm::{Aes256Gcm, Key as AesKey};
+use aes_gcm::aead::{AeadInOut, KeyInit};
+use aes_gcm::Aes256Gcm;
 use chacha20poly1305::XChaCha20Poly1305;
 
 use crate::wire::EncryptionMode;
@@ -87,15 +87,14 @@ impl Session {
 		sequence: u16,
 		timestamp: u32,
 	) -> Result<Self, CryptoError> {
-		if secret_key.len() != 32 {
-			return Err(CryptoError::BadKeyLength(secret_key.len()));
-		}
+		let key: &[u8; 32] =
+			secret_key.try_into().map_err(|_| CryptoError::BadKeyLength(secret_key.len()))?;
 		let cipher = match mode {
 			EncryptionMode::AeadAes256GcmRtpSize => {
-				Cipher::Aes(Box::new(Aes256Gcm::new(AesKey::<Aes256Gcm>::from_slice(secret_key))))
+				Cipher::Aes(Box::new(Aes256Gcm::new(key.into())))
 			}
 			EncryptionMode::AeadXChaCha20Poly1305RtpSize => Cipher::XChaCha(Box::new(
-				XChaCha20Poly1305::new(secret_key.into()),
+				XChaCha20Poly1305::new(key.into()),
 			)),
 		};
 		Ok(Self {
@@ -165,10 +164,10 @@ impl Session {
 		let mut buffer = InPlace { data: out, start };
 		match &self.cipher {
 			Cipher::Aes(cipher) => cipher
-				.encrypt_in_place(nonce_bytes.into(), &aad, &mut buffer)
+				.encrypt_in_place(nonce_bytes.try_into().map_err(|_| CryptoError::Encrypt)?, &aad, &mut buffer)
 				.map_err(|_| CryptoError::Encrypt)?,
 			Cipher::XChaCha(cipher) => cipher
-				.encrypt_in_place(nonce_bytes.into(), &aad, &mut buffer)
+				.encrypt_in_place(nonce_bytes.try_into().map_err(|_| CryptoError::Encrypt)?, &aad, &mut buffer)
 				.map_err(|_| CryptoError::Encrypt)?,
 		}
 
@@ -270,7 +269,7 @@ mod tests {
 		let mut nonce = [0u8; 12];
 		nonce[..4].copy_from_slice(counter);
 
-		let cipher = Aes256Gcm::new(AesKey::<Aes256Gcm>::from_slice(&KEY));
+		let cipher = Aes256Gcm::new(&KEY.into());
 		let decrypted = cipher
 			.decrypt(&nonce.into(), Payload { msg: ciphertext, aad: header })
 			.expect("receiver can decrypt");

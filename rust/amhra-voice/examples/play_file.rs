@@ -127,7 +127,7 @@ async fn negotiate(args: &Args) -> ConnectionInfo {
 		tokio::select! {
 			_ = async { heartbeat.as_mut().expect("started").tick().await }, if heartbeat.is_some() => {
 				let payload = json!({ "op": 1, "d": sequence });
-				socket.send(Message::Text(payload.to_string())).await.expect("heartbeat");
+				socket.send(Message::Text(payload.to_string().into())).await.expect("heartbeat");
 			}
 			message = socket.next() => {
 				let Some(Ok(Message::Text(text))) = message else { continue };
@@ -152,7 +152,7 @@ async fn negotiate(args: &Args) -> ConnectionInfo {
 								"properties": { "os": "linux", "browser": "amhra", "device": "amhra" }
 							}
 						});
-						socket.send(Message::Text(identify.to_string())).await.expect("identify");
+						socket.send(Message::Text(identify.to_string().into())).await.expect("identify");
 					}
 					Some(0) => {
 						match frame.get("t").and_then(Value::as_str) {
@@ -172,7 +172,7 @@ async fn negotiate(args: &Args) -> ConnectionInfo {
 										"self_deaf": true,
 									}
 								});
-								socket.send(Message::Text(join.to_string())).await.expect("join");
+								socket.send(Message::Text(join.to_string().into())).await.expect("join");
 								asked_to_join = true;
 							}
 							Some("VOICE_STATE_UPDATE") if asked_to_join => {

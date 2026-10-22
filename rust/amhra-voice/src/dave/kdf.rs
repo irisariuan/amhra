@@ -8,7 +8,7 @@
 //! combination outright, so the loop below is written out rather than taken
 //! from `hkdf`.
 
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 
 #[derive(Debug, thiserror::Error)]

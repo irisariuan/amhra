@@ -399,10 +399,10 @@ impl Session {
 		let external_sender =
 			self.external_sender.clone().ok_or(SessionError::NoExternalSender)?;
 
-		let extensions = Extensions::single(Extension::ExternalSenders(vec![external_sender]));
+		let extensions = Extensions::single(Extension::ExternalSenders(vec![external_sender]))
+			.map_err(|error| SessionError::Mls(format!("{error:?}")))?;
 		let config = MlsGroupCreateConfig::builder()
 			.with_group_context_extensions(extensions)
-			.map_err(|error| SessionError::Mls(format!("{error:?}")))?
 			.ciphersuite(CIPHERSUITE)
 			.capabilities(capabilities())
 			.use_ratchet_tree_extension(true)
