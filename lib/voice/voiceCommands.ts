@@ -12,7 +12,7 @@ import { languageText, parseLocale } from "../language";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { userSetting } from "../userSetting";
-import { parseVoiceCommand, withoutName } from "./intent";
+import { parseVoiceCommand } from "./intent";
 import { getNativeConnection } from "./native";
 import { type SidecarEvent, sidecar } from "./sidecar";
 import { voiceInteraction } from "./voiceInteraction";
@@ -166,27 +166,19 @@ async function onUtterance(
 	const showTranscript = userSetting(userId).showTranscript === true;
 
 	const intent = parseVoiceCommand(text, lang);
-	// What is shown of it: the request, without the name in front.
-	const said = withoutName(text, lang);
 	// What was said stays out of the log, as it does in the sidecar's, unless
 	// the owner is tuning the matching and asked for it.
-	const heard = readSetting().VOICE_LOG_TRANSCRIPTS
-		? `: [${lang ?? "?"}] ${JSON.stringify(said)}${said === text ? "" : ` (heard ${JSON.stringify(text)})`}`
-		: "";
+	const heard = readSetting().VOICE_LOG_TRANSCRIPTS ? `: [${lang ?? "?"}] ${JSON.stringify(text)}` : "";
 	const command = intent && lookup(intent.command);
 	const channel = replyChannel(client, guild, member);
 
 	if (!intent || !command) {
 		dcb.log(`(Guild ID: ${guildId}) Heard the name, then no command${heard}`);
 		if (showTranscript) {
-			const content = said
-				? languageText("voice_transcript_unmatched", guildLanguage(guild), {
-						user: `<@${userId}>`,
-						text: escapeMarkdown(said),
-					})
-				: languageText("voice_transcript_nothing", guildLanguage(guild), {
-						user: `<@${userId}>`,
-					});
+			const content = languageText("voice_transcript_unmatched", guildLanguage(guild), {
+				user: `<@${userId}>`,
+				text: escapeMarkdown(text),
+			});
 			const answer = { content, allowedMentions: { parse: [] } };
 			if (waiting) await waiting.edit(answer).catch(() => {});
 			else await channel?.send(answer).catch(() => {});
@@ -204,7 +196,7 @@ async function onUtterance(
 	await command.execute({
 		interaction: voiceInteraction(member, channel, intent, {
 			message: waiting,
-			transcript: showTranscript ? said : undefined,
+			transcript: showTranscript ? text : undefined,
 		}),
 		client,
 		language: intent.language,

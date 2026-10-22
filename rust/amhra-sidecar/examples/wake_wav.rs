@@ -263,15 +263,9 @@ fn main() {
 					let ended = position - capture.since_speech;
 					match transcript {
 						Ok(transcript) => println!(
-							"  {:6.2}s  [{}] {:?} (heard {:?})  ({:.1}s window{}, speech ended {:.2}s, text {}ms after that: {}ms silence + {}ms recognition)",
+							"  {:6.2}s  [{}] {:?}  ({:.1}s window{}, speech ended {:.2}s, text {}ms after that: {}ms silence + {}ms recognition)",
 							at(position),
 							transcript.lang.as_deref().unwrap_or("?"),
-							// What the sidecar reports: the name's tail cut off.
-							voice_commands::trim::after_name(
-								&transcript.text,
-								&transcript.tokens,
-								at(capture.name_end) as f32,
-							),
 							transcript.text,
 							at(capture.samples.len()),
 							if capture.capped { ", capped" } else { "" },

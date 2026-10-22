@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 
 use super::gate::{GateConfig, GateEvent};
 use super::speakers::Speakers;
-use super::{Models, Transcriber, milliseconds, trim};
+use super::{Models, Transcriber, milliseconds};
 use crate::listen::{Heard, VoiceSink};
 
 /// Frames queued for a guild's gate thread: two seconds of five people.
@@ -60,8 +60,6 @@ pub enum Notice {
 		recognition_ms: u32,
 		/// Length of the window recognised.
 		audio_ms: u32,
-		/// Words at the front taken for the tail of the name and dropped.
-		name_words: usize,
 	},
 	/// Speech after the name that the recogniser made nothing of.
 	Unintelligible { guild_id: String, user_id: u64, keyword: String },
@@ -77,8 +75,6 @@ struct Job {
 	user_id: u64,
 	keyword: String,
 	samples: Vec<f32>,
-	/// Where in `samples` the name ended.
-	name_end: usize,
 	/// When they stopped talking, as best the gate can tell.
 	speech_ended: Instant,
 }
@@ -213,7 +209,6 @@ fn handle(
 				user_id,
 				keyword: capture.keyword,
 				samples: capture.samples,
-				name_end: capture.name_end,
 				speech_ended: now.checked_sub(since).unwrap_or(now),
 			};
 			match jobs.try_send(job) {
@@ -233,25 +228,20 @@ fn recognise(queue: Receiver<Job>, mut transcriber: Box<dyn Transcriber>, report
 		let started = Instant::now();
 		let outcome = transcriber.transcribe(&job.samples);
 		let done = Instant::now();
-		let Job { guild_id, user_id, keyword, samples, name_end, speech_ended } = job;
-		// What the recogniser made of the name's tail goes; the command stays.
-		let outcome = outcome.map(|transcript| {
-			let name_end = milliseconds(name_end) as f32 / 1000.0;
-			let (text, name_words) = trim::cut(transcript.text.trim(), &transcript.tokens, name_end);
-			(text, name_words, transcript.lang)
-		});
+		let Job { guild_id, user_id, keyword, samples, speech_ended } = job;
 		match outcome {
-			Ok((text, ..)) if text.is_empty() => report(Notice::Unintelligible { guild_id, user_id, keyword }),
-			Ok((text, name_words, lang)) => report(Notice::Utterance {
+			Ok(transcript) if transcript.text.trim().is_empty() => {
+				report(Notice::Unintelligible { guild_id, user_id, keyword })
+			}
+			Ok(transcript) => report(Notice::Utterance {
 				guild_id,
 				user_id,
 				keyword,
-				text,
-				lang,
+				text: transcript.text.trim().to_owned(),
+				lang: transcript.lang,
 				latency_ms: millis(done.duration_since(speech_ended)),
 				recognition_ms: millis(done.duration_since(started)),
 				audio_ms: milliseconds(samples.len()),
-				name_words,
 			}),
 			Err(error) => report(Notice::Failed { guild_id, message: error.to_string() }),
 		}
@@ -286,11 +276,7 @@ mod tests {
 
 	impl Transcriber for FakeTranscriber {
 		fn transcribe(&mut self, samples: &[f32]) -> Result<Transcript, ModelError> {
-			Ok(Transcript {
-				text: format!(" {} samples ", samples.len()),
-				lang: Some("en".to_owned()),
-				tokens: Vec::new(),
-			})
+			Ok(Transcript { text: format!(" {} samples ", samples.len()), lang: Some("en".to_owned()) })
 		}
 	}
 

@@ -72,7 +72,7 @@ impl Default for GateConfig {
 			preroll_ms: 0,
 			wait_for_speech_ms: 2500,
 			min_speech_ms: 100,
-			end_silence_ms: 700,
+			end_silence_ms: 500,
 			max_capture_ms: 8000,
 			keep_tail_ms: 200,
 			max_lag_ms: 1500,
@@ -107,9 +107,6 @@ pub struct Capture {
 	pub since_speech: usize,
 	/// Closed by [`GateConfig::max_capture_ms`] rather than by silence.
 	pub capped: bool,
-	/// Where in `samples` the spotter says the name ended: the pre-roll,
-	/// unless there was less history than that.
-	pub name_end: usize,
 }
 
 #[derive(Debug)]
@@ -168,8 +165,6 @@ pub struct Gate {
 	history: VecDeque<f32>,
 	/// The window being built, once the name has been heard.
 	window: Vec<f32>,
-	/// Where in the window the name ended.
-	name_end: usize,
 	state: State,
 }
 
@@ -192,7 +187,6 @@ impl Gate {
 			vad,
 			history: VecDeque::with_capacity(limits.history()),
 			window: Vec::new(),
-			name_end: 0,
 			state: State::Listening,
 		}
 	}
@@ -238,7 +232,6 @@ impl Gate {
 		}
 		self.window.clear();
 		self.window.extend(self.history.range(start..));
-		self.name_end = keyword_end - start;
 		self.history.clear();
 		self.state = State::Armed { keyword, waited: 0, speech: 0, answered: 0 };
 
@@ -328,8 +321,7 @@ impl Gate {
 		samples.truncate(samples.len() - silence.saturating_sub(self.limits.keep_tail));
 		samples.truncate(self.limits.max_capture);
 		self.finish();
-		let name_end = self.name_end;
-		events(GateEvent::Captured(Capture { keyword, samples, since_speech: silence, capped, name_end }));
+		events(GateEvent::Captured(Capture { keyword, samples, since_speech: silence, capped }));
 	}
 
 	/// Back to listening for the name.
@@ -439,7 +431,7 @@ mod tests {
 		assert!(!capture.capped);
 		assert_eq!(capture.keyword, "AMHRA");
 		// Closed on exactly the configured silence, and timed from there.
-		assert_eq!(capture.since_speech, samples(700));
+		assert_eq!(capture.since_speech, samples(500));
 		// Pre-roll + command + the tail that is kept; the rest of the silence
 		// is cut.
 		assert_eq!(capture.samples.len(), samples(400) + samples(600) + samples(200));
@@ -482,7 +474,6 @@ mod tests {
 
 		let captures = captured(&events);
 		assert_eq!(captures.len(), 1, "{events:?}");
-		assert_eq!(captures[0].name_end, 0);
 		assert_eq!(captures[0].samples.len(), samples(200 + 600 + 200));
 		assert!(captures[0].samples[..samples(180)].iter().all(|&sample| sample == 0.0));
 	}

@@ -249,7 +249,7 @@ unless the bot's owner allows it and each server opts in.
 
 ```text
 16 kHz PCM ─▶ keyword spotter ──"Amhra"──▶ window ─▶ end of speech ─▶ SenseVoice ─▶ utterance
-per speaker   (streaming, always on)  (from the name's end) (Silero, 700ms)  (one thread)
+per speaker   (streaming, always on)  (from the name's end) (Silero, 500ms)  (one thread)
 ```
 
 Nothing anyone says is transcribed unless it follows the wake word. Only the
@@ -355,7 +355,7 @@ recogniser calls the C API directly. That is the one `unsafe` block, in
 
 - **Window.** It starts where the spotter says the name *ended*, not where
   it fired. The spotter fires about 300–500ms late, by which time the command
-  has often begun. The window closes on 700ms of silence or at 8s. With no
+  has often begun. The window closes on 500ms of silence or at 8s. With no
   speech within 2.5s of the name, it times out quietly.
 - **None of the name in the window.** It used to start 300–400ms before the
   name's end, to be sure of a command's first syllable. But whatever of the
@@ -378,24 +378,14 @@ recogniser calls the C API directly. That is the one `unsafe` block, in
   goes quiet, so the gate thread feeds zeros in its place, for about a second
   after someone stops and for as long as a command is open. Otherwise a command
   would never end, and a name said last would never be recognised.
-- **The name comes off the text.** When the spotter puts the end early,
-  or with `--preroll-ms` in `wake_wav`, the recogniser hears some of the name
-  and writes it however it likes
-  ("T, skip a song.", "Para, skip this song.", "Per, play the song."). It
-  also stamps each token with when it began, and the gate knows where in the
-  window the spotter put the name's end, so words that began at least 50ms
-  before that are dropped before the text is reported: "skip a song.". The
-  sidecar's log says how many words went. When the spotter puts the end
-  too early the name survives and the bot's matching strips it; when too
-  late, a command's first word is lost and nothing runs, which is why the
-  cut errs early. On the real takes
-  in `training/wake` it cleaned every command that followed the name.
-  sherpa-onnx only counts the keyword's timestamps from the start of the
-  stream until its first detection; after the reset that follows, they come
-  back measured from somewhere else, and the lag worked out from them is
-  nonsense. A lag outside 0.1–1s is taken to be the typical 0.45s instead,
-  which kept later wakes on a stream as clean as the first. The bot also
-  strips name-like words from what it shows and logs, for whatever is left.
+- **Where the name ended.** sherpa-onnx only counts the keyword's
+  timestamps from the start of the stream until its first detection; after
+  the reset that follows, they come back measured from somewhere else, and
+  the lag worked out from them is nonsense. A lag outside 0.1–1s is taken to
+  be the typical 0.45s instead, so later wakes on a stream start their window
+  in the right place too. When the spotter puts the end early, a scrap of the
+  name reaches the recogniser anyway ("Ehara play expectations."); the bot's
+  matching allows for that.
 - **Padding.** SenseVoice drops the first syllables of audio that starts
   mid-speech. Measured: a whole clip came back as "Amra, skip this song.", but
   the gate's window of it came back as "Sip this song.". Each window gets 300ms
@@ -522,9 +512,8 @@ recognition stays on the CPU. Only recognition can move; the spotter and the
 VAD take 20ms at a time from every speaker, which is the worst case for
 handing work to another device.
 
-Either way, 700ms of the wait after someone stops talking is the silence
-that tells the gate they have finished (500ms when the figures above were
-measured).
+Either way, 500ms of the wait after someone stops talking is the silence
+that tells the gate they have finished.
 
 **Pinning the language.** On `auto`, four of seven live takes of the name
 said in English came back as Chinese ("什么号啊？"); pinned to `en` they read
@@ -551,7 +540,7 @@ starts:
 | `VOICE_RECOGNISER_THREADS` | `2` | threads for speech recognition |
 | `VOICE_LANGUAGE` | `auto` | pin recognition to `en`, `zh`, `ja`, `ko` or `yue`, for every server |
 | `VOICE_WAIT_FOR_COMMAND_MS` | `2500` | how long after the name to wait for the command; a pause for the chime does not end it within this |
-| `VOICE_END_SILENCE_MS` | `700` | silence that ends a command; all of it is added to the wait for an answer |
+| `VOICE_END_SILENCE_MS` | `500` | silence that ends a command; all of it is added to the wait for an answer |
 | `VOICE_MAX_COMMAND_MS` | `8000` | the longest command |
 
 - **Per-server opt-in.** `/voicecommands enabled:true`, by default for members

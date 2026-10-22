@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Language } from "../lib/interaction";
-import { levenshtein, parseVoiceCommand, withoutName } from "../lib/voice/intent";
+import { levenshtein, parseVoiceCommand } from "../lib/voice/intent";
 
 /**
  * Reading commands out of what the sidecar transcribed after the wake word.
@@ -208,23 +208,3 @@ test("levenshtein", () => {
 	expect(levenshtein("continue", "contiue")).toBe(1);
 	expect(levenshtein("", "abc")).toBe(3);
 });
-
-describe("what is shown of what was heard", () => {
-	test.each([
-		// The name said twice: timing cuts the first, this the second.
-		["I'm Har, Play some music.", "en", "Play some music."],
-		["How, Im how.", "en", ""],
-		["Amhra skip this song.", "en", "skip this song."],
-		["Empower pause", "en", "pause"],
-		// Nothing of the name left: unchanged.
-		["skip this song.", "en", "skip this song."],
-		["play Bohemian Rhapsody", "en", "play Bohemian Rhapsody"],
-		["艾姆哈拉，暂停。", "zh", "暂停。"],
-		["Amhra，跳过这首歌", "zh", "跳过这首歌"],
-		["エムハラ、一時停止して", "ja", "一時停止して"],
-		["暂停", "zh", "暂停"],
-	])("%p", (heard, lang, shown) => {
-		expect(withoutName(heard, lang)).toBe(shown);
-	});
-});
-

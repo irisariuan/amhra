@@ -211,7 +211,7 @@
    "type": "integer",
    "minimum": 200,
    "maximum": 3000,
-   "default": 700,
+   "default": 500,
    "description": "Silence that ends a command, in milliseconds. Longer forgives pauses mid-command; every millisecond is added to the wait for an answer. Restart to apply"
   },
   "VOICE_MAX_COMMAND_MS": {

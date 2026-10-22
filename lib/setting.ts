@@ -138,7 +138,7 @@ export interface Setting {
 	 * either. Defaults to 2500.
 	 */
 	VOICE_WAIT_FOR_COMMAND_MS?: number;
-	/** Silence that ends a command, in ms. Defaults to 700. */
+	/** Silence that ends a command, in ms. Defaults to 500. */
 	VOICE_END_SILENCE_MS?: number;
 	/** The longest command, in ms. Defaults to 8000. */
 	VOICE_MAX_COMMAND_MS?: number;

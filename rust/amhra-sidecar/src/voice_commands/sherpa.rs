@@ -26,7 +26,6 @@ use sherpa_onnx::{
 use sherpa_onnx_sys as sys;
 
 use super::keywords::{self, Vocabulary};
-use super::trim::Token;
 use super::{Detection, ModelError, Models, SAMPLE_RATE, Spotter, Transcriber, Transcript, Vad};
 
 const KWS_DIR: &str = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01";
@@ -497,14 +496,9 @@ struct RawResult {
 	text: String,
 	#[serde(default)]
 	lang: String,
-	#[serde(default)]
-	tokens: Vec<String>,
-	#[serde(default)]
-	timestamps: Vec<f32>,
 }
 
-/// `{"lang": "<|en|>", "text": "skip.", "tokens": […], "timestamps": […]}`
-/// into a [`Transcript`], with token times moved to the window's start.
+/// `{"lang": "<|en|>", "text": "skip.", …}` into a [`Transcript`].
 fn parse_result(json: &str) -> Result<Transcript, ModelError> {
 	let raw: RawResult =
 		serde_json::from_str(json).map_err(|error| ModelError::Recognition(format!("bad result: {error}")))?;
@@ -513,14 +507,7 @@ fn parse_result(json: &str) -> Result<Transcript, ModelError> {
 		"" | "nospeech" | "unk" => None,
 		other => Some(other.to_owned()),
 	};
-	let padding = PADDING_MS as f32 / 1000.0;
-	let tokens = raw
-		.tokens
-		.into_iter()
-		.zip(raw.timestamps)
-		.map(|(text, start)| Token { text, start: start - padding })
-		.collect();
-	Ok(Transcript { text: raw.text, lang, tokens })
+	Ok(Transcript { text: raw.text, lang })
 }
 
 #[cfg(test)]
@@ -528,24 +515,9 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn token_times_are_counted_from_the_window_not_the_padding() {
-		let transcript = parse_result(
-			r#"{"lang":"<|en|>","text":"T, skip.","tokens":["T",","," skip","."],"timestamps":[0.30,0.60,0.72,1.20]}"#,
-		)
-		.unwrap();
-		let starts: Vec<f32> = transcript.tokens.iter().map(|token| token.start).collect();
-		let expected = [0.0, 0.3, 0.42, 0.9];
-		assert!(starts.iter().zip(expected).all(|(start, want)| (start - want).abs() < 1e-4), "{starts:?}");
-		assert_eq!(transcript.tokens[2].text, " skip");
-	}
-
-	#[test]
 	fn the_language_tag_is_unwrapped() {
 		let transcript = parse_result(r#"{"lang":"<|ja|>","emotion":"<|NEUTRAL|>","text":"スキップ。"}"#).unwrap();
-		assert_eq!(
-			transcript,
-			Transcript { text: "スキップ。".to_owned(), lang: Some("ja".to_owned()), tokens: Vec::new() }
-		);
+		assert_eq!(transcript, Transcript { text: "スキップ。".to_owned(), lang: Some("ja".to_owned()) });
 		let silent = parse_result(r#"{"lang":"<|nospeech|>","text":""}"#).unwrap();
 		assert_eq!(silent.lang, None);
 	}
