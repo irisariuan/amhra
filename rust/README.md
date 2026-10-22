@@ -429,6 +429,12 @@ takes with every other take held out of training:
 | stock spotter, `M HARA` | 1/11 | 0 |
 | fine-tuned, threshold 0.25 | **9/11** | 3 (5.6 per hour) |
 
+Live in a Discord call, the same speaker said the name 10 times followed
+by commands: it woke 9 times, with no false wakes. Text arrived 650–790ms
+after they stopped talking. The commands after the name came out rough
+("how, I pay this song", "Em, I pre the song", "I'm, I stop it"), so
+matching commands in phase C has to tolerate that.
+
 Ten training takes from one speaker is very little, and training longer
 overfits: later epochs heard every take but woke 25–80 times an hour on
 sentences they had not seen. Recordings from more members are what would
