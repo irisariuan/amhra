@@ -28,6 +28,7 @@ use amhra_voice::{SILENCE_FRAME, Session};
 
 use crate::listen::{self, ListenHandle, ListenSetup};
 use crate::protocol::Event;
+use crate::wake_feedback::{Chime, Duck, FRAME_PCM};
 
 /// One audio frame's worth of time.
 const TICK: Duration = Duration::from_millis(20);
@@ -58,6 +59,11 @@ pub enum WorkerCommand {
 	Seek(u32),
 	SetVolume(f32),
 	SetFades(FadeSettings),
+	/// Someone said the bot's name: chime, if `chime`, and lower the music to
+	/// `duck` until a matching `Heard`.
+	Woke { chime: bool, duck: f32 },
+	/// A wake has been dealt with; the music may come back up.
+	Heard,
 	Shutdown,
 }
 
@@ -138,9 +144,13 @@ fn run(
 	speaking: Arc<AtomicBool>,
 ) {
 	let mut player = Player::new();
-	let mut volume = Volume::new();
+	let mut output = Output::default();
 	let mut attachment: Option<Attachment> = None;
 	let mut paused = false;
+	// Whether the last frames sent were the player's, as opposed to a chime
+	// played over nothing: only the player going quiet is news to the bot.
+	let mut player_spoke = false;
+	let mut overlay = [0i16; FRAME_PCM];
 	let mut packet = Vec::with_capacity(1400);
 	let mut e2ee = Vec::with_capacity(1400);
 	let mut ticks = 0u32;
@@ -168,7 +178,7 @@ fn run(
 					apply(
 						command,
 						&mut player,
-						&mut volume,
+						&mut output,
 						&mut attachment,
 						&mut paused,
 						&guild_id,
@@ -193,7 +203,16 @@ fn run(
 		}
 
 		ticks = ticks.wrapping_add(1);
-		if paused {
+		output.update(Instant::now());
+		let chiming = output.chime.as_mut().is_some_and(|chime| chime.next_frame(&mut overlay));
+		if !chiming {
+			output.chime = None;
+		}
+		let overlay = chiming.then_some(&overlay[..]);
+
+		// A chime still plays over a paused track: the name is often said to
+		// ask for it back.
+		if paused && overlay.is_none() {
 			speaking.store(false, Ordering::Relaxed);
 			continue;
 		}
@@ -208,10 +227,12 @@ fn run(
 			continue;
 		}
 
-		match player.tick() {
+		let tick = if paused { Tick::Idle } else { player.tick() };
+		match tick {
 			Tick::Frame { bytes, samples } => {
 				speaking.store(true, Ordering::Relaxed);
-				let scaled = match volume.process(bytes) {
+				player_spoke = true;
+				let scaled = match output.volume.process_with(bytes, overlay) {
 					Ok(scaled) => scaled,
 					Err(error) => {
 						report(&events, &guild_id, format!("gain failed: {error}"));
@@ -226,7 +247,17 @@ fn run(
 			}
 			// Hold the speaking flag: this is a stall, and dropping it would
 			// make the client show the bot as having stopped.
-			Tick::Starving => {}
+			Tick::Starving => {
+				if let Some(overlay) = overlay {
+					send_alone(attached, &mut output.volume, overlay, &mut e2ee, &mut packet, &guild_id, &events);
+				}
+			}
+			Tick::Idle if overlay.is_some() => {
+				speaking.store(true, Ordering::Relaxed);
+				if let Some(overlay) = overlay {
+					send_alone(attached, &mut output.volume, overlay, &mut e2ee, &mut packet, &guild_id, &events);
+				}
+			}
 			Tick::Idle => {
 				if speaking.swap(false, Ordering::Relaxed) {
 					// Three silence frames tell the decoder not to interpolate
@@ -235,7 +266,9 @@ fn run(
 						let _ = send_frame(attached, &SILENCE_FRAME, &mut e2ee, &mut packet);
 						attached.session.advance(960);
 					}
-					let _ = events.send(Event::Idle { guild_id: guild_id.clone() });
+					if std::mem::take(&mut player_spoke) && !paused {
+						let _ = events.send(Event::Idle { guild_id: guild_id.clone() });
+					}
 				}
 			}
 		}
@@ -264,6 +297,50 @@ fn run(
 				position_ms: player.position_ms(),
 			});
 		}
+	}
+}
+
+/// The volume stage, and what answering the name does to it: the chime mixed
+/// in and the music lowered.
+#[derive(Default)]
+struct Output {
+	volume: Volume,
+	chime: Option<Chime>,
+	duck: Duck,
+	/// The listener's own volume, which a duck scales rather than replaces.
+	gain: Option<f32>,
+	/// What the volume was last set to, so it is only touched on a change.
+	applied: Option<f32>,
+}
+
+impl Output {
+	/// Set the volume to the listener's gain times the duck, if that moved.
+	fn update(&mut self, now: Instant) {
+		let gain = self.gain.unwrap_or(1.0) * self.duck.factor(now);
+		if self.applied != Some(gain) {
+			self.applied = Some(gain);
+			self.volume.set_gain(gain);
+		}
+	}
+}
+
+/// Encode a frame of PCM with nothing under it and send it.
+fn send_alone(
+	attached: &mut Attachment,
+	volume: &mut Volume,
+	pcm: &[i16],
+	e2ee: &mut Vec<u8>,
+	packet: &mut Vec<u8>,
+	guild_id: &str,
+	events: &Sender<Event>,
+) {
+	let encoded = match volume.encode_alone(pcm) {
+		Ok(encoded) => encoded,
+		Err(error) => return report(events, guild_id, format!("chime failed: {error}")),
+	};
+	match send_frame(attached, encoded, e2ee, packet) {
+		Ok(()) => attached.session.advance(960),
+		Err(message) => report(events, guild_id, message),
 	}
 }
 
@@ -310,7 +387,7 @@ fn send_frame(
 fn apply(
 	command: WorkerCommand,
 	player: &mut Player,
-	volume: &mut Volume,
+	output: &mut Output,
 	attachment: &mut Option<Attachment>,
 	paused: &mut bool,
 	guild_id: &str,
@@ -353,7 +430,23 @@ fn apply(
 				report(events, guild_id, "nothing is playing to seek".to_owned());
 			}
 		}
-		WorkerCommand::SetVolume(gain) => volume.set_gain(gain),
+		WorkerCommand::SetVolume(gain) => {
+			output.gain = Some(gain);
+			output.update(Instant::now());
+		}
+		WorkerCommand::Woke { chime, duck } => {
+			if chime {
+				output.chime = Some(Chime::default());
+			}
+			if duck < 1.0 {
+				output.duck.woke(duck, Instant::now());
+			}
+			output.update(Instant::now());
+		}
+		WorkerCommand::Heard => {
+			output.duck.heard();
+			output.update(Instant::now());
+		}
 		WorkerCommand::SetFades(fades) => player.set_fades(fades),
 		WorkerCommand::Shutdown => {}
 	}

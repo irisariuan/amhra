@@ -255,6 +255,16 @@
 					"description": "聽到「Amhra」後執行接著說的指令"
 				}
 			}
+		},
+		"transcript": {
+			"name": "顯示轉錄",
+			"description": "每次說出我的名字後,顯示我聽到的內容",
+			"options": {
+				"enabled": {
+					"name": "啟用",
+					"description": "說出我的名字時,把你說的話貼在頻道"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "不是想要的歌嗎？可以從下面選擇其他搜尋結果。",
@@ -266,10 +276,16 @@
 	"VOICE_COMMANDS_ALREADY_ON": "語音指令已經是開啟的。",
 	"VOICE_COMMANDS_ALREADY_OFF": "語音指令已經是關閉的。",
 	"VOICE_COMMANDS_UNAVAILABLE": "這個機器人無法使用語音指令,需要擁有者開啟 VOICE_COMMANDS 和 Rust 語音輔助程式。",
-	"VOICE_LISTENING_NOTICE": "🎙️ **我正在這個頻道聆聽我的名字。** 先說「Amhra」(em-ha-ra)再說指令,例如「Amhra,暫停」、「Amhra,跳過這首歌」、「Amhra,播放晴天」。只有緊接在名字後面說的話會被轉成文字,而且只用來執行指令。有「管理伺服器」權限的人可以用 `/voicecommands` 關閉。",
-	"VOICE_LISTENING_NOTICE_CLIPS": "🎙️ **我正在這個頻道聆聽我的名字。** 先說「Amhra」(em-ha-ra)再說指令,例如「Amhra,暫停」、「Amhra,跳過這首歌」、「Amhra,播放晴天」。只有緊接在名字後面說的話會被轉成文字,而且只用來執行指令。為了更聽得懂我的名字,聽到名字的那一秒多的聲音會被保存。有「管理伺服器」權限的人可以用 `/voicecommands` 關閉。",
+	"VOICE_LISTENING_NOTICE": "🎙️ **我正在這個頻道聆聽我的名字。** 先說「Amhra」(em-ha-ra)再說指令,例如「Amhra,暫停」、「Amhra,跳過這首歌」、「Amhra,播放晴天」。只有緊接在名字後面說的話會被轉成文字,而且只用來執行指令。開啟 `/transcript` 的人,說的話也會顯示在聊天中。有「管理伺服器」權限的人可以用 `/voicecommands` 關閉。",
+	"VOICE_LISTENING_NOTICE_CLIPS": "🎙️ **我正在這個頻道聆聽我的名字。** 先說「Amhra」(em-ha-ra)再說指令,例如「Amhra,暫停」、「Amhra,跳過這首歌」、「Amhra,播放晴天」。只有緊接在名字後面說的話會被轉成文字,而且只用來執行指令。為了更聽得懂我的名字,聽到名字的那一秒多的聲音會被保存。開啟 `/transcript` 的人,說的話也會顯示在聊天中。有「管理伺服器」權限的人可以用 `/voicecommands` 關閉。",
 	"VOICE_LISTENING_NEWCOMER": "🎙️ {users} 請注意:這裡開啟了語音指令,我會聆聽我的名字「Amhra」。詳見 `/voicecommands`。",
 	"VOICE_HEARD": "-# 🎙️ {user}:{command}",
+	"VOICE_HEARD_TRANSCRIPT": "-# 🎙️ {user}:「{text}」→ {command}",
+	"VOICE_TRANSCRIPT_LISTENING": "-# 🎙️ {user}:聆聽中…",
+	"VOICE_TRANSCRIPT_NOTHING": "-# 🎙️ {user}:沒有聽到內容",
+	"VOICE_TRANSCRIPT_UNMATCHED": "-# 🎙️ {user}:「{text}」· 不是指令",
+	"TRANSCRIPT_ON": "從現在起,你說出我的名字後,我會把聽到的內容貼在頻道裡(在所有開啟語音指令的伺服器)。可用 `/transcript enabled:false` 關閉。",
+	"TRANSCRIPT_OFF": "我不會再貼出聽到你說的內容。",
 	"voice": {
 		"wake": [
 			"艾姆哈拉",

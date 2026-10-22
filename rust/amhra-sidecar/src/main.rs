@@ -34,7 +34,10 @@
 //!   `training/wake/export.sh`, instead of the stock one;
 //! - `--wake-clips <dir>`: save the second or so of audio each wake was heard
 //!   in, for retraining the spotter (see `voice_commands::clips`), at most
-//!   `--wake-clips-max <n>` of them, default 2000.
+//!   `--wake-clips-max <n>` of them, default 2000;
+//! - `--wake-chime`: chime in the call when the name is heard;
+//! - `--wake-duck <gain>`: lower the music to this from the name until what
+//!   follows has been heard (see `wake_feedback`).
 //!
 //! Both relative to the directory the sidecar is started in. A model that will
 //! not load is reported once as an `Error` event and the sidecar carries on
@@ -50,6 +53,10 @@ use amhra_audio::CacheReader;
 use amhra_sidecar::framing::{read_frame, write_frame};
 use amhra_sidecar::protocol::{Command, Event, PROTOCOL_VERSION, SessionState};
 use amhra_sidecar::worker::{Worker, WorkerCommand};
+
+/// Each connected guild's audio thread, for what the voice-command threads
+/// need to tell it: they hear the name, but the guild map is the main loop's.
+type Workers = Arc<Mutex<HashMap<String, Sender<WorkerCommand>>>>;
 use amhra_voice::dave::driver::{Action, Driver};
 use amhra_voice::gateway::{self, ConnectionInfo, Event as GatewayEvent};
 use amhra_sidecar::listen::{ListenSetup, VoiceSink};
@@ -135,7 +142,8 @@ async fn main() {
 
 	let _ = events.send(Event::Hello { version: PROTOCOL_VERSION, pid: std::process::id() });
 
-	let voice = if voice_commands { start_voice_commands(&events) } else { None };
+	let workers: Workers = Arc::default();
+	let voice = if voice_commands { start_voice_commands(&events, &workers) } else { None };
 
 	// stdin is blocking, so it gets its own thread rather than stalling the
 	// runtime that every gateway connection shares.
@@ -176,7 +184,7 @@ async fn main() {
 		if matches!(command, Command::Shutdown) {
 			break;
 		}
-		dispatch(command, &mut guilds, &events, &cache_dir, listen, voice.as_ref()).await;
+		dispatch(command, &mut guilds, &events, &cache_dir, listen, voice.as_ref(), &workers).await;
 	}
 
 	eprintln!("shutting down {} guild(s)", guilds.len());
@@ -192,6 +200,7 @@ async fn dispatch(
 	cache_dir: &std::path::Path,
 	listen: bool,
 	voice: Option<&Arc<Engine>>,
+	workers: &Workers,
 ) {
 	match command {
 		Command::Connect { guild_id, channel_id, user_id, session_id, endpoint, token, listen: wanted } => {
@@ -238,6 +247,9 @@ async fn dispatch(
 				voice.cloned(),
 			));
 
+			if let Ok(mut workers) = workers.lock() {
+				workers.insert(guild_id.clone(), worker.command_sender());
+			}
 			guilds.insert(
 				guild_id,
 				GuildSession {
@@ -255,6 +267,9 @@ async fn dispatch(
 		}
 
 		Command::Disconnect { guild_id } => {
+			if let Ok(mut workers) = workers.lock() {
+				workers.remove(&guild_id);
+			}
 			if let Some(session) = guilds.remove(&guild_id) {
 				session.stand_down().await;
 				let _ = events.send(Event::Disconnected {
@@ -679,7 +694,7 @@ fn voice_sink(engine: &Engine, events: &Sender<Event>, guild_id: &str) -> VoiceS
 /// quarter of a gigabyte — so it happens once, at startup, before any guild
 /// connects.
 #[cfg(feature = "voice-commands")]
-fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
+fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc<Engine>> {
 	use amhra_sidecar::voice_commands::clips::ClipStore;
 	use amhra_sidecar::voice_commands::engine::Notice;
 	use amhra_sidecar::voice_commands::gate::GateConfig;
@@ -723,6 +738,14 @@ fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
 		eprintln!("voice commands: saving wake clips to {}", clips.dir().display());
 	}
 	let clips = clips.map(Mutex::new);
+	let chime = flag("--wake-chime");
+	let duck = option("--wake-duck").and_then(|gain| gain.parse::<f32>().ok()).unwrap_or(1.0);
+	let workers = Arc::clone(workers);
+	let tell = move |guild_id: &str, command: WorkerCommand| {
+		if let Some(worker) = workers.lock().ok().and_then(|workers| workers.get(guild_id).cloned()) {
+			let _ = worker.send(command);
+		}
+	};
 
 	let events = events.clone();
 	let report = Arc::new(move |notice: Notice| match notice {
@@ -733,6 +756,7 @@ fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
 				text.chars().count(),
 				lang.as_deref().unwrap_or("language unknown"),
 			);
+			tell(&guild_id, WorkerCommand::Heard);
 			let _ = events.send(Event::Utterance {
 				guild_id,
 				user_id: user_id.to_string(),
@@ -743,10 +767,14 @@ fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
 			});
 		}
 		Notice::Woke { guild_id, user_id, keyword } => {
-			eprintln!("[{guild_id}] voice: {user_id} said {keyword}")
+			eprintln!("[{guild_id}] voice: {user_id} said {keyword}");
+			tell(&guild_id, WorkerCommand::Woke { chime, duck });
+			let _ = events.send(Event::Woke { guild_id, user_id: user_id.to_string() });
 		}
 		Notice::TimedOut { guild_id, user_id, keyword } => {
-			eprintln!("[{guild_id}] voice: {user_id} said {keyword} and nothing after it")
+			eprintln!("[{guild_id}] voice: {user_id} said {keyword} and nothing after it");
+			tell(&guild_id, WorkerCommand::Heard);
+			let _ = events.send(Event::NothingHeard { guild_id, user_id: user_id.to_string() });
 		}
 		Notice::Name { guild_id, user_id, samples, .. } => {
 			let Some(Ok(mut clips)) = clips.as_ref().map(Mutex::lock) else { return };
@@ -760,10 +788,18 @@ fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
 			}
 		}
 		Notice::Unintelligible { guild_id, user_id, keyword } => {
-			eprintln!("[{guild_id}] voice: {user_id} said {keyword}, then nothing recognisable")
+			eprintln!("[{guild_id}] voice: {user_id} said {keyword}, then nothing recognisable");
+			tell(&guild_id, WorkerCommand::Heard);
+			let _ = events.send(Event::NothingHeard { guild_id, user_id: user_id.to_string() });
 		}
 		Notice::Dropped { guild_id, what, count } => {
-			eprintln!("[{guild_id}] voice: behind, dropped {count} {what}")
+			eprintln!("[{guild_id}] voice: behind, dropped {count} {what}");
+			// A dropped command is a wake that will never be heard.
+			if what == "commands" {
+				for _ in 0..count {
+					tell(&guild_id, WorkerCommand::Heard);
+				}
+			}
 		}
 		Notice::Failed { guild_id, message } => fail(&events, &guild_id, format!("voice commands: {message}")),
 	});
@@ -780,7 +816,7 @@ fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
 }
 
 #[cfg(not(feature = "voice-commands"))]
-fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
+fn start_voice_commands(events: &Sender<Event>, _workers: &Workers) -> Option<Arc<Engine>> {
 	let message = "voice commands are off: this sidecar was built without the voice-commands feature".to_owned();
 	eprintln!("{message}");
 	let _ = events.send(Event::Error { guild_id: None, message });

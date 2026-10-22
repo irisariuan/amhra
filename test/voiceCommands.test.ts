@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type { GuildMember, SendableChannels } from "discord.js";
 import type { CustomClient } from "../lib/custom";
 import { guildSetting, setGuildSetting } from "../lib/guildSetting";
+import { setUserSetting, userSetting } from "../lib/userSetting";
 import { Language } from "../lib/interaction";
 import { languageText } from "../lib/language";
 import type { Setting } from "../lib/setting";
@@ -142,6 +143,30 @@ describe("the voice interaction", () => {
 		expect(sent[1].content).toBe("and then some");
 	});
 
+	test("for someone who asked, the listening message becomes the answer, with their words", async () => {
+		const { channel, sent } = fakeChannel();
+		const listening = await channel.send({ content: "-# 🎙️ <@42>: listening…" });
+		const interaction = voiceInteraction(
+			fakeMember(),
+			channel,
+			{ command: "pause", language: Language.English },
+			{ message: listening as never, transcript: "Em, I pre the *song*" },
+		);
+		await interaction.reply({ content: "Paused!" });
+
+		expect(sent).toHaveLength(1);
+		const [heading, answer] = (sent[0].edits[0].content ?? "").split("\n");
+		expect(heading).toBe(
+			languageText("voice_heard_transcript", Language.English, {
+				user: "<@42>",
+				// Their words cannot format the message.
+				text: "Em, I pre the \\*song\\*",
+				command: "/pause",
+			}),
+		);
+		expect(answer).toBe("Paused!");
+	});
+
 	test("an ephemeral follow-up is refused, not shown to everyone", async () => {
 		const { channel, sent } = fakeChannel();
 		const interaction = voiceInteraction(fakeMember(), channel, {
@@ -174,6 +199,25 @@ describe("per-guild opt-in", () => {
 	});
 });
 
+describe("per-user transcripts", () => {
+	let dir: string | null = null;
+	afterEach(() => {
+		if (dir) rmSync(dir, { recursive: true, force: true });
+		dir = null;
+	});
+
+	test("off until someone turns it on for themselves", () => {
+		dir = mkdtempSync(join(tmpdir(), "amhra-user-"));
+		const file = join(dir, "userSetting.json");
+		expect(userSetting("42", file).showTranscript).toBeUndefined();
+		setUserSetting("42", { showTranscript: true }, file);
+		expect(userSetting("42", file).showTranscript).toBe(true);
+		expect(userSetting("43", file).showTranscript).toBeUndefined();
+		setUserSetting("42", { showTranscript: false }, file);
+		expect(userSetting("42", file).showTranscript).toBe(false);
+	});
+});
+
 describe("sidecar flags", () => {
 	const base = {} as Setting;
 
@@ -192,9 +236,19 @@ describe("sidecar flags", () => {
 			"training/wake/keywords.txt",
 			"--wake-clips",
 			WAKE_CLIPS_DIR,
+			"--wake-chime",
+			"--wake-duck",
+			"0.3",
 		]);
 		expect(
 			voiceCommandArgs({ ...allowed, VOICE_COLLECT_WAKE_CLIPS: false }),
 		).not.toContain("--wake-clips");
+		const quiet = voiceCommandArgs({
+			...allowed,
+			VOICE_WAKE_CHIME: false,
+			VOICE_DUCK_VOLUME: 1,
+		});
+		expect(quiet).not.toContain("--wake-chime");
+		expect(quiet).not.toContain("--wake-duck");
 	});
 });

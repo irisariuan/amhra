@@ -244,6 +244,16 @@
 					"description": "\"엠하라\" 다음에 하는 말을 명령으로 실행합니다"
 				}
 			}
+		},
+		"transcript": {
+			"name": "받아쓰기",
+			"description": "제 이름을 부른 뒤 들은 내용을 매번 보여 줍니다",
+			"options": {
+				"enabled": {
+					"name": "사용",
+					"description": "이름을 부르면 한 말을 채널에 올립니다"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "원하는 곡이 아닌가요? 아래에서 다른 검색 결과를 선택하세요.",
@@ -255,10 +265,16 @@
 	"VOICE_COMMANDS_ALREADY_ON": "음성 명령이 이미 켜져 있습니다.",
 	"VOICE_COMMANDS_ALREADY_OFF": "음성 명령이 이미 꺼져 있습니다.",
 	"VOICE_COMMANDS_UNAVAILABLE": "이 봇에서는 음성 명령을 쓸 수 없습니다. 봇 주인이 VOICE_COMMANDS와 Rust 음성 사이드카를 켜야 합니다.",
-	"VOICE_LISTENING_NOTICE": "🎙️ **이 채널에서 제 이름을 듣고 있습니다.** \"엠하라\"라고 부른 뒤 명령을 말하세요 (예: \"엠하라, 일시정지\", \"엠하라, 다음 곡\"). 이름 바로 뒤에 한 말만 글자로 바뀌고, 그 글은 명령을 실행하는 데만 쓰입니다. 서버 관리 권한이 있는 사람은 `/voicecommands`로 끌 수 있습니다.",
-	"VOICE_LISTENING_NOTICE_CLIPS": "🎙️ **이 채널에서 제 이름을 듣고 있습니다.** \"엠하라\"라고 부른 뒤 명령을 말하세요 (예: \"엠하라, 일시정지\", \"엠하라, 다음 곡\"). 이름 바로 뒤에 한 말만 글자로 바뀌고, 그 글은 명령을 실행하는 데만 쓰입니다. 이름을 더 잘 알아듣도록, 이름이 들린 1초 남짓한 소리를 저장합니다. 서버 관리 권한이 있는 사람은 `/voicecommands`로 끌 수 있습니다.",
+	"VOICE_LISTENING_NOTICE": "🎙️ **이 채널에서 제 이름을 듣고 있습니다.** \"엠하라\"라고 부른 뒤 명령을 말하세요 (예: \"엠하라, 일시정지\", \"엠하라, 다음 곡\"). 이름 바로 뒤에 한 말만 글자로 바뀌고, 그 글은 명령을 실행하는 데만 쓰입니다. `/transcript`를 켠 사람은 한 말도 채팅에 표시됩니다. 서버 관리 권한이 있는 사람은 `/voicecommands`로 끌 수 있습니다.",
+	"VOICE_LISTENING_NOTICE_CLIPS": "🎙️ **이 채널에서 제 이름을 듣고 있습니다.** \"엠하라\"라고 부른 뒤 명령을 말하세요 (예: \"엠하라, 일시정지\", \"엠하라, 다음 곡\"). 이름 바로 뒤에 한 말만 글자로 바뀌고, 그 글은 명령을 실행하는 데만 쓰입니다. 이름을 더 잘 알아듣도록, 이름이 들린 1초 남짓한 소리를 저장합니다. `/transcript`를 켠 사람은 한 말도 채팅에 표시됩니다. 서버 관리 권한이 있는 사람은 `/voicecommands`로 끌 수 있습니다.",
 	"VOICE_LISTENING_NEWCOMER": "🎙️ {users}님, 여기서는 음성 명령이 켜져 있어서 제 이름 \"엠하라\"를 듣고 있습니다. `/voicecommands`를 참고하세요.",
 	"VOICE_HEARD": "-# 🎙️ {user}: {command}",
+	"VOICE_HEARD_TRANSCRIPT": "-# 🎙️ {user}: “{text}” → {command}",
+	"VOICE_TRANSCRIPT_LISTENING": "-# 🎙️ {user}: 듣는 중…",
+	"VOICE_TRANSCRIPT_NOTHING": "-# 🎙️ {user}: 아무것도 못 들었어요",
+	"VOICE_TRANSCRIPT_UNMATCHED": "-# 🎙️ {user}: “{text}” · 명령이 아님",
+	"TRANSCRIPT_ON": "이제 제 이름을 부르면 들은 내용을 채널에 올립니다 (음성 명령이 켜진 모든 서버에서). `/transcript enabled:false`로 끌 수 있습니다.",
+	"TRANSCRIPT_OFF": "이제 당신의 말을 올리지 않습니다.",
 	"voice": {
 		"wake": [
 			"엠하라",

@@ -79,6 +79,10 @@ const event = z.discriminatedUnion("type", [
 		message: z.string(),
 	}),
 	z.object({ type: z.literal("sessions"), guilds: z.array(sessionState) }),
+	// Someone in a listening guild said the name; an utterance or a
+	// nothingHeard from them follows.
+	z.object({ type: z.literal("woke"), guildId: z.string(), userId: z.string() }),
+	z.object({ type: z.literal("nothingHeard"), guildId: z.string(), userId: z.string() }),
 	// Only from a sidecar started with --voice-commands, and only for guilds
 	// that opted in. What was heard after the wake word, as text; turned into a
 	// command by lib/voice/voiceCommands.ts.

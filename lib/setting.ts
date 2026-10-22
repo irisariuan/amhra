@@ -111,4 +111,11 @@ export interface Setting {
 	 * unless set: it writes what people said into the bot's log.
 	 */
 	VOICE_LOG_TRANSCRIPTS?: boolean;
+	/** Chime in the call when the bot hears its name. On unless false. */
+	VOICE_WAKE_CHIME?: boolean;
+	/**
+	 * The music's volume, as a fraction, from the name until the command has
+	 * been heard. Defaults to 0.3; 1 leaves it alone.
+	 */
+	VOICE_DUCK_VOLUME?: number;
 }

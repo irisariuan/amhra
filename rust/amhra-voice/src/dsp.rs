@@ -120,20 +120,24 @@ impl Volume {
 	/// Returns the input slice itself when nothing needs doing, so the common
 	/// case costs one comparison and no copy.
 	pub fn process<'a>(&'a mut self, frame: &'a [u8]) -> Result<&'a [u8], DspError> {
-		if self.is_passthrough() && self.ramp == 0 {
+		self.process_with(frame, None)
+	}
+
+	/// Process one Opus packet with `overlay` added on top after the gain:
+	/// interleaved stereo PCM, one frame of it. An overlay forces the codec
+	/// path even at unity gain, for as long as there is one.
+	pub fn process_with<'a>(
+		&'a mut self,
+		frame: &'a [u8],
+		overlay: Option<&[i16]>,
+	) -> Result<&'a [u8], DspError> {
+		if overlay.is_none() && self.is_passthrough() && self.ramp == 0 {
+			// The codec an overlay needed is released with the first frame
+			// that does not need it.
+			self.codec = None;
 			return Ok(frame);
 		}
-
-		if self.codec.is_none() {
-			let decoder = opus::Decoder::new(SAMPLE_RATE, opus::Channels::Stereo)?;
-			let mut encoder =
-				opus::Encoder::new(SAMPLE_RATE, opus::Channels::Stereo, opus::Application::Audio)?;
-			// Match what YouTube's Opus is already encoded at, so a volume
-			// change is not also a quality change.
-			encoder.set_bitrate(opus::Bitrate::Bits(128_000))?;
-			encoder.set_complexity(ENCODER_COMPLEXITY)?;
-			self.codec = Some(Codec { decoder, encoder });
-		}
+		self.ensure_codec()?;
 
 		// Where the gain sits at the start and end of this frame. Outside a
 		// ramp both are the target, so the loop below is a plain multiply.
@@ -148,16 +152,43 @@ impl Volume {
 		let filled = samples * CHANNELS as usize;
 
 		apply_gain(&mut pcm[..filled], from, to);
+		if let Some(overlay) = overlay {
+			add(&mut pcm[..filled], overlay);
+		}
 
 		let written = codec.encoder.encode(&pcm[..filled], encoded)?;
 
 		self.ramp = self.ramp.saturating_sub(1);
 		// Once back at unity with the ramp spent, the codec is dead weight:
-		// releasing it returns ~30KB per stream that is no longer scaling.
-		if self.ramp == 0 && self.is_passthrough() {
+		// releasing it returns ~30KB per stream that is no longer scaling. Not
+		// mid-overlay, though: a fresh encoder every frame would click.
+		if overlay.is_none() && self.ramp == 0 && self.is_passthrough() {
 			self.codec = None;
 		}
 		Ok(&self.encoded[..written])
+	}
+
+	/// Encode one frame of PCM on its own, for a tick with nothing playing.
+	pub fn encode_alone(&mut self, pcm: &[i16]) -> Result<&[u8], DspError> {
+		self.ensure_codec()?;
+		let Self { codec, encoded, .. } = self;
+		let codec = codec.as_mut().expect("constructed above");
+		let written = codec.encoder.encode(pcm, encoded)?;
+		Ok(&self.encoded[..written])
+	}
+
+	fn ensure_codec(&mut self) -> Result<(), DspError> {
+		if self.codec.is_none() {
+			let decoder = opus::Decoder::new(SAMPLE_RATE, opus::Channels::Stereo)?;
+			let mut encoder =
+				opus::Encoder::new(SAMPLE_RATE, opus::Channels::Stereo, opus::Application::Audio)?;
+			// Match what YouTube's Opus is already encoded at, so a volume
+			// change is not also a quality change.
+			encoder.set_bitrate(opus::Bitrate::Bits(128_000))?;
+			encoder.set_complexity(ENCODER_COMPLEXITY)?;
+			self.codec = Some(Codec { decoder, encoder });
+		}
+		Ok(())
 	}
 
 	/// Gain at the start and end of the frame about to be processed.
@@ -283,6 +314,14 @@ fn apply_gain(pcm: &mut [i16], from: f32, to: f32) {
 	}
 }
 
+/// Sum `overlay` into `pcm`, saturating. A shorter overlay leaves the rest as
+/// it was.
+fn add(pcm: &mut [i16], overlay: &[i16]) {
+	for (sample, extra) in pcm.iter_mut().zip(overlay) {
+		*sample = sample.saturating_add(*extra);
+	}
+}
+
 /// Samples per channel in a standard frame, re-exported for callers sizing
 /// buffers.
 pub const STANDARD_FRAME: u32 = FRAME_SIZE;
@@ -312,6 +351,35 @@ mod tests {
 		let mut pcm = vec![0i16; MAX_SAMPLES];
 		let samples = decoder.decode(packet, &mut pcm, false).unwrap();
 		pcm[..samples * CHANNELS as usize].iter().map(|s| (*s as i32).abs()).max().unwrap_or(0)
+	}
+
+	#[test]
+	fn an_overlay_is_heard_over_the_frame_even_at_unity_gain() {
+		let quiet = tone_packet(1_000);
+		let mut volume = Volume::new();
+		let overlay = vec![12_000i16; FRAME_SIZE as usize * CHANNELS as usize];
+		let mixed = volume.process_with(&quiet, Some(&overlay)).unwrap().to_vec();
+		assert_ne!(mixed, quiet, "an overlay cannot pass through untouched");
+		assert!(decode_peak(&mixed) > 8_000, "the overlay is in the output");
+		// And without one, back to passthrough.
+		assert_eq!(volume.process(&quiet).unwrap(), &quiet[..]);
+	}
+
+	#[test]
+	fn pcm_alone_encodes_to_a_full_frame() {
+		let mut volume = Volume::new();
+		let pcm = vec![6_000i16; FRAME_SIZE as usize * CHANNELS as usize];
+		let packet = volume.encode_alone(&pcm).unwrap().to_vec();
+		let mut decoder = opus::Decoder::new(SAMPLE_RATE, opus::Channels::Stereo).unwrap();
+		let mut out = vec![0i16; MAX_SAMPLES];
+		assert_eq!(decoder.decode(&packet, &mut out, false).unwrap(), FRAME_SIZE as usize);
+	}
+
+	#[test]
+	fn adding_saturates_rather_than_wrapping() {
+		let mut pcm = [i16::MAX - 10, i16::MIN + 10, 100];
+		add(&mut pcm, &[100, -100]);
+		assert_eq!(pcm, [i16::MAX, i16::MIN, 100]);
 	}
 
 	#[test]

@@ -1,10 +1,11 @@
-import type {
-	ChatInputCommandInteraction,
-	GuildMember,
-	Message,
-	MessageCreateOptions,
-	MessageEditOptions,
-	SendableChannels,
+import {
+	type ChatInputCommandInteraction,
+	escapeMarkdown,
+	type GuildMember,
+	type Message,
+	type MessageCreateOptions,
+	type MessageEditOptions,
+	type SendableChannels,
 } from "discord.js";
 import { languageCommandName, languageText } from "../language";
 import type { VoiceIntent } from "./intent";
@@ -23,18 +24,29 @@ type ReplyPayload = string | (MessageCreateOptions & {
  *
  * Ephemeral follow-ups, such as the search picker, have nobody to be shown to
  * privately and are refused; the handlers already treat that as "skip it".
+ *
+ * For someone who asked to see what was heard, `transcript` puts their words
+ * in the heading, and `message` — the "listening…" posted when they said the
+ * name — becomes the answer instead of a second message.
  */
 export function voiceInteraction(
 	member: GuildMember,
 	channel: SendableChannels,
 	intent: VoiceIntent,
+	{ message, transcript }: { message?: Message | null; transcript?: string } = {},
 ): ChatInputCommandInteraction {
 	const name = languageCommandName(intent.command, intent.language)?.name ?? intent.command;
-	const heading = languageText("voice_heard", intent.language, {
-		user: `<@${member.id}>`,
-		command: intent.command === "play" ? `/${name} ${intent.query}` : `/${name}`,
-	});
+	const command = intent.command === "play" ? `/${name} ${intent.query}` : `/${name}`;
+	const heading = transcript
+		? languageText("voice_heard_transcript", intent.language, {
+				user: `<@${member.id}>`,
+				text: escapeMarkdown(transcript),
+				command,
+			})
+		: languageText("voice_heard", intent.language, { user: `<@${member.id}>`, command });
 	let reply: Message | null = null;
+	/** Posted before the command ran, and not yet used for its answer. */
+	let waiting = message ?? null;
 
 	const options = (payload: ReplyPayload, withHeading: boolean) => {
 		const { ephemeral: _e, withResponse: _w, flags: _f, ...rest } =
@@ -47,7 +59,13 @@ export function voiceInteraction(
 		} as MessageCreateOptions;
 	};
 	const send = async (payload: ReplyPayload) => {
-		reply = await channel.send(options(payload, true));
+		if (waiting) {
+			const existing = waiting;
+			waiting = null;
+			reply = await existing.edit(options(payload, true) as MessageEditOptions);
+		} else {
+			reply = await channel.send(options(payload, true));
+		}
 		return reply;
 	};
 

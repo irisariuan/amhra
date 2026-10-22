@@ -219,6 +219,14 @@
 					"description": "Listen for \"Amhra\" and act on what follows"
 				}
 			}
+		},
+		"transcript": {
+			"description": "Show what I hear after you say my name, every time",
+			"options": {
+				"enabled": {
+					"description": "Post your words in the channel when you say my name"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "Not the right song? Pick another result below.",
@@ -230,10 +238,16 @@
 	"VOICE_COMMANDS_ALREADY_ON": "Voice commands are already on.",
 	"VOICE_COMMANDS_ALREADY_OFF": "Voice commands are already off.",
 	"VOICE_COMMANDS_UNAVAILABLE": "Voice commands are not available on this bot. Its owner has to turn on VOICE_COMMANDS and the Rust voice sidecar.",
-	"VOICE_LISTENING_NOTICE": "🎙️ **I'm listening for my name in this channel.** Say \"Amhra\" (em-ha-ra) and then a command: \"Amhra, pause\", \"Amhra, skip this song\", \"Amhra, play Bohemian Rhapsody\". Only what you say right after my name is turned into text, and that text is only used to run the command. Anyone with Manage Server can turn this off with `/voicecommands`.",
-	"VOICE_LISTENING_NOTICE_CLIPS": "🎙️ **I'm listening for my name in this channel.** Say \"Amhra\" (em-ha-ra) and then a command: \"Amhra, pause\", \"Amhra, skip this song\", \"Amhra, play Bohemian Rhapsody\". Only what you say right after my name is turned into text, and that text is only used to run the command. To help me hear my name better, the second or so of audio in which I hear it is saved. Anyone with Manage Server can turn this off with `/voicecommands`.",
+	"VOICE_LISTENING_NOTICE": "🎙️ **I'm listening for my name in this channel.** Say \"Amhra\" (em-ha-ra) and then a command: \"Amhra, pause\", \"Amhra, skip this song\", \"Amhra, play Bohemian Rhapsody\". Only what you say right after my name is turned into text, and that text is only used to run the command. Anyone who turns on `/transcript` also has what they said shown in the chat. Anyone with Manage Server can turn this off with `/voicecommands`.",
+	"VOICE_LISTENING_NOTICE_CLIPS": "🎙️ **I'm listening for my name in this channel.** Say \"Amhra\" (em-ha-ra) and then a command: \"Amhra, pause\", \"Amhra, skip this song\", \"Amhra, play Bohemian Rhapsody\". Only what you say right after my name is turned into text, and that text is only used to run the command. To help me hear my name better, the second or so of audio in which I hear it is saved. Anyone who turns on `/transcript` also has what they said shown in the chat. Anyone with Manage Server can turn this off with `/voicecommands`.",
 	"VOICE_LISTENING_NEWCOMER": "🎙️ Heads up, {users}: voice commands are on here, so I listen for my name, \"Amhra\". See `/voicecommands`.",
 	"VOICE_HEARD": "-# 🎙️ {user}: {command}",
+	"VOICE_HEARD_TRANSCRIPT": "-# 🎙️ {user}: “{text}” → {command}",
+	"VOICE_TRANSCRIPT_LISTENING": "-# 🎙️ {user}: listening…",
+	"VOICE_TRANSCRIPT_NOTHING": "-# 🎙️ {user}: didn't catch anything",
+	"VOICE_TRANSCRIPT_UNMATCHED": "-# 🎙️ {user}: “{text}” · not a command",
+	"TRANSCRIPT_ON": "From now on, when you say my name, I'll post what I heard in the channel, in every server with voice commands on. Turn it off with `/transcript enabled:false`.",
+	"TRANSCRIPT_OFF": "I'll stop posting what I hear from you.",
 	"voice": {
 		"words": true,
 		"wake": [

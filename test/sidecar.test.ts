@@ -65,6 +65,15 @@ describe("parseEvent", () => {
 		expect(parseEvent({ ...utterance, lang: "ja" })).toMatchObject({ lang: "ja" });
 	});
 
+	test("accepts a wake, and a wake that came to nothing", () => {
+		const woke = { type: "woke", guildId: "1", userId: "2" };
+		expect(parseEvent(woke)).toEqual(woke as never);
+		expect(parseEvent({ ...woke, type: "nothingHeard" })).toMatchObject({
+			type: "nothingHeard",
+		});
+		expect(() => parseEvent({ type: "woke", guildId: "1" })).toThrow();
+	});
+
 	test("refuses an utterance missing what the bot needs to act on it", () => {
 		const { userId: _, ...anonymous } = utterance;
 		expect(() => parseEvent(anonymous)).toThrow();

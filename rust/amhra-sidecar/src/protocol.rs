@@ -117,6 +117,15 @@ pub enum Event {
 	/// Answer to `ListSessions`.
 	#[serde(rename_all = "camelCase")]
 	Sessions { guilds: Vec<SessionState> },
+	/// Someone said the wake word. Only sent by a sidecar started with
+	/// `--voice-commands`; an `Utterance` or a `NothingHeard` from the same
+	/// person follows.
+	#[serde(rename_all = "camelCase")]
+	Woke { guild_id: String, user_id: String },
+	/// The wake came to nothing: no speech followed it, or none that could be
+	/// made out.
+	#[serde(rename_all = "camelCase")]
+	NothingHeard { guild_id: String, user_id: String },
 	/// Someone said the wake word and then something, transcribed. Only sent
 	/// by a sidecar started with `--voice-commands`, and only for speech that
 	/// followed the wake word: nothing else anyone says is transcribed.

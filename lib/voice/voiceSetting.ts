@@ -7,6 +7,9 @@ import { readSetting, type Setting } from "../setting";
  * the player.
  */
 
+/** How far the music drops while someone is giving a command. */
+export const DEFAULT_DUCK_VOLUME = 0.3;
+
 /** Where the sidecar puts the wake clips, relative to where it starts. */
 export const WAKE_CLIPS_DIR = "data/recordings/wake-clips";
 
@@ -42,5 +45,8 @@ export function voiceCommandArgs(setting: Setting = readSetting()): string[] {
 		setting.VOICE_WAKE_KEYWORDS ?? "training/wake/keywords.txt",
 	];
 	if (collectsWakeClips(setting)) args.push("--wake-clips", WAKE_CLIPS_DIR);
+	if (setting.VOICE_WAKE_CHIME !== false) args.push("--wake-chime");
+	const duck = setting.VOICE_DUCK_VOLUME ?? DEFAULT_DUCK_VOLUME;
+	if (duck < 1) args.push("--wake-duck", String(Math.max(0, duck)));
 	return args;
 }

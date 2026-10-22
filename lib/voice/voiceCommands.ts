@@ -1,9 +1,17 @@
-import type { Guild, GuildMember, SlashCommandBuilder, VoiceState } from "discord.js";
+import {
+	escapeMarkdown,
+	type Guild,
+	type GuildMember,
+	type Message,
+	type SlashCommandBuilder,
+	type VoiceState,
+} from "discord.js";
 import type { CustomClient } from "../custom";
 import { type Command, Language } from "../interaction";
 import { languageText, parseLocale } from "../language";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
+import { userSetting } from "../userSetting";
 import { parseVoiceCommand } from "./intent";
 import { getNativeConnection } from "./native";
 import { type SidecarEvent, sidecar } from "./sidecar";
@@ -27,6 +35,8 @@ const NOTICE_EVERY_MS = 60 * 60 * 1000;
 const NEWCOMER_BATCH_MS = 3_000;
 /** And newcomers are told at most this often per guild. */
 const NEWCOMER_EVERY_MS = 5 * 60 * 1000;
+/** A "didn't catch that" is cleared away after this. */
+const NOTHING_HEARD_FOR_MS = 15_000;
 
 type Lookup = (name: string) => Command<SlashCommandBuilder> | undefined;
 
@@ -46,6 +56,16 @@ export function bindVoiceCommands(client: CustomClient, lookup: Lookup) {
 			globalApp.err("Voice command failed", error),
 		);
 	});
+	bus.on("woke", (payload: Extract<SidecarEvent, { type: "woke" }>) => {
+		onWoke(client, payload).catch((error) =>
+			globalApp.err("Voice transcript failed", error),
+		);
+	});
+	bus.on("nothingHeard", (payload: Extract<SidecarEvent, { type: "nothingHeard" }>) => {
+		onNothingHeard(client, payload).catch((error) =>
+			globalApp.err("Voice transcript failed", error),
+		);
+	});
 
 	// Every new voice session in a guild that listens says so in the channel.
 	bus.on("ready", (payload: { guildId: string }) => {
@@ -60,32 +80,111 @@ export function bindVoiceCommands(client: CustomClient, lookup: Lookup) {
 	client.on("voiceStateUpdate", (before, after) => newcomer(before, after));
 }
 
+/**
+ * "Listening…" messages for people who asked to see what was heard, posted on
+ * the wake and filled in when the words arrive. Keyed by guild and user, and
+ * held as the promise of the message: the words can come back before the
+ * post has.
+ */
+const listening = new Map<string, Promise<Message | null>>();
+
+function listeningKey(guildId: string, userId: string) {
+	return `${guildId}:${userId}`;
+}
+
+/** The member who spoke, if they are someone the bot answers. */
+async function speaker(client: CustomClient, guildId: string, userId: string) {
+	// The sidecar should not have heard a guild that turned this off, but the
+	// switch is checked here too: a `setListen` may still be in flight.
+	if (!guildListens(guildId)) return null;
+	if (readSetting().BANNED_IDS?.includes(userId)) return null;
+	const guild = client.guilds.cache.get(guildId);
+	const member = await guild?.members.fetch(userId).catch(() => null);
+	if (!guild || !member || member.user.bot || !member.voice.channel) return null;
+	return { guild, member };
+}
+
+async function onWoke(
+	client: CustomClient,
+	{ guildId, userId }: Extract<SidecarEvent, { type: "woke" }>,
+) {
+	if (!userSetting(userId).showTranscript) return;
+	const key = listeningKey(guildId, userId);
+	const post = (async () => {
+		const found = await speaker(client, guildId, userId);
+		const channel = found && replyChannel(client, found.guild, found.member);
+		if (!found || !channel) return null;
+		return channel
+			.send({
+				content: languageText("voice_transcript_listening", guildLanguage(found.guild), {
+					user: `<@${userId}>`,
+				}),
+				allowedMentions: { parse: [] },
+			})
+			.catch(() => null);
+	})();
+	listening.set(key, post);
+}
+
+/** The wake's "listening…", if one was posted, no longer waiting for words. */
+function takeListening(guildId: string, userId: string) {
+	const key = listeningKey(guildId, userId);
+	const post = listening.get(key);
+	listening.delete(key);
+	return post ?? Promise.resolve(null);
+}
+
+async function onNothingHeard(
+	client: CustomClient,
+	{ guildId, userId }: Extract<SidecarEvent, { type: "nothingHeard" }>,
+) {
+	const message = await takeListening(guildId, userId);
+	if (!message) return;
+	const guild = client.guilds.cache.get(guildId);
+	await message
+		.edit({
+			content: languageText(
+				"voice_transcript_nothing",
+				guild ? guildLanguage(guild) : Language.English,
+				{ user: `<@${userId}>` },
+			),
+			allowedMentions: { parse: [] },
+		})
+		.catch(() => {});
+	setTimeout(() => message.delete().catch(() => {}), NOTHING_HEARD_FOR_MS).unref?.();
+}
+
 async function onUtterance(
 	client: CustomClient,
 	lookup: Lookup,
 	{ guildId, userId, text, lang }: Extract<SidecarEvent, { type: "utterance" }>,
 ) {
-	// The sidecar should not have heard a guild that turned this off, but the
-	// switch is checked here too: a `setListen` may still be in flight.
-	if (!guildListens(guildId)) return;
-	if (readSetting().BANNED_IDS?.includes(userId)) return;
-	const guild = client.guilds.cache.get(guildId);
-	if (!guild) return;
+	const waiting = await takeListening(guildId, userId);
+	const found = await speaker(client, guildId, userId);
+	if (!found) return;
+	const { guild, member } = found;
+	const showTranscript = userSetting(userId).showTranscript === true;
 
 	const intent = parseVoiceCommand(text, lang);
 	// What was said stays out of the log, as it does in the sidecar's, unless
 	// the owner is tuning the matching and asked for it.
 	const heard = readSetting().VOICE_LOG_TRANSCRIPTS ? `: [${lang ?? "?"}] ${JSON.stringify(text)}` : "";
-	if (!intent) {
+	const command = intent && lookup(intent.command);
+	const channel = replyChannel(client, guild, member);
+
+	if (!intent || !command) {
 		dcb.log(`(Guild ID: ${guildId}) Heard the name, then no command${heard}`);
+		if (showTranscript) {
+			const content = languageText("voice_transcript_unmatched", guildLanguage(guild), {
+				user: `<@${userId}>`,
+				text: escapeMarkdown(text),
+			});
+			const answer = { content, allowedMentions: { parse: [] } };
+			if (waiting) await waiting.edit(answer).catch(() => {});
+			else await channel?.send(answer).catch(() => {});
+		}
 		return;
 	}
-	const member = await guild.members.fetch(userId).catch(() => null);
-	if (!member || member.user.bot || !member.voice.channel) return;
-	const command = lookup(intent.command);
-	if (!command) return;
-
-	const channel = replyChannel(client, guild, member);
 	if (!channel) {
 		globalApp.warn(`(Guild ID: ${guildId}) Nowhere to answer a voice command`);
 		return;
@@ -95,7 +194,10 @@ async function onUtterance(
 		`(Guild ID: ${guildId}) ${member.user.tag} said voice command ${intent.command}${heard}`,
 	);
 	await command.execute({
-		interaction: voiceInteraction(member, channel, intent),
+		interaction: voiceInteraction(member, channel, intent, {
+			message: waiting,
+			transcript: showTranscript ? text : undefined,
+		}),
 		client,
 		language: intent.language,
 	});

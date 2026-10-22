@@ -287,6 +287,8 @@ starts:
 | `--wake-model <dir>` | the stock spotter | a fine-tuned one from `training/wake` |
 | `--wake-clips <dir>` | off | save the audio each wake was heard in (below) |
 | `--wake-clips-max <n>` | `2000` | stop saving after this many clips (about 75MB) |
+| `--wake-chime` | off | chime in the call when the name is heard |
+| `--wake-duck <gain>` | off | lower the music to this until the command is heard |
 
 Even started this way, the sidecar hears a guild only while the bot says it
 may: `connect` carries `listen`, and `setListen` changes it mid-call. Until
@@ -462,6 +464,8 @@ starts:
 | `VOICE_WAKE_KEYWORDS` | `training/wake/keywords.txt` | |
 | `VOICE_COLLECT_WAKE_CLIPS` | **on** | save wake clips from servers that turned voice commands on |
 | `VOICE_LOG_TRANSCRIPTS` | off | log what was heard after the name, for tuning the matching |
+| `VOICE_WAKE_CHIME` | **on** | a chime in the call when the name is heard |
+| `VOICE_DUCK_VOLUME` | `0.3` | the music's volume from the name until the command is heard; 1 leaves it |
 
 - **Per-server opt-in.** `/voicecommands enabled:true`, by default for members
   with Manage Server, kept in `data/guildSetting.json` (gitignored). It takes
@@ -480,6 +484,18 @@ starts:
   first or last. The words are in each `data/lang/*.json` under `voice`.
   `test/voiceIntent.test.ts` holds the live transcripts and the near misses
   that must not trigger.
+- **Answering the name.** The moment the spotter hears it, the guild's audio
+  thread mixes in a half-second chime (two rising sine notes, synthesised in
+  `wake_feedback.rs`), over the music or alone if nothing is playing, and
+  lowers the music until the command has been transcribed or the wake comes
+  to nothing. Wakes are counted, so a second speaker keeps it down, and ten
+  seconds is the most one wake can hold it there.
+- **Seeing what was heard.** `/transcript enabled:true` is each member's own
+  choice, kept in `data/userSetting.json` (gitignored). The sidecar reports
+  `woke` and `nothingHeard` as well as `utterance`; for those members the bot
+  posts "listening…" on the wake and edits in their words and the command's
+  answer when the text arrives. SenseVoice only transcribes a finished
+  window, so there are no partial words to show while they speak.
 - **Running it.** A command runs the same slash-command handler as a typed
   one, with an interaction that answers in the channel the player uses, or the
   voice channel's chat, headed with who asked for what
