@@ -1,6 +1,8 @@
-import ytdl from "@distube/ytdl-core";
+import { parseVideoId, Ytdl } from "@distube/ytdl-core";
+import fs from "node:fs";
 import ytSearch from "yt-search";
 import { globalApp } from "./misc";
+import { readSetting } from "./setting";
 import { getPlaylistId, isPlaylistUrl, readPlaylist } from "./youtubePlaylist";
 
 export { getPlaylistId };
@@ -35,6 +37,39 @@ export interface YouTubeVideoInfo {
 
 const WATCH_URL = "https://www.youtube.com/watch?v=";
 
+let client: Ytdl | undefined;
+
+/**
+ * The cookie header for data/cookies.json, or undefined without one.
+ *
+ * The file holds a browser export: an array of `{ name, value }` objects, as
+ * v4's createAgent took. v5 wants a `Cookie` header or a Netscape export, so
+ * the array is joined into a header and a string is passed through as is.
+ */
+function readCookie(): string | undefined {
+	if (!readSetting().USE_COOKIES) return;
+	try {
+		const cookies: unknown = JSON.parse(
+			fs.readFileSync(`${process.cwd()}/data/cookies.json`, "utf8"),
+		);
+		if (typeof cookies === "string") return cookies;
+		if (Array.isArray(cookies)) {
+			return cookies
+				.filter(cookie => cookie?.name && cookie.value !== undefined)
+				.map(cookie => `${cookie.name}=${cookie.value}`)
+				.join("; ");
+		}
+	} catch {
+		globalApp.warn("No cookies found");
+	}
+}
+
+/** The one ytdl session, made on first use so cookies are read once. */
+export function getYtdl(): Ytdl {
+	client ??= new Ytdl({ cookie: readCookie() });
+	return client;
+}
+
 function normalizeVideo(video: {
 	videoId: string;
 	title: string;
@@ -62,15 +97,19 @@ function normalizeVideo(video: {
 }
 
 export function getYouTubeVideoId(url: string): string | null {
-	try {
-		return ytdl.getVideoID(url);
-	} catch {
-		return null;
-	}
+	return parseVideoId(url) ?? null;
 }
 
+/**
+ * Whether `url` is a link to one YouTube video.
+ *
+ * parseVideoId also accepts a bare 11-character ID, which v4's validateURL did
+ * not. Search text such as "nevergonnag" would then be played as a video, so
+ * only something that parses as a URL counts.
+ */
 export function isYouTubeVideo(url: string): boolean {
-	return ytdl.validateURL(url);
+	if (!URL.canParse(url)) return false;
+	return parseVideoId(url) !== undefined;
 }
 
 export function isYouTubePlaylist(url: string): boolean {
@@ -108,30 +147,25 @@ export async function getYouTubePlaylist(
 
 export async function getYouTubeVideoInfo(
 	url: string,
-	agent?: ytdl.Agent,
 ): Promise<YouTubeVideoInfo> {
-	// getBasicInfo only reads videoDetails. getInfo additionally deciphers the
-	// stream formats, which breaks ("Failed to find any playable formats")
-	// whenever YouTube ships a player script ytdl-core cannot parse - and the
-	// formats are unused here anyway
-	const info = await ytdl.getBasicInfo(url, { agent });
+	const info = await getYtdl().getInfo(url);
 	const details = info.videoDetails;
-	const channelId = details.author?.id ?? details.channelId;
+	const channelId = details.author.id;
 	return {
 		video_details: {
-			id: details.videoId,
-			url: `${WATCH_URL}${details.videoId}`,
+			id: details.id,
+			url: `${WATCH_URL}${details.id}`,
 			title: details.title,
-			durationInSec: Number(details.lengthSeconds),
+			durationInSec: details.lengthSeconds,
 			channel: {
-				name: details.author?.name ?? "",
+				name: details.author.name,
 				url:
-					details.author?.channel_url ??
+					details.author.url ||
 					(channelId
 						? `https://www.youtube.com/channel/${channelId}`
 						: ""),
 			},
-			thumbnails: (details.thumbnails ?? []).map(thumbnail => ({
+			thumbnails: details.thumbnails.map(thumbnail => ({
 				url: thumbnail.url,
 			})),
 		},
