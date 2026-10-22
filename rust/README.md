@@ -8,7 +8,7 @@ independently revertable; the TypeScript bot keeps working throughout.
 | `amhra-audio` | WebM/Opus demuxing, Opus TOC parsing, `.idx` index, cache reader | 1, 3 ✅ |
 | `amhra-fetch` | InnerTube extraction, ranged download, yt-dlp fallback | 1 ✅ |
 | `amhra-voice` | gateway v8, UDP/RTP/AEAD, DAVE, player, volume, crossfade, receive | 2, 3 ✅ |
-| `amhra-sidecar` | the long-lived process: RPC, per-guild playback | 4 |
+| `amhra-sidecar` | the long-lived process: RPC, per-guild playback, voice commands | 4 |
 
 ## Build
 
@@ -207,7 +207,8 @@ reports `Started(second)` before `Finished(first)` — the overlap, in the log.
 ## Receiving
 
 The first step towards voice commands: hearing the channel. Off unless the
-sidecar is started with `--listen`, and nothing consumes what it hears yet.
+sidecar is started with `--listen` (or `--voice-commands`, which consumes what
+it hears; see below).
 
 ```text
 UDP ─▶ transport open ─▶ SSRC → user ─▶ DAVE decrypt ─▶ Opus decode ─▶ 16 kHz mono PCM
@@ -238,3 +239,175 @@ cargo run --release -p amhra-voice --example record_users -- \
 
 with `DEV_TOKEN` in the environment. One `<user id>.wav` per speaker, plus
 per-user counters of anything that failed.
+
+## Voice commands
+
+"Amhra, skip this song" → an `utterance` event carrying the text. Phase B:
+the sidecar hears the name and transcribes what follows. Nothing acts on the
+text yet; intent parsing, per-guild opt-in and a "listening" notice come with
+phase C.
+
+```text
+16 kHz PCM ─▶ keyword spotter ──"Amhra"──▶ window ─▶ end of speech ─▶ SenseVoice ─▶ utterance
+per speaker   (streaming, always on)       (pre-roll) (Silero, 500ms)  (one thread)
+```
+
+Nothing anyone says is transcribed unless it follows the wake word. Only the
+keyword spotter hears everything. The VAD runs only between a detection and
+the end of the command, and recognition only on that window. The code is in
+`amhra-sidecar/src/voice_commands/`. The gate state machine and the
+per-speaker bookkeeping sit behind small traits and are tested with fakes in
+the default build. Only `sherpa.rs`, the real models, needs the feature.
+
+### Setup
+
+The feature is off by default. It links a prebuilt sherpa-onnx static library
+(about 20MB, downloaded by its build script) and needs about 260MB of models
+(a 180MB download).
+
+```bash
+scripts/download-voice-models.sh
+```
+
+```bash
+cargo build --release --manifest-path rust/Cargo.toml -p amhra-sidecar --features voice-commands
+```
+
+Then start the sidecar with `--voice-commands` (it implies `--listen`). The
+bot does not pass that flag yet; that is phase C. Flags, with paths relative
+to where the sidecar starts:
+
+| flag | default | |
+| --- | --- | --- |
+| `--voice-models <dir>` | `models/voice` | where the download script put them (gitignored) |
+| `--wake-keywords <file>` | `data/wake-keywords.txt` | the wake phrases; edit and restart, no rebuild |
+| `--recogniser-threads <n>` | `2` | speech-recognition threads |
+
+If a model is missing, or the build lacks the feature, the sidecar sends one
+`error` event and plays on without voice commands. Loading takes about half a
+second, and the process then holds about 570MB, nearly all of it SenseVoice.
+
+The keywords file holds plain phrases. They are spelled into the spotter's BPE
+pieces at load, using the model's own `bpe.model`, because sherpa-onnx only
+reads pre-tokenised keywords. Every line is checked first: a token the model
+lacks makes sherpa-onnx exit the process, and here that would end playback in
+every guild. `:boost` and `#threshold` after a phrase tune it alone.
+
+### Models
+
+| role | model | licence |
+| --- | --- | --- |
+| wake word | `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` (streaming zipformer, int8) | Apache-2.0 |
+| end of speech | Silero VAD (`silero_vad.onnx`) | MIT |
+| speech to text | `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` | FunASR Model License 1.1 |
+
+**SenseVoice attribution.** The speech recogniser is **SenseVoice-Small** by
+Tongyi Lab, Alibaba Group (<https://github.com/FunAudioLLM/SenseVoice>), via
+the sherpa-onnx int8 export. Its weights are under the [FunASR Model Open
+Source License Agreement, version
+1.1](https://github.com/modelscope/FunASR/blob/main/MODEL_LICENSE), which
+allows use, copying, modification and sharing, provided the source and authors
+are attributed and the model names are kept. Copyright (C) 2023-2028 Alibaba
+Group. The weights are downloaded, never committed.
+
+The download script deliberately fetches the **2024-07-17** export. The newer
+2025-09-09 one is a Cantonese fine-tune (WSYue) and gives up other languages
+for it.
+
+The safe `sherpa-onnx` wrapper drops SenseVoice's detected language, so the
+recogniser calls the C API directly. That is the one `unsafe` block, in
+`sherpa.rs`.
+
+### Behaviour
+
+- **Window.** It starts 300ms before the point where the spotter says the name
+  *ended*, not where it fired. The spotter fires about 300–500ms late, by which
+  time the command has often begun. The window closes on 500ms of silence or
+  at 5s. With no speech within 2s of the name, it times out quietly.
+- **Silence Discord does not send.** Clients stop transmitting when someone
+  goes quiet, so the gate thread feeds zeros in its place, for about a second
+  after someone stops and for as long as a command is open. Otherwise a command
+  would never end, and a name said last would never be recognised.
+- **Padding.** SenseVoice drops the first syllables of audio that starts
+  mid-speech. Measured: a whole clip came back as "Amra, skip this song.", but
+  the gate's window of it came back as "Sip this song.". Each window gets 300ms
+  of silence on either side.
+- **Threads.** Receive thread, then a per-guild gate thread (spotter + VAD per
+  speaker), then one process-wide recogniser. The queues are bounded at 500
+  frames and 4 commands, and drop when full: a backlog of voice is worthless.
+  None of this runs on the 20ms send thread.
+- Someone who leaves mid-command takes the command with them.
+
+### Tuning without Discord
+
+```bash
+cargo run --release -p amhra-sidecar --features voice-commands --example wake_wav -- \
+  --verbose recordings/*.wav
+```
+
+Runs the same gate over WAV files (16 kHz mono, one speaker each), printing
+every wake, timeout and transcript with its position and latency.
+`--threshold`, `--boost`, `--keywords`, `--preroll-ms` and
+`--recogniser-threads` try settings without editing anything. `--whole`
+transcribes each file ungated for comparison, and `--dump <dir>` writes each
+window out. Record real voices for it with `record_users --keep-gaps`:
+without that flag the file has no silences, because Discord does not send
+them, and commands never end.
+
+Live, printing as it goes:
+
+```bash
+cargo run --release -p amhra-sidecar --features voice-commands --example wake_live -- \
+  --guild <GUILD_ID> --channel <VOICE_CHANNEL_ID> --seconds 300
+```
+
+with `DEV_TOKEN` set, run from the repository root.
+
+### Measured
+
+All on an Apple M5 Pro, release build. The corpus was synthesised with macOS
+`say`: 16 English voices, 6 Japanese, 5 Korean and 5 Taiwanese Mandarin. Each
+says the name followed by a command, or the name alone. There are also 25
+minutes of negatives: chatter in all four languages, plus near-miss sentences
+("camera", "Tamra and Amy", "Alhambra", "Omar"…).
+
+| | |
+| --- | --- |
+| spotter + VAD | **0.9–1.0% of one core per speaker** (about 105× real time), on continuous chatter |
+| recognition | 153ms mean, 217ms max per command (2 threads); 294ms on 1, 83ms on 4 |
+| end of speech → text | **median 645ms, p90 695ms, max 719ms**: 500ms of that is the silence that marks the end |
+| spotter lag | 280–480ms after the keyword ends |
+
+Detection, with the committed `data/wake-keywords.txt`:
+
+| | woke | notes |
+| --- | --- | --- |
+| English, voices that say "Amra" | **40/42** | Samantha, Reed, Moira, Grandpa, Eddy, Shelley, Rishi |
+| English, all 16 voices | 57/96 | the rest say "Ara", "Era" or "Aal", with no m |
+| Korean | 12/15 | 암라, heard as [amna] |
+| Mandarin | 7/15 | 阿姆拉 |
+| Japanese | 3/18 | the voices say アムラ as something close to "amu" |
+| false wakes | **4 in 25 minutes** | 3 on near-miss sentences, 1 in ordinary Korean chatter; none in English, Japanese or Mandarin chatter |
+
+How to read these. TTS voices invent their own pronunciation of a made-up
+name, so these numbers show how the pipeline behaves, not how well it hears
+real people. Real users say the name consistently, which is what the "say
+Amra" row is closest to. Adding a spelling that matches how the server says
+it is the first fix for misses. Every extra spelling, and every lower
+threshold, buys recall with false wakes.
+
+Transcripts are good in English (mean text similarity 0.88 to the script, the
+name aside). They are poor for Korean from the novelty voices: Yuna's were
+good, Eddy's and Flo's gibberish. Short windows are sometimes taken for the
+wrong language. Pinning the language per guild is a phase C option, since
+SenseVoice accepts one.
+
+**Not measured:**
+
+- Real voices, real microphones and the Opus round-trip. Every number above is
+  from clean synthetic audio.
+- Music bleeding into someone's microphone.
+- Many simultaneous speakers through the live threads; the per-speaker cost
+  above is single-threaded.
+- The Linux link, which no machine here could do. The Linux build script and
+  its archive were checked, and CI's voice-commands job links and tests it.

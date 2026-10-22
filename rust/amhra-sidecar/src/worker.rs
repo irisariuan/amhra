@@ -322,11 +322,8 @@ fn apply(
 			// threads reading one socket would each get half the packets.
 			*attachment = None;
 			let listener = listen.and_then(|setup| {
-				let started = socket.try_clone().and_then(|clone| {
-					// Phase B's voice activity detection plugs in here. Until
-					// then what is heard is decoded, counted and let go.
-					listen::spawn(guild_id, clone, setup, dave.clone(), Box::new(|_frame| {}))
-				});
+				let started =
+					socket.try_clone().and_then(|clone| listen::spawn(guild_id, clone, setup, dave.clone()));
 				match started {
 					Ok(handle) => Some(handle),
 					Err(error) => {

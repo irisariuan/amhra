@@ -29,6 +29,27 @@ jobs:
       - name: Test
         run: cargo test --manifest-path rust/Cargo.toml --locked
 
+  # Voice commands link a prebuilt sherpa-onnx static library that the build
+  # script downloads, so they are a feature the default build leaves out. This
+  # job is what keeps that code compiling, linted and tested on Linux. The
+  # tests use fakes and need no models.
+  voice-commands:
+    name: Rust (voice commands)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+          key: voice-commands
+      - name: Clippy
+        run: cargo clippy --manifest-path rust/Cargo.toml --locked -p amhra-sidecar --features voice-commands --all-targets -- -D warnings
+      - name: Test
+        run: cargo test --manifest-path rust/Cargo.toml --locked -p amhra-sidecar --features voice-commands
+
   typescript:
     name: TypeScript
     runs-on: ubuntu-latest

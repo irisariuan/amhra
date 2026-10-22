@@ -10,8 +10,8 @@
 //! Off unless the sidecar is started with `--listen`. A music bot that never
 //! uses what it hears should not pay to decode everyone in every channel.
 //!
-//! What it hears goes to a [`VoiceSink`]. Nothing consumes it yet; voice
-//! activity detection is the next stage and will sit behind that hook.
+//! What it hears goes to a [`VoiceSink`]: with `--voice-commands`, the wake
+//! word gate (`voice_commands`); otherwise nowhere.
 
 use std::net::UdpSocket;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -35,8 +35,17 @@ const MAX_DATAGRAM: usize = 2048;
 /// A thread that only reads and decodes needs little more than the codec.
 const STACK_SIZE: usize = 512 * 1024;
 
-/// Where decoded voice goes.
-pub type VoiceSink = Box<dyn FnMut(VoiceFrame) + Send>;
+/// What the receive thread passes on.
+#[derive(Debug)]
+pub enum Heard {
+	Voice(VoiceFrame),
+	/// Someone left the call. Whatever was keeping state for them can let go.
+	Left { user_id: u64 },
+}
+
+/// Where decoded voice goes. Called on the receive thread, so it must not
+/// block: anything slow belongs on a thread of its own behind a queue.
+pub type VoiceSink = Box<dyn FnMut(Heard) + Send>;
 
 /// What the connection task hands the worker for listening.
 pub struct ListenSetup {
@@ -44,6 +53,8 @@ pub struct ListenSetup {
 	pub own_ssrc: u32,
 	/// SSRC announcements and departures, from the voice gateway.
 	pub membership: Receiver<Membership>,
+	/// Where what is heard goes.
+	pub sink: VoiceSink,
 }
 
 /// Keeps a receive thread alive. Dropping it stops the thread within one
@@ -66,7 +77,6 @@ pub fn spawn(
 	socket: UdpSocket,
 	setup: ListenSetup,
 	dave: Option<Arc<Mutex<Driver>>>,
-	sink: VoiceSink,
 ) -> std::io::Result<ListenHandle> {
 	socket.set_read_timeout(Some(READ_TIMEOUT))?;
 	let stop = Arc::new(AtomicBool::new(false));
@@ -75,7 +85,7 @@ pub fn spawn(
 	std::thread::Builder::new()
 		.name(format!("listen-{guild_id}"))
 		.stack_size(STACK_SIZE)
-		.spawn(move || run(guild_id, socket, setup, dave, sink, thread_stop))?;
+		.spawn(move || run(guild_id, socket, setup, dave, thread_stop))?;
 	Ok(ListenHandle { stop })
 }
 
@@ -84,10 +94,9 @@ fn run(
 	socket: UdpSocket,
 	setup: ListenSetup,
 	dave: Option<Arc<Mutex<Driver>>>,
-	mut sink: VoiceSink,
 	stop: Arc<AtomicBool>,
 ) {
-	let ListenSetup { opener, own_ssrc, membership } = setup;
+	let ListenSetup { opener, own_ssrc, membership, mut sink } = setup;
 	let mut listener = Listener::new(opener, own_ssrc);
 	let dave = dave.as_deref();
 	let mut buffer = [0u8; MAX_DATAGRAM];
@@ -97,7 +106,12 @@ fn run(
 	while !stop.load(Ordering::Relaxed) {
 		loop {
 			match membership.try_recv() {
-				Ok(change) => listener.membership(change, Instant::now(), dave, &mut sink),
+				Ok(change) => {
+					listener.membership(change, Instant::now(), dave, &mut |frame| sink(Heard::Voice(frame)));
+					if let Membership::Disconnect { user_id } = change {
+						sink(Heard::Left { user_id });
+					}
+				}
 				Err(TryRecvError::Empty) => break,
 				// The connection that fed this is gone.
 				Err(TryRecvError::Disconnected) => return,
@@ -105,7 +119,9 @@ fn run(
 		}
 
 		match socket.recv(&mut buffer) {
-			Ok(length) => listener.handle_packet(&buffer[..length], Instant::now(), dave, &mut sink),
+			Ok(length) => listener.handle_packet(&buffer[..length], Instant::now(), dave, &mut |frame| {
+				sink(Heard::Voice(frame))
+			}),
 			Err(error)
 				if matches!(
 					error.kind(),
@@ -167,11 +183,17 @@ mod tests {
 		let handle = spawn(
 			"1",
 			bot.try_clone().unwrap(),
-			ListenSetup { opener: Opener::new(MODE, &KEY).unwrap(), own_ssrc: 1, membership: changes },
+			ListenSetup {
+				opener: Opener::new(MODE, &KEY).unwrap(),
+				own_ssrc: 1,
+				membership: changes,
+				sink: Box::new(move |heard| {
+					if let Heard::Voice(frame) = heard {
+						let _ = frames.send(frame);
+					}
+				}),
+			},
 			None,
-			Box::new(move |frame| {
-				let _ = frames.send(frame);
-			}),
 		)
 		.unwrap();
 

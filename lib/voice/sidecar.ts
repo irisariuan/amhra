@@ -78,7 +78,26 @@ const event = z.discriminatedUnion("type", [
 		message: z.string(),
 	}),
 	z.object({ type: z.literal("sessions"), guilds: z.array(sessionState) }),
+	// Only from a sidecar started with --voice-commands. What was heard after
+	// the wake word, as text; nothing acts on it yet.
+	z.object({
+		type: z.literal("utterance"),
+		guildId: z.string(),
+		userId: z.string(),
+		text: z.string(),
+		lang: z.string().nullable(),
+		wakeKeyword: z.string(),
+		latencyMs: z.number(),
+	}),
 ]);
+
+/**
+ * Check one decoded frame against the protocol. Throws on anything the Rust
+ * side would not have sent.
+ */
+export function parseEvent(payload: unknown): SidecarEvent {
+	return event.parse(payload);
+}
 
 export type SidecarEvent = z.infer<typeof event>;
 export type SidecarSession = z.infer<typeof sessionState>;
@@ -120,13 +139,18 @@ export class Sidecar extends EventEmitter {
 	/** Guilds the sidecar is connected to, so a restart can be reported. */
 	readonly guilds = new Set<string>();
 
+	/** `extraArgs` are passed to the binary after the cache directory. */
+	constructor(private readonly extraArgs: string[] = []) {
+		super();
+	}
+
 	start() {
 		if (this.child) return;
 		this.stopping = false;
 
 		const binary = sidecarBin.path();
 		dcb.log(`Starting voice sidecar: ${binary}`);
-		const child = spawn(binary, ["--cache-dir", `${process.cwd()}/cache`], {
+		const child = spawn(binary, ["--cache-dir", `${process.cwd()}/cache`, ...this.extraArgs], {
 			stdio: ["pipe", "pipe", "pipe"],
 		});
 		this.child = child;
@@ -225,7 +249,7 @@ export class Sidecar extends EventEmitter {
 
 			let parsed: SidecarEvent;
 			try {
-				parsed = event.parse(JSON.parse(body.toString("utf8")));
+				parsed = parseEvent(JSON.parse(body.toString("utf8")));
 			} catch (error) {
 				// An unparseable event means the two sides disagree about the
 				// protocol, which is worth saying loudly and exactly once per

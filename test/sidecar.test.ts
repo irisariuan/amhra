@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { Sidecar, fadeSettings, sidecarBin } from "../lib/voice/sidecar";
+import { Sidecar, fadeSettings, parseEvent, sidecarBin } from "../lib/voice/sidecar";
 
 /**
  * Tests for the voice sidecar client, run against the real Rust process.
@@ -46,11 +46,37 @@ describe("fadeSettings", () => {
 	});
 });
 
+describe("parseEvent", () => {
+	// The same event the Rust protocol test serialises. Utterances need a
+	// voice channel and the speech models to produce for real, so the wire
+	// shape is checked here instead.
+	const utterance = {
+		type: "utterance",
+		guildId: "1",
+		userId: "2",
+		text: "skip this song.",
+		lang: null,
+		wakeKeyword: "AMHRA",
+		latencyMs: 640,
+	};
+
+	test("accepts an utterance, with or without a language", () => {
+		expect(parseEvent(utterance)).toEqual(utterance as never);
+		expect(parseEvent({ ...utterance, lang: "ja" })).toMatchObject({ lang: "ja" });
+	});
+
+	test("refuses an utterance missing what the bot needs to act on it", () => {
+		const { userId: _, ...anonymous } = utterance;
+		expect(() => parseEvent(anonymous)).toThrow();
+		expect(() => parseEvent({ ...utterance, latencyMs: "fast" })).toThrow();
+	});
+});
+
 describeBuilt("Sidecar", () => {
 	let running: Sidecar | null = null;
 
-	function start() {
-		const sidecar = new Sidecar();
+	function start(args: string[] = []) {
+		const sidecar = new Sidecar(args);
 		running = sidecar;
 		sidecar.start();
 		return sidecar;
@@ -153,6 +179,18 @@ describeBuilt("Sidecar", () => {
 		});
 		const error = await next(sidecar, "error");
 		expect(error.guildId).toBe("404");
+
+		sidecar.send({ type: "listSessions" });
+		expect((await next(sidecar, "sessions")).guilds).toEqual([]);
+	});
+
+	test("keeps playing when voice commands cannot start", async () => {
+		// Built without the feature (as in CI) or with no models where it is
+		// pointed: either way a single global error, then business as usual.
+		const sidecar = start(["--voice-commands", "--voice-models", "/nonexistent"]);
+		const error = await next(sidecar, "error");
+		expect(error.guildId).toBeNull();
+		expect(String(error.message)).toMatch(/voice commands are off/);
 
 		sidecar.send({ type: "listSessions" });
 		expect((await next(sidecar, "sessions")).guilds).toEqual([]);

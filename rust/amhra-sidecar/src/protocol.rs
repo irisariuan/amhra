@@ -108,6 +108,27 @@ pub enum Event {
 	/// Answer to `ListSessions`.
 	#[serde(rename_all = "camelCase")]
 	Sessions { guilds: Vec<SessionState> },
+	/// Someone said the wake word and then something, transcribed. Only sent
+	/// by a sidecar started with `--voice-commands`, and only for speech that
+	/// followed the wake word: nothing else anyone says is transcribed.
+	///
+	/// The text is what was heard, not an instruction — it often still starts
+	/// with the tail of the name, and deciding what it asks for is the bot's
+	/// job.
+	#[serde(rename_all = "camelCase")]
+	Utterance {
+		guild_id: String,
+		user_id: String,
+		text: String,
+		/// The language the recogniser detected: `en`, `ja`, `ko`, `zh` or
+		/// `yue`, or null when it could not tell.
+		lang: Option<String>,
+		/// Which phrase from the keywords file woke it, e.g. `AMHRA`.
+		wake_keyword: String,
+		/// From the end of their speech to the text being ready, including the
+		/// half second of silence that marks a command as finished.
+		latency_ms: u32,
+	},
 }
 
 /// One guild's state, for a bot that has just restarted and lost its own.
@@ -186,6 +207,22 @@ mod tests {
 		let encoded = serde_json::to_string(&event).unwrap();
 		assert!(encoded.contains("\"type\":\"started\""));
 		assert!(encoded.contains("\"trackId\":\"dQw4w9WgXcQ\""));
+	}
+
+	#[test]
+	fn an_utterance_carries_its_language_or_null() {
+		let event = Event::Utterance {
+			guild_id: "1".to_owned(),
+			user_id: "2".to_owned(),
+			text: "skip this song.".to_owned(),
+			lang: None,
+			wake_keyword: "AMHRA".to_owned(),
+			latency_ms: 640,
+		};
+		let encoded = serde_json::to_string(&event).unwrap();
+		assert!(encoded.contains("\"type\":\"utterance\""));
+		assert!(encoded.contains("\"wakeKeyword\":\"AMHRA\""));
+		assert!(encoded.contains("\"lang\":null"), "{encoded}");
 	}
 
 	#[test]

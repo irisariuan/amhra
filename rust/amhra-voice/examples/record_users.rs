@@ -15,6 +15,11 @@
 //! what speech recognition will be fed. Only speech is written — the quiet
 //! between bursts is not sent by Discord, so it is not in the file either.
 //!
+//! `--keep-gaps` puts that quiet back as silence, so each file runs in real
+//! time from the speaker's first word. That is what the voice-command harness
+//! (`amhra-sidecar`'s `wake_wav` example) needs: it ends a command on half a
+//! second of silence, and without the gaps there is none.
+//!
 //! Like `play_file`, it speaks just enough of the main gateway to join; the
 //! real bot gets those four values from discord.js.
 
@@ -42,12 +47,14 @@ struct Args {
 	channel: String,
 	seconds: u64,
 	out: std::path::PathBuf,
+	keep_gaps: bool,
 }
 
 fn args() -> Args {
 	let (mut token, mut guild, mut channel) = (None, None, None);
 	let mut seconds = 30;
 	let mut out = std::path::PathBuf::from("recordings");
+	let mut keep_gaps = false;
 	let mut argv = std::env::args().skip(1);
 	while let Some(arg) = argv.next() {
 		let mut value = || argv.next().expect("option needs a value");
@@ -57,6 +64,7 @@ fn args() -> Args {
 			"--channel" => channel = Some(value()),
 			"--seconds" => seconds = value().parse().expect("--seconds takes a number"),
 			"--out" => out = value().into(),
+			"--keep-gaps" => keep_gaps = true,
 			other => panic!("unknown option {other}"),
 		}
 	}
@@ -70,6 +78,7 @@ fn args() -> Args {
 		channel: channel.expect("--channel"),
 		seconds,
 		out,
+		keep_gaps,
 	}
 }
 
@@ -268,7 +277,22 @@ async fn main() {
 	let mut early: Vec<Membership> = Vec::new();
 	let mut primed = false;
 	let mut recordings: HashMap<u64, Vec<i16>> = HashMap::new();
-	let mut record = |frame: VoiceFrame| recordings.entry(frame.user_id).or_default().extend(frame.pcm);
+	let mut first_heard: HashMap<u64, Instant> = HashMap::new();
+	let keep_gaps = args.keep_gaps;
+	let mut record = |frame: VoiceFrame| {
+		let samples = recordings.entry(frame.user_id).or_default();
+		if keep_gaps {
+			// Where this frame belongs by the clock, measured from their first.
+			let first = *first_heard.entry(frame.user_id).or_insert_with(Instant::now);
+			let due = (first.elapsed().as_secs_f64() * f64::from(SAMPLE_RATE)) as usize;
+			let start = due.saturating_sub(frame.pcm.len());
+			// A few frames late is arrival jitter, not someone pausing.
+			if start > samples.len() + 3 * frame.pcm.len() {
+				samples.resize(start, 0);
+			}
+		}
+		samples.extend(frame.pcm);
+	};
 
 	let mut buffer = [0u8; 2048];
 	let mut deadline: Option<Instant> = None;

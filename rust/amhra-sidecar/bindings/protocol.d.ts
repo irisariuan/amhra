@@ -12,7 +12,21 @@ trackId: string, startMs: number, } | { "type": "setNext", guildId: string, trac
 /**
  * What this process reports back.
  */
-export type Event = { "type": "hello", version: number, pid: number, } | { "type": "ready", guildId: string, daveVersion: number, } | { "type": "started", guildId: string, trackId: string, } | { "type": "finished", guildId: string, trackId: string, } | { "type": "starved", guildId: string, trackId: string, } | { "type": "position", guildId: string, trackId: string, positionMs: number, } | { "type": "idle", guildId: string, } | { "type": "reconnecting", guildId: string, reason: string, } | { "type": "disconnected", guildId: string, reason: string, } | { "type": "error", guildId: string | null, message: string, } | { "type": "sessions", guilds: Array<SessionState>, };
+export type Event = { "type": "hello", version: number, pid: number, } | { "type": "ready", guildId: string, daveVersion: number, } | { "type": "started", guildId: string, trackId: string, } | { "type": "finished", guildId: string, trackId: string, } | { "type": "starved", guildId: string, trackId: string, } | { "type": "position", guildId: string, trackId: string, positionMs: number, } | { "type": "idle", guildId: string, } | { "type": "reconnecting", guildId: string, reason: string, } | { "type": "disconnected", guildId: string, reason: string, } | { "type": "error", guildId: string | null, message: string, } | { "type": "sessions", guilds: Array<SessionState>, } | { "type": "utterance", guildId: string, userId: string, text: string, 
+/**
+ * The language the recogniser detected: `en`, `ja`, `ko`, `zh` or
+ * `yue`, or null when it could not tell.
+ */
+lang: string | null, 
+/**
+ * Which phrase from the keywords file woke it, e.g. `AMHRA`.
+ */
+wakeKeyword: string, 
+/**
+ * From the end of their speech to the text being ready, including the
+ * half second of silence that marks a command as finished.
+ */
+latencyMs: number, };
 
 /**
  * One guild's state, for a bot that has just restarted and lost its own.

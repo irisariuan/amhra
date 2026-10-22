@@ -33,3 +33,6 @@ rust/target/
 
 # Player scripts ytdl-core dumps into the working directory
 *-player-script.js
+
+# Voice-command models: scripts/download-voice-models.sh
+/models/

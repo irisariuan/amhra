@@ -1,0 +1,20 @@
+# Wake words for voice commands, one phrase per line. Read when the sidecar
+# starts (with --voice-commands); restart it after editing.
+#
+# Write plain words. They are spelled into the keyword model's word pieces at
+# load, and a word it cannot spell is refused with its line number.
+#
+# Optional settings follow the phrase:
+#   :<boost>      pulls the decoder towards this phrase (default 1.5)
+#   #<threshold>  confidence needed to fire, 0..1 (default 0.25); lower fires
+#                 more readily, and falsely more often
+#
+# The model hears sounds, not spellings, so each line is a way of *saying* the
+# name. Tuned on synthesised speech (rust/README.md has the numbers):
+AMRA #0.2
+# What English speakers mostly say; the spelling itself rarely matches alone.
+AMHRA
+# 암라, as Korean pronounces it.
+AMNA #0.2
+# 阿姆拉, as Mandarin pronounces it.
+AMULA #0.2

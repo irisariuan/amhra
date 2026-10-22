@@ -17,3 +17,27 @@ serde_json = "1"
 thiserror.workspace = true
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 ts-rs = "10"
+# Voice commands: wake word, end of speech and speech to text, all through
+# sherpa-onnx. The build script downloads a prebuilt static library for the
+# target (about 20MB), which is why this is off by default.
+sherpa-onnx = { version = "1.13.8", optional = true }
+sherpa-onnx-sys = { version = "1.13.8", optional = true }
+
+[dev-dependencies]
+# The wake_live example joins a channel the way amhra-voice's examples do.
+futures-util = { version = "0.3", default-features = false, features = ["std", "sink"] }
+tokio-tungstenite = { version = "0.24", default-features = false, features = [
+	"connect",
+	"rustls-tls-webpki-roots",
+] }
+
+[features]
+voice-commands = ["dep:sherpa-onnx", "dep:sherpa-onnx-sys"]
+
+[[example]]
+name = "wake_wav"
+required-features = ["voice-commands"]
+
+[[example]]
+name = "wake_live"
+required-features = ["voice-commands"]

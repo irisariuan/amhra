@@ -17,7 +17,21 @@
 //! nothing left to play for.
 //!
 //! `--listen` also decodes what everyone else in the channel says (see
-//! `listen.rs`). It is off by default and, for now, goes nowhere.
+//! `listen.rs`). It is off by default and, alone, goes nowhere.
+//!
+//! `--voice-commands` listens for the wake word and transcribes what follows
+//! it, reporting `Utterance` events (see `voice_commands`). It implies
+//! `--listen`, needs a build with the `voice-commands` feature, and reads:
+//!
+//! - `--voice-models <dir>`: from `scripts/download-voice-models.sh`, default
+//!   `models/voice`;
+//! - `--wake-keywords <file>`: the wake phrases, default
+//!   `data/wake-keywords.txt`;
+//! - `--recogniser-threads <n>`: threads for speech recognition, default 2.
+//!
+//! Both relative to the directory the sidecar is started in. A model that will
+//! not load is reported once as an `Error` event and the sidecar carries on
+//! without voice commands: playback never depends on them.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -31,7 +45,8 @@ use amhra_sidecar::protocol::{Command, Event, PROTOCOL_VERSION, SessionState};
 use amhra_sidecar::worker::{Worker, WorkerCommand};
 use amhra_voice::dave::driver::{Action, Driver};
 use amhra_voice::gateway::{self, ConnectionInfo, Event as GatewayEvent};
-use amhra_sidecar::listen::ListenSetup;
+use amhra_sidecar::listen::{ListenSetup, VoiceSink};
+use amhra_sidecar::voice_commands::engine::Engine;
 use amhra_voice::player::FadeSettings;
 use amhra_voice::receive::Membership;
 use amhra_voice::wire::EncryptionMode;
@@ -83,12 +98,9 @@ impl GuildSession {
 
 #[tokio::main]
 async fn main() {
-	let cache_dir = std::env::args()
-		.skip_while(|argument| argument != "--cache-dir")
-		.nth(1)
-		.unwrap_or_else(|| "cache".to_owned());
-	let cache_dir = std::path::PathBuf::from(cache_dir);
-	let listen = std::env::args().any(|argument| argument == "--listen");
+	let cache_dir = std::path::PathBuf::from(option("--cache-dir").unwrap_or_else(|| "cache".to_owned()));
+	let voice_commands = flag("--voice-commands");
+	let listen = flag("--listen") || voice_commands;
 	if listen {
 		eprintln!("listening: other members' audio will be decrypted and decoded");
 	}
@@ -107,6 +119,8 @@ async fn main() {
 	});
 
 	let _ = events.send(Event::Hello { version: PROTOCOL_VERSION, pid: std::process::id() });
+
+	let voice = if voice_commands { start_voice_commands(&events) } else { None };
 
 	// stdin is blocking, so it gets its own thread rather than stalling the
 	// runtime that every gateway connection shares.
@@ -147,7 +161,7 @@ async fn main() {
 		if matches!(command, Command::Shutdown) {
 			break;
 		}
-		dispatch(command, &mut guilds, &events, &cache_dir, listen).await;
+		dispatch(command, &mut guilds, &events, &cache_dir, listen, voice.as_ref()).await;
 	}
 
 	eprintln!("shutting down {} guild(s)", guilds.len());
@@ -162,6 +176,7 @@ async fn dispatch(
 	events: &Sender<Event>,
 	cache_dir: &std::path::Path,
 	listen: bool,
+	voice: Option<&Arc<Engine>>,
 ) {
 	match command {
 		Command::Connect { guild_id, channel_id, user_id, session_id, endpoint, token } => {
@@ -204,6 +219,7 @@ async fn dispatch(
 				worker.speaking_flag(),
 				alive.clone(),
 				listen,
+				voice.cloned(),
 			));
 
 			guilds.insert(
@@ -372,6 +388,7 @@ async fn drive_connection(
 	speaking: Arc<std::sync::atomic::AtomicBool>,
 	alive: Arc<AtomicBool>,
 	listen: bool,
+	voice: Option<Arc<Engine>>,
 ) {
 	let mut ssrc = 0u32;
 	// Who owns which SSRC, as far as this connection has been told. Kept here
@@ -511,6 +528,12 @@ async fn drive_connection(
 
 						let listen = if listen {
 							listen_setup(&mut membership, &speakers, mode, &secret_key, ssrc)
+								.map(|mut setup| {
+									if let Some(engine) = &voice {
+										setup.sink = voice_sink(engine, &events, &guild_id);
+									}
+									setup
+								})
 								.map_err(|error| fail(&events, &guild_id, error))
 								.ok()
 						} else {
@@ -614,7 +637,109 @@ fn listen_setup(
 		let _ = sender.send(Membership::Speaking { user_id, ssrc });
 	}
 	*membership = Some(sender);
-	Ok(ListenSetup { opener, own_ssrc, membership: receiver })
+	// Decoded and let go, unless voice commands replace this.
+	Ok(ListenSetup { opener, own_ssrc, membership: receiver, sink: Box::new(|_| {}) })
+}
+
+/// A gate thread for this call's voice, or — if one cannot be started —
+/// nowhere, said once.
+fn voice_sink(engine: &Engine, events: &Sender<Event>, guild_id: &str) -> VoiceSink {
+	engine.listen(guild_id).unwrap_or_else(|error| {
+		fail(events, guild_id, format!("could not start voice commands: {error}"));
+		Box::new(|_| {})
+	})
+}
+
+/// Load the models and start the recogniser. Slow — the speech model is a
+/// quarter of a gigabyte — so it happens once, at startup, before any guild
+/// connects.
+#[cfg(feature = "voice-commands")]
+fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
+	use amhra_sidecar::voice_commands::engine::Notice;
+	use amhra_sidecar::voice_commands::gate::GateConfig;
+	use amhra_sidecar::voice_commands::sherpa::{self, SherpaConfig};
+
+	let models = option("--voice-models").unwrap_or_else(|| "models/voice".to_owned());
+	let keywords = option("--wake-keywords").unwrap_or_else(|| "data/wake-keywords.txt".to_owned());
+	let started = std::time::Instant::now();
+	let loaded = std::fs::read_to_string(&keywords)
+		.map_err(|error| format!("cannot read {keywords}: {error}"))
+		.and_then(|keywords| {
+			let mut config = SherpaConfig::new(models.into(), keywords);
+			if let Some(threads) = option("--recogniser-threads").and_then(|threads| threads.parse().ok()) {
+				config.recogniser_threads = threads;
+			}
+			sherpa::load(&config).map_err(|error| error.to_string())
+		});
+	let (models, recogniser) = match loaded {
+		Ok(loaded) => loaded,
+		Err(message) => {
+			let message = format!("voice commands are off: {message}");
+			eprintln!("{message}");
+			let _ = events.send(Event::Error { guild_id: None, message });
+			return None;
+		}
+	};
+
+	let events = events.clone();
+	let report = Arc::new(move |notice: Notice| match notice {
+		Notice::Utterance { guild_id, user_id, keyword, text, lang, latency_ms, recognition_ms, audio_ms } => {
+			// What was said goes to the bot only, not into the log.
+			eprintln!(
+				"[{guild_id}] voice: {user_id} after {keyword}: {audio_ms}ms of speech, {} chars, {}, text {latency_ms}ms after they stopped ({recognition_ms}ms recognising)",
+				text.chars().count(),
+				lang.as_deref().unwrap_or("language unknown"),
+			);
+			let _ = events.send(Event::Utterance {
+				guild_id,
+				user_id: user_id.to_string(),
+				text,
+				lang,
+				wake_keyword: keyword,
+				latency_ms,
+			});
+		}
+		Notice::Woke { guild_id, user_id, keyword } => {
+			eprintln!("[{guild_id}] voice: {user_id} said {keyword}")
+		}
+		Notice::TimedOut { guild_id, user_id, keyword } => {
+			eprintln!("[{guild_id}] voice: {user_id} said {keyword} and nothing after it")
+		}
+		Notice::Unintelligible { guild_id, user_id, keyword } => {
+			eprintln!("[{guild_id}] voice: {user_id} said {keyword}, then nothing recognisable")
+		}
+		Notice::Dropped { guild_id, what, count } => {
+			eprintln!("[{guild_id}] voice: behind, dropped {count} {what}")
+		}
+		Notice::Failed { guild_id, message } => fail(&events, &guild_id, format!("voice commands: {message}")),
+	});
+	match Engine::start(models, Box::new(recogniser), GateConfig::default(), report) {
+		Ok(engine) => {
+			eprintln!("voice commands: models loaded in {:?}", started.elapsed());
+			Some(Arc::new(engine))
+		}
+		Err(error) => {
+			eprintln!("voice commands are off: could not start the recogniser: {error}");
+			None
+		}
+	}
+}
+
+#[cfg(not(feature = "voice-commands"))]
+fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
+	let message = "voice commands are off: this sidecar was built without the voice-commands feature".to_owned();
+	eprintln!("{message}");
+	let _ = events.send(Event::Error { guild_id: None, message });
+	None
+}
+
+/// The value after `name` on the command line.
+fn option(name: &str) -> Option<String> {
+	std::env::args().skip_while(|argument| argument != name).nth(1)
+}
+
+fn flag(name: &str) -> bool {
+	std::env::args().any(|argument| argument == name)
 }
 
 /// Hand one DAVE frame to the driver and send back whatever it answers with.
