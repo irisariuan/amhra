@@ -165,7 +165,7 @@ async function onUtterance(
 	const { guild, member } = found;
 	const showTranscript = userSetting(userId).showTranscript === true;
 
-	const { intent, by } = await readIntent(text, lang);
+	const { intent, by } = await readIntent(text, lang, lookup);
 	// What was said stays out of the log, as it does in the sidecar's, unless
 	// the owner is tuning the matching and asked for it.
 	const heard = readSetting().VOICE_LOG_TRANSCRIPTS

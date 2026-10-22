@@ -564,16 +564,29 @@ starts:
   that must not trigger.
 - **Or a model reads it** (`lib/voice/intentModel.ts`). With
   `VOICE_INTENT_MODEL_URL` set, every transcript goes to a language model on
-  the same machine, which answers with one of the bot's commands or none. If
-  it does not answer within 3s, the word matching does. To run one on a Mac:
+  the same machine, which answers with any of the bot's music commands —
+  play, pause, resume, skip, skipnonmusic, autoskipnonmusic, stop,
+  disconnect, join, loop, queue, nowplaying, remove, volume, lyrics,
+  relocate — with its options, or none. It is told each command's options
+  from the slash command itself, and what it gives back is held to them:
+  an option of the wrong type or out of range is left out, a command missing
+  a required one is not run. If it does not answer within 3s, the word
+  matching does. To run one on a Mac:
 
   ```bash
   uv run --with mlx-lm mlx_lm.server --model mlx-community/Qwen3-4B-4bit --port 8085
   ```
 
   and set the URL to `http://127.0.0.1:8085/v1`. LM Studio and Ollama serve
-  the same API. Qwen3 4B takes about 2.4GB and answers in about 100ms
+  the same API. Qwen3 4B takes about 2.4GB and answers in about 175ms
   through the server, 1s for the first command.
+
+  Asked for the other commands, it read 15 of 16 right ("set the volume to
+  70", "loop this song", "remove song number two", "jump to two minutes",
+  "play bad guy next") and took "I love the lyrics of this one" for lyrics.
+  With all of them to choose from it also reaches for them on chatter:
+  "display the queue", "what song is this" and "Mhar, that volume is 50%."
+  ran queue, nowplaying and volume.
 
   It understands requests the word lists do not: of 9 new phrasings ("turn it
   off", "get out of the call", "I want to hear bad guy by Billie Eilish",

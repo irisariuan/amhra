@@ -36,7 +36,12 @@ export function voiceInteraction(
 	{ message, transcript }: { message?: Message | null; transcript?: string } = {},
 ): ChatInputCommandInteraction {
 	const name = languageCommandName(intent.command, intent.language)?.name ?? intent.command;
-	const command = intent.command === "play" ? `/${name} ${intent.query}` : `/${name}`;
+	const given = Object.entries(intent.options ?? {})
+		.filter(([option]) => !(intent.command === "play" && option === "search"))
+		.map(([option, value]) => ` ${option}:${value}`)
+		.join("");
+	const command =
+		intent.command === "play" ? `/${name} ${intent.query}${given}` : `/${name}${given}`;
 	const heading = transcript
 		? languageText("voice_heard_transcript", intent.language, {
 				user: `<@${member.id}>`,
@@ -70,7 +75,8 @@ export function voiceInteraction(
 	};
 
 	const values: Record<string, string | boolean | number | undefined> = {
-		search: intent.command === "play" ? intent.query : undefined,
+		...intent.options,
+		search: intent.command === "play" ? intent.query : intent.options?.search,
 	};
 	const option = (name: string) => values[name] ?? null;
 

@@ -44,9 +44,31 @@ export const VOICE_COMMANDS = [
 ] as const;
 export type VoiceCommandName = (typeof VOICE_COMMANDS)[number];
 
+/**
+ * Every command about the music, which a model reading the command may
+ * choose from (see `intentModel.ts`). The word matching knows only
+ * `VOICE_COMMANDS`.
+ */
+export const MUSIC_COMMANDS = [
+	...VOICE_COMMANDS,
+	"autoskipnonmusic",
+	"join",
+	"loop",
+	"queue",
+	"nowplaying",
+	"remove",
+	"volume",
+	"lyrics",
+	"relocate",
+] as const;
+export type MusicCommandName = (typeof MUSIC_COMMANDS)[number];
+
+/** Values for a command's options, under the slash command's own names. */
+export type VoiceOptions = Record<string, string | number | boolean>;
+
 export type VoiceIntent =
-	| { command: Exclude<VoiceCommandName, "play">; language: Language }
-	| { command: "play"; query: string; language: Language };
+	| { command: Exclude<MusicCommandName, "play">; language: Language; options?: VoiceOptions }
+	| { command: "play"; query: string; language: Language; options?: VoiceOptions };
 
 /** The languages the recogniser reports, as the bot's own. */
 const RECOGNISER_LANGUAGES: Record<string, Language> = {

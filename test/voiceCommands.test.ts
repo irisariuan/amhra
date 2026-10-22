@@ -128,6 +128,28 @@ describe("the voice interaction", () => {
 		expect(interaction.options.getInteger("amount")).toBeNull();
 	});
 
+	test("options the model gave reach the handler, and are shown", async () => {
+		const { channel, sent } = fakeChannel();
+		const interaction = voiceInteraction(fakeMember(), channel, {
+			command: "skip",
+			options: { amount: 2 },
+			language: Language.English,
+		});
+		expect(interaction.options.getInteger("amount")).toBe(2);
+		expect(interaction.options.getBoolean("force")).toBeNull();
+		await interaction.reply("Skipped");
+		expect(sent[0].content).toContain("/skip amount:2");
+
+		const queued = voiceInteraction(fakeMember(), channel, {
+			command: "play",
+			query: "bad guy",
+			options: { next: true },
+			language: Language.English,
+		});
+		expect(queued.options.getString("search", true)).toBe("bad guy");
+		expect(queued.options.getBoolean("next")).toBe(true);
+	});
+
 	test("a deferred reply is one message, edited into the answer", async () => {
 		const { channel, sent } = fakeChannel();
 		const interaction = voiceInteraction(fakeMember(), channel, {
