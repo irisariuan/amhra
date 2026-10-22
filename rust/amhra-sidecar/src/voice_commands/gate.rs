@@ -38,12 +38,16 @@ pub struct GateConfig {
 	/// the name, which the recogniser handles fine, and the start of a command
 	/// said in the same breath, which it otherwise would not hear at all.
 	pub preroll_ms: u32,
-	/// How long after the name to wait for the command to start.
+	/// How long after the name is heard to wait for the command to start.
+	/// People tend to wait for the chime before going on, so until they have
+	/// said something after it, a pause does not end the window either: the
+	/// tail of the name alone is not a command.
 	pub wait_for_speech_ms: u32,
 	/// Speech needed after the name before it counts as a command, so a cough
 	/// or a click does not open a five-second window.
 	pub min_speech_ms: u32,
-	/// Silence that ends the command.
+	/// Silence that ends the command, once it has started. Every millisecond
+	/// of it is added to the wait for an answer.
 	pub end_silence_ms: u32,
 	/// The longest window, pre-roll included.
 	pub max_capture_ms: u32,
@@ -62,10 +66,10 @@ impl Default for GateConfig {
 	fn default() -> Self {
 		Self {
 			preroll_ms: 300,
-			wait_for_speech_ms: 2000,
+			wait_for_speech_ms: 2500,
 			min_speech_ms: 100,
-			end_silence_ms: 500,
-			max_capture_ms: 5000,
+			end_silence_ms: 700,
+			max_capture_ms: 8000,
 			keep_tail_ms: 200,
 			max_lag_ms: 1500,
 			name_clip_ms: 0,
@@ -107,9 +111,13 @@ pub struct Capture {
 #[derive(Debug)]
 enum State {
 	Listening,
-	/// Heard the name, waiting for the command to start.
-	Armed { keyword: String, waited: usize, speech: usize },
-	Capturing { keyword: String, silence: usize },
+	/// Heard the name, waiting for the command to start. `speech` counts all
+	/// of it, `answered` only what was said after the name was heard.
+	Armed { keyword: String, waited: usize, speech: usize, answered: usize },
+	/// Taking the command down. Until `answered` reaches the minimum speech,
+	/// all that has been said may be the name, so silence only ends the
+	/// window once the wait for speech is over too.
+	Capturing { keyword: String, silence: usize, waited: usize, answered: usize },
 }
 
 /// Timings converted to samples once.
@@ -228,7 +236,7 @@ impl Gate {
 		self.window.extend(self.history.range(start..));
 		self.name_end = keyword_end - start;
 		self.history.clear();
-		self.state = State::Armed { keyword, waited: 0, speech: 0 };
+		self.state = State::Armed { keyword, waited: 0, speech: 0, answered: 0 };
 
 		// What has been said since the name ended was heard before the
 		// detection arrived. It is the start of the command, if there is one,
@@ -251,16 +259,19 @@ impl Gate {
 		let limits = self.limits;
 		match &mut self.state {
 			State::Listening => {}
-			State::Armed { keyword, waited, speech: said } => {
+			State::Armed { keyword, waited, speech: said, answered } => {
 				if speech {
 					*said += heard;
 				}
 				if waiting {
 					*waited += heard;
+					if speech {
+						*answered += heard;
+					}
 				}
 				if *said >= limits.min_speech {
 					let keyword = std::mem::take(keyword);
-					self.state = State::Capturing { keyword, silence: 0 };
+					self.state = State::Capturing { keyword, silence: 0, waited: *waited, answered: *answered };
 				} else if *waited >= limits.wait_for_speech {
 					let keyword = std::mem::take(keyword);
 					self.finish();
@@ -269,9 +280,16 @@ impl Gate {
 				}
 				self.check_cap(events);
 			}
-			State::Capturing { silence, .. } => {
+			State::Capturing { silence, waited, answered, .. } => {
 				*silence = if speech { 0 } else { *silence + heard };
-				if *silence >= limits.end_silence {
+				if waiting {
+					*waited += heard;
+					if speech {
+						*answered += heard;
+					}
+				}
+				let started = *answered >= limits.min_speech || *waited >= limits.wait_for_speech;
+				if started && *silence >= limits.end_silence {
 					self.close(false, events);
 				} else {
 					self.check_cap(events);
@@ -286,7 +304,7 @@ impl Gate {
 		}
 		match &self.state {
 			State::Capturing { .. } => self.close(true, events),
-			// Five seconds of the name followed by too little speech to be a
+			// The whole window of the name followed by too little speech to be a
 			// command: nothing to transcribe.
 			State::Armed { keyword, .. } => {
 				let keyword = keyword.clone();
@@ -298,7 +316,7 @@ impl Gate {
 	}
 
 	fn close(&mut self, capped: bool, events: &mut dyn FnMut(GateEvent)) {
-		let State::Capturing { keyword, silence } = std::mem::replace(&mut self.state, State::Listening)
+		let State::Capturing { keyword, silence, .. } = std::mem::replace(&mut self.state, State::Listening)
 		else {
 			return;
 		};
@@ -404,10 +422,10 @@ mod tests {
 		events.extend(feed(&mut gate, &[keyword_frame()]));
 		assert_eq!(events, vec![GateEvent::Woke { keyword: "AMHRA".to_owned() }]);
 
-		// 600ms of command, then 600ms of quiet.
+		// 600ms of command, then 800ms of quiet.
 		let command = frames(LOUD, 600 / MS_PER_FRAME);
 		events.extend(feed(&mut gate, &command));
-		events.extend(feed(&mut gate, &frames(0.0, 600 / MS_PER_FRAME)));
+		events.extend(feed(&mut gate, &frames(0.0, 800 / MS_PER_FRAME)));
 
 		let captures = captured(&events);
 		assert_eq!(captures.len(), 1);
@@ -415,7 +433,7 @@ mod tests {
 		assert!(!capture.capped);
 		assert_eq!(capture.keyword, "AMHRA");
 		// Closed on exactly the configured silence, and timed from there.
-		assert_eq!(capture.since_speech, samples(500));
+		assert_eq!(capture.since_speech, samples(700));
 		// Pre-roll + command + the tail that is kept; the rest of the silence
 		// is cut.
 		assert_eq!(capture.samples.len(), samples(300) + samples(600) + samples(200));
@@ -433,7 +451,7 @@ mod tests {
 		audio.extend(frames(LOUD, 14)); // the command, already 280ms in…
 		audio.push(keyword_frame()); // …when the detection arrives
 		let mut events = feed(&mut gate, &audio);
-		events.extend(feed(&mut gate, &frames(0.0, 30)));
+		events.extend(feed(&mut gate, &frames(0.0, 2600 / MS_PER_FRAME)));
 
 		let captures = captured(&events);
 		assert_eq!(captures.len(), 1);
@@ -479,7 +497,7 @@ mod tests {
 	fn the_name_alone_times_out_quietly() {
 		let mut gate = gate(0);
 		let mut events = feed(&mut gate, &[keyword_frame()]);
-		events.extend(feed(&mut gate, &frames(0.0, 2000 / MS_PER_FRAME)));
+		events.extend(feed(&mut gate, &frames(0.0, 2500 / MS_PER_FRAME)));
 		assert_eq!(
 			events,
 			vec![
@@ -500,7 +518,7 @@ mod tests {
 		let mut events = feed(&mut gate, &[keyword_frame()]);
 		// 40ms of noise, under the 100ms it takes to count as speech.
 		events.extend(feed(&mut gate, &frames(LOUD, 2)));
-		events.extend(feed(&mut gate, &frames(0.0, 2000 / MS_PER_FRAME)));
+		events.extend(feed(&mut gate, &frames(0.0, 2500 / MS_PER_FRAME)));
 		assert!(captured(&events).is_empty());
 		assert!(matches!(events.last(), Some(GateEvent::TimedOut { .. })));
 	}
@@ -513,9 +531,9 @@ mod tests {
 		events.extend(feed(&mut gate, &frames(LOUD, 10_000 / MS_PER_FRAME)));
 
 		let captures = captured(&events);
-		assert_eq!(captures.len(), 1, "one window, not one every five seconds");
+		assert_eq!(captures.len(), 1, "one window, not one per cap");
 		assert!(captures[0].capped);
-		assert_eq!(captures[0].samples.len(), samples(5000));
+		assert_eq!(captures[0].samples.len(), samples(8000));
 		assert_eq!(captures[0].since_speech, 0);
 		// The talking that continued went back to the spotter, which did not
 		// hear the name in it.
@@ -529,7 +547,7 @@ mod tests {
 		events.extend(feed(&mut gate, &frames(LOUD, 15)));
 		events.extend(feed(&mut gate, &frames(0.0, 400 / MS_PER_FRAME)));
 		events.extend(feed(&mut gate, &frames(LOUD, 15)));
-		events.extend(feed(&mut gate, &frames(0.0, 600 / MS_PER_FRAME)));
+		events.extend(feed(&mut gate, &frames(0.0, 800 / MS_PER_FRAME)));
 		let captures = captured(&events);
 		assert_eq!(captures.len(), 1);
 		// Only the keyword frame came before (there was no history to take
@@ -547,8 +565,39 @@ mod tests {
 		audio.extend(frames(0.0, 44)); // quiet
 		audio.push(keyword_frame());
 		let mut events = feed(&mut gate, &audio);
-		events.extend(feed(&mut gate, &frames(0.0, 10)));
+		// Nothing said after the chime, so it may all have been the name: the
+		// window stays open for the wait.
+		events.extend(feed(&mut gate, &frames(0.0, 2000 / MS_PER_FRAME)));
+		assert!(captured(&events).is_empty());
+		events.extend(feed(&mut gate, &frames(0.0, 500 / MS_PER_FRAME)));
 		let captures = captured(&events);
 		assert_eq!(captures.len(), 1, "{events:?}");
+	}
+
+	#[test]
+	fn waiting_for_the_chime_does_not_end_the_command() {
+		// The spotter says the name ended 400ms back, 100ms early: its tail
+		// comes after, and is enough to count as speech.
+		let mut gate = gate(samples(400));
+		let mut audio = frames(0.0, 50);
+		audio.extend(frames(LOUD, 15)); // the name
+		audio.extend(frames(0.0, 14)); // quiet…
+		audio.push(keyword_frame()); // …and the detection: the chime
+		let mut events = feed(&mut gate, &audio);
+		// They wait to hear it, longer than the silence that ends a command…
+		events.extend(feed(&mut gate, &frames(0.0, 800 / MS_PER_FRAME)));
+		assert!(captured(&events).is_empty(), "closed on the name: {events:?}");
+		// …then go on.
+		events.extend(feed(&mut gate, &frames(LOUD, 600 / MS_PER_FRAME)));
+		events.extend(feed(&mut gate, &frames(0.0, 800 / MS_PER_FRAME)));
+
+		let captures = captured(&events);
+		assert_eq!(captures.len(), 1, "{events:?}");
+		assert!(!captures[0].capped);
+		// Pre-roll, the lag, the wait, the command and the kept tail.
+		assert_eq!(captures[0].samples.len(), samples(300 + 400 + 800 + 600 + 200));
+		assert!(captures[0].samples[captures[0].samples.len() - samples(800)..][..samples(600)]
+			.iter()
+			.all(|&sample| sample >= LOUD));
 	}
 }

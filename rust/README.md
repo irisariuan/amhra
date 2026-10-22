@@ -249,7 +249,7 @@ unless the bot's owner allows it and each server opts in.
 
 ```text
 16 kHz PCM ─▶ keyword spotter ──"Amhra"──▶ window ─▶ end of speech ─▶ SenseVoice ─▶ utterance
-per speaker   (streaming, always on)       (pre-roll) (Silero, 500ms)  (one thread)
+per speaker   (streaming, always on)       (pre-roll) (Silero, 700ms)  (one thread)
 ```
 
 Nothing anyone says is transcribed unless it follows the wake word. Only the
@@ -355,8 +355,16 @@ recogniser calls the C API directly. That is the one `unsafe` block, in
 
 - **Window.** It starts 300ms before the point where the spotter says the name
   *ended*, not where it fired. The spotter fires about 300–500ms late, by which
-  time the command has often begun. The window closes on 500ms of silence or
-  at 5s. With no speech within 2s of the name, it times out quietly.
+  time the command has often begun. The window closes on 700ms of silence or
+  at 8s. With no speech within 2.5s of the name, it times out quietly.
+- **Waiting for the chime.** People tend to say the name, wait for the
+  chime, then go on. The VAD often hears the name's tail as speech, so before
+  this the pause closed the window on the name alone ("Ahara.", "Emharra."
+  live). Until something has been said after the name was heard, silence does
+  not close the window; once the 2.5s wait is over, it does. The cost: a
+  command said in one breath and finished before the spotter fires (about
+  450ms after the name) waits out the 2.5s. `--wait-for-speech-ms`,
+  `--end-silence-ms` and `--max-capture-ms` change the three timings.
 - **Silence Discord does not send.** Clients stop transmitting when someone
   goes quiet, so the gate thread feeds zeros in its place, for about a second
   after someone stops and for as long as a command is open. Otherwise a command
@@ -503,8 +511,9 @@ recognition stays on the CPU. Only recognition can move; the spotter and the
 VAD take 20ms at a time from every speaker, which is the worst case for
 handing work to another device.
 
-Either way, 500ms of the wait after someone stops talking is the silence
-that tells the gate they have finished.
+Either way, 700ms of the wait after someone stops talking is the silence
+that tells the gate they have finished (500ms when the figures above were
+measured).
 
 **Pinning the language.** On `auto`, four of seven live takes of the name
 said in English came back as Chinese ("什么号啊？"); pinned to `en` they read
@@ -530,6 +539,9 @@ starts:
 | `VOICE_RECOGNISER_PROVIDER` | `cpu` | `cpu` or `coreml` |
 | `VOICE_RECOGNISER_THREADS` | `2` | threads for speech recognition |
 | `VOICE_LANGUAGE` | `auto` | pin recognition to `en`, `zh`, `ja`, `ko` or `yue`, for every server |
+| `VOICE_WAIT_FOR_COMMAND_MS` | `2500` | how long after the name to wait for the command; a pause for the chime does not end it within this |
+| `VOICE_END_SILENCE_MS` | `700` | silence that ends a command; all of it is added to the wait for an answer |
+| `VOICE_MAX_COMMAND_MS` | `8000` | the longest command |
 
 - **Per-server opt-in.** `/voicecommands enabled:true`, by default for members
   with Manage Server, kept in `data/guildSetting.json` (gitignored). It takes

@@ -12,7 +12,8 @@
 //!
 //! For tuning: `--threshold` and `--boost` override the keyword defaults
 //! without editing the keywords file, `--keywords` points at another list, and
-//! `--preroll-ms` moves the start of the window and `--recogniser-threads` sets
+//! `--preroll-ms` moves the start of the window, `--wait-for-speech-ms`,
+//! `--end-silence-ms` and `--max-capture-ms` its other timings, and `--recogniser-threads` sets
 //! how many threads speech recognition gets, `--provider cpu|coreml` where it
 //! runs (coreml needs `--features shared-onnxruntime`), `--language <lang>`
 //! pins what it listens for. `--wake-model <dir>` tries a
@@ -93,6 +94,11 @@ fn args() -> Args {
 			"--dump" => args.dump = Some(value().into()),
 			"--whole" => args.whole = true,
 			"--preroll-ms" => args.gate.preroll_ms = value().parse().expect("--preroll-ms takes a number"),
+			"--wait-for-speech-ms" => {
+				args.gate.wait_for_speech_ms = value().parse().expect("--wait-for-speech-ms takes a number");
+			}
+			"--end-silence-ms" => args.gate.end_silence_ms = value().parse().expect("--end-silence-ms takes a number"),
+			"--max-capture-ms" => args.gate.max_capture_ms = value().parse().expect("--max-capture-ms takes a number"),
 			other if other.starts_with("--") => panic!("unknown option {other}"),
 			file => args.files.push(file.into()),
 		}

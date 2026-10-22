@@ -41,7 +41,10 @@
 //!   `--wake-clips-max <n>` of them, default 2000;
 //! - `--wake-chime`: chime in the call when the name is heard;
 //! - `--wake-duck <gain>`: lower the music to this from the name until what
-//!   follows has been heard (see `wake_feedback`).
+//!   follows has been heard (see `wake_feedback`);
+//! - `--wait-for-speech-ms`, `--end-silence-ms`, `--max-capture-ms`: how long
+//!   to wait for a command after the name, the silence that ends it, and the
+//!   longest one, overriding `GateConfig`'s defaults.
 //!
 //! Both relative to the directory the sidecar is started in. A model that will
 //! not load is reported once as an `Error` event and the sidecar carries on
@@ -740,9 +743,14 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 			.map_err(|error| eprintln!("voice commands: not saving wake clips: cannot use {dir}: {error}"))
 			.ok()
 	});
+	let defaults = GateConfig::default();
+	let ms = |name, default| option(name).and_then(|ms| ms.parse().ok()).unwrap_or(default);
 	let gate = GateConfig {
+		wait_for_speech_ms: ms("--wait-for-speech-ms", defaults.wait_for_speech_ms),
+		end_silence_ms: ms("--end-silence-ms", defaults.end_silence_ms),
+		max_capture_ms: ms("--max-capture-ms", defaults.max_capture_ms),
 		name_clip_ms: if clips.is_some() { WAKE_CLIP_MS } else { 0 },
-		..GateConfig::default()
+		..defaults
 	};
 	if let Some(clips) = &clips {
 		eprintln!("voice commands: saving wake clips to {}", clips.dir().display());

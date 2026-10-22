@@ -132,4 +132,14 @@ export interface Setting {
 	 * language now and then; pinned, the others are not understood.
 	 */
 	VOICE_LANGUAGE?: "auto" | "en" | "zh" | "ja" | "ko" | "yue";
+	/**
+	 * How long after the name to wait for a command to start, in ms. Until
+	 * something is said after the chime, a pause does not end the command
+	 * either. Defaults to 2500.
+	 */
+	VOICE_WAIT_FOR_COMMAND_MS?: number;
+	/** Silence that ends a command, in ms. Defaults to 700. */
+	VOICE_END_SILENCE_MS?: number;
+	/** The longest command, in ms. Defaults to 8000. */
+	VOICE_MAX_COMMAND_MS?: number;
 }

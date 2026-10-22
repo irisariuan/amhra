@@ -58,5 +58,13 @@ export function voiceCommandArgs(setting: Setting = readSetting()): string[] {
 	if (threads !== undefined && Number.isInteger(threads) && threads >= 1) {
 		args.push("--recogniser-threads", String(threads));
 	}
+	const timings = [
+		["--wait-for-speech-ms", setting.VOICE_WAIT_FOR_COMMAND_MS],
+		["--end-silence-ms", setting.VOICE_END_SILENCE_MS],
+		["--max-capture-ms", setting.VOICE_MAX_COMMAND_MS],
+	] as const;
+	for (const [flag, ms] of timings) {
+		if (ms !== undefined && Number.isInteger(ms) && ms > 0) args.push(flag, String(ms));
+	}
 	return args;
 }

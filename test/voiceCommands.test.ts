@@ -278,4 +278,27 @@ describe("sidecar flags", () => {
 			voiceCommandArgs({ ...allowed, VOICE_RECOGNISER_THREADS: 0 }),
 		).not.toContain("--recogniser-threads");
 	});
+
+	test("how long a command may take", () => {
+		const allowed = { ...base, VOICE_COMMANDS: true };
+		const args = voiceCommandArgs({
+			...allowed,
+			VOICE_WAIT_FOR_COMMAND_MS: 3000,
+			VOICE_END_SILENCE_MS: 900,
+			VOICE_MAX_COMMAND_MS: 10000,
+		});
+		expect(args.slice(-6)).toEqual([
+			"--wait-for-speech-ms",
+			"3000",
+			"--end-silence-ms",
+			"900",
+			"--max-capture-ms",
+			"10000",
+		]);
+		// Unset, the sidecar's defaults stand.
+		expect(voiceCommandArgs(allowed).join(" ")).not.toContain("-ms");
+		expect(
+			voiceCommandArgs({ ...allowed, VOICE_END_SILENCE_MS: 0 }),
+		).not.toContain("--end-silence-ms");
+	});
 });
