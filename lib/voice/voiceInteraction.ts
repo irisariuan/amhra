@@ -17,6 +17,26 @@ type ReplyPayload = string | (MessageCreateOptions & {
 	flags?: unknown;
 });
 
+/** What a play command found for what was asked. */
+export interface Found {
+	/** The video's or playlist's title. */
+	title: string;
+	/** Added behind what is playing rather than started. */
+	queued: boolean;
+	/** Added to play straight after what is playing. */
+	next: boolean;
+}
+
+const finders = new WeakMap<object, (found: Found) => void>();
+
+/**
+ * Tell a voice command what the search it asked for found, so it can be said
+ * aloud. Nothing, for a typed command.
+ */
+export function reportFound(interaction: object, found: Found) {
+	finders.get(interaction)?.(found);
+}
+
 /**
  * Enough of a slash command interaction for the command handlers, answering
  * in `channel`. Each answer carries a line saying who asked, by voice, for
@@ -27,13 +47,18 @@ type ReplyPayload = string | (MessageCreateOptions & {
  *
  * For someone who asked to see what was heard, `transcript` puts their words
  * in the heading, and `message` — the "listening…" posted when they said the
- * name — becomes the answer instead of a second message.
+ * name — becomes the answer instead of a second message. `onFound` hears
+ * what a search found (`reportFound`).
  */
 export function voiceInteraction(
 	member: GuildMember,
 	channel: SendableChannels,
 	intent: VoiceIntent,
-	{ message, transcript }: { message?: Message | null; transcript?: string } = {},
+	{
+		message,
+		transcript,
+		onFound,
+	}: { message?: Message | null; transcript?: string; onFound?: (found: Found) => void } = {},
 ): ChatInputCommandInteraction {
 	const name = languageCommandName(intent.command, intent.language)?.name ?? intent.command;
 	const given = Object.entries(intent.options ?? {})
@@ -121,5 +146,6 @@ export function voiceInteraction(
 			reply = null;
 		},
 	};
+	if (onFound) finders.set(interaction, onFound);
 	return interaction as unknown as ChatInputCommandInteraction;
 }

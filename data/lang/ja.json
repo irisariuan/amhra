@@ -265,6 +265,16 @@
 					"description": "名前を呼んだときに発言をチャンネルに表示します"
 				}
 			}
+		},
+		"voicefeedback": {
+			"name": "音声フィードバック",
+			"description": "音声コマンドを実行するときに、何をするかを声で伝えます",
+			"options": {
+				"enabled": {
+					"name": "有効",
+					"description": "音声コマンドの動作を声で伝えます"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "違う曲でしたか？下から別の検索結果を選べます。",
@@ -285,5 +295,7 @@
 	"VOICE_TRANSCRIPT_NOTHING": "-# 🎙️ {user}:聞き取れませんでした",
 	"VOICE_TRANSCRIPT_UNMATCHED": "-# 🎙️ {user}:「{text}」· コマンドではありません",
 	"TRANSCRIPT_ON": "これからは、私の名前を呼ぶと、聞き取った内容をチャンネルに表示します(音声コマンドがオンのすべてのサーバーで)。`/transcript enabled:false` でオフにできます。",
-	"TRANSCRIPT_OFF": "あなたの発言の表示をやめます。"
+	"TRANSCRIPT_OFF": "あなたの発言の表示をやめます。",
+	"VOICE_FEEDBACK_ON": "これからは、あなたの音声コマンドで何をするかを声で伝えます(ボットが話せる場合)。`/voicefeedback enabled:false` でオフにできます。",
+	"VOICE_FEEDBACK_OFF": "あなたの音声コマンドの動作を声で伝えるのをやめます。チャットには引き続き表示されます。"
 }

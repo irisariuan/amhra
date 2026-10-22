@@ -525,10 +525,15 @@ a language per server would mean loading a recogniser per language, about
 ### Speaking
 
 With `VOICE_SPEECH` on, the bot says what a voice command does as it starts
-it ("Skipping.", "Playing bad guy.", "Volume 40 percent."), after the chime,
-over the music lowered to `VOICE_DUCK_VOLUME`. A command refused afterwards
-(nothing playing, another channel) says why in the chat. The phrases are the
-`VOICE_SAY_*` strings in `data/lang`, chosen in `lib/voice/announce.ts`.
+it ("Skipping.", "Volume 40 percent."), after the chime, over the music
+lowered to `VOICE_DUCK_VOLUME`. A command refused afterwards (nothing
+playing, another channel) says why in the chat. Play is said once its search
+has found something, with the video's title as found rather than as heard
+("Playing Billie Eilish - bad guy.", "Added … to the queue."), leaving out
+what is in brackets ("(Official Music Video)"); a search that finds nothing
+says nothing. The phrases are the `VOICE_SAY_*` strings in `data/lang`,
+chosen in `lib/voice/announce.ts`. Each member can turn it off for their own
+commands with `/voicefeedback enabled:false`.
 
 The model is Kokoro (`kokoro-multi-lang-v1_0`, fetched by
 `scripts/download-voice-models.sh --speech`) through sherpa-onnx, in
@@ -548,7 +553,7 @@ seconds there. So:
   change (`prepareSpeech`) when the sidecar starts. Any not yet saved is
   synthesised in the background and saved under `<cache-dir>/speech`; from
   then on it is read back, and saying it costs no model time at all.
-- **The rest when it is said.** A song name or a number is synthesised when
+- **The rest when it is said.** A title or a number is synthesised when
   the command comes, on the one speech thread, ahead of any preparing, and
   remembered (64 phrases) but not saved, so the store never grows past the
   fixed phrases. One that is not ready within 8s is not said.

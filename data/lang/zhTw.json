@@ -265,6 +265,16 @@
 					"description": "說出我的名字時,把你說的話貼在頻道"
 				}
 			}
+		},
+		"voicefeedback": {
+			"name": "語音回饋",
+			"description": "你下語音指令時,說出我正在做什麼",
+			"options": {
+				"enabled": {
+					"name": "啟用",
+					"description": "用語音說出你的語音指令做了什麼"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "不是想要的歌嗎？可以從下面選擇其他搜尋結果。",
@@ -284,8 +294,9 @@
 	"VOICE_TRANSCRIPT_LISTENING": "-# 🎙️ {user}:聆聽中…",
 	"VOICE_TRANSCRIPT_NOTHING": "-# 🎙️ {user}:沒有聽到內容",
 	"VOICE_TRANSCRIPT_UNMATCHED": "-# 🎙️ {user}:「{text}」· 不是指令",
-	"VOICE_SAY_PLAY": "播放{query}。",
-	"VOICE_SAY_PLAY_NEXT": "下一首播放{query}。",
+	"VOICE_SAY_PLAY": "播放{title}。",
+	"VOICE_SAY_PLAY_NEXT": "下一首播放{title}。",
+	"VOICE_SAY_PLAY_QUEUED": "已把{title}加入播放佇列。",
 	"VOICE_SAY_PAUSE": "已暫停。",
 	"VOICE_SAY_RESUME": "繼續播放。",
 	"VOICE_SAY_SKIP": "跳過。",
@@ -307,5 +318,7 @@
 	"VOICE_SAY_LYRICS": "正在找歌詞。",
 	"VOICE_SAY_RELOCATE": "跳到{position}。",
 	"TRANSCRIPT_ON": "從現在起,你說出我的名字後,我會把聽到的內容貼在頻道裡(在所有開啟語音指令的伺服器)。可用 `/transcript enabled:false` 關閉。",
-	"TRANSCRIPT_OFF": "我不會再貼出聽到你說的內容。"
+	"TRANSCRIPT_OFF": "我不會再貼出聽到你說的內容。",
+	"VOICE_FEEDBACK_ON": "從現在起,我會用語音說出你的語音指令做了什麼(在機器人能說話的地方)。可用 `/voicefeedback enabled:false` 關閉。",
+	"VOICE_FEEDBACK_OFF": "我不會再用語音說出你的語音指令做了什麼,聊天中仍會顯示。"
 }

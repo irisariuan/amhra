@@ -227,6 +227,14 @@
 					"description": "Post your words in the channel when you say my name"
 				}
 			}
+		},
+		"voicefeedback": {
+			"description": "Hear me say what I'm doing when you give a voice command",
+			"options": {
+				"enabled": {
+					"description": "Say aloud what your voice commands do"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "Not the right song? Pick another result below.",
@@ -246,8 +254,9 @@
 	"VOICE_TRANSCRIPT_LISTENING": "-# 🎙️ {user}: listening…",
 	"VOICE_TRANSCRIPT_NOTHING": "-# 🎙️ {user}: didn't catch anything",
 	"VOICE_TRANSCRIPT_UNMATCHED": "-# 🎙️ {user}: “{text}” · not a command",
-	"VOICE_SAY_PLAY": "Playing {query}.",
-	"VOICE_SAY_PLAY_NEXT": "Playing {query} next.",
+	"VOICE_SAY_PLAY": "Playing {title}.",
+	"VOICE_SAY_PLAY_NEXT": "Playing {title} next.",
+	"VOICE_SAY_PLAY_QUEUED": "Added {title} to the queue.",
 	"VOICE_SAY_PAUSE": "Paused.",
 	"VOICE_SAY_RESUME": "Resuming.",
 	"VOICE_SAY_SKIP": "Skipping.",
@@ -269,5 +278,7 @@
 	"VOICE_SAY_LYRICS": "Finding the lyrics.",
 	"VOICE_SAY_RELOCATE": "Jumping to {position}.",
 	"TRANSCRIPT_ON": "From now on, when you say my name, I'll post what I heard in the channel, in every server with voice commands on. Turn it off with `/transcript enabled:false`.",
-	"TRANSCRIPT_OFF": "I'll stop posting what I hear from you."
+	"TRANSCRIPT_OFF": "I'll stop posting what I hear from you.",
+	"VOICE_FEEDBACK_ON": "I'll say aloud what I do for your voice commands, where the bot speaks. Turn it off with `/voicefeedback enabled:false`.",
+	"VOICE_FEEDBACK_OFF": "I'll stop saying aloud what I do for your voice commands. The chat still shows it."
 }

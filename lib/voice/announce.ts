@@ -2,10 +2,12 @@ import type { Phrase } from "../../rust/amhra-sidecar/bindings/protocol";
 import { Language } from "../interaction";
 import { languageText } from "../language";
 import { MUSIC_COMMANDS, type VoiceIntent } from "./intent";
+import type { Found } from "./voiceInteraction";
 
 /**
  * What the bot says in the call when it acts on a voice command: "Skipping.",
- * "Playing bad guy.", "Volume 40 percent."
+ * "Volume 40 percent.", and for play the title of what the search found,
+ * "Playing Billie Eilish - bad guy.", once it has found it.
  *
  * The speech model reads English and Chinese, so a command in Chinese is
  * answered in Chinese and every other one in English. Most of what is said is
@@ -27,8 +29,6 @@ function phrase(intent: VoiceIntent): [string, Record<string, string | number>?]
 	const toggled = (base: string) =>
 		options.enabled === true ? `${base}_on` : options.enabled === false ? `${base}_off` : base;
 	switch (intent.command) {
-		case "play":
-			return [options.next === true ? "voice_say_play_next" : "voice_say_play", { query: intent.query }];
 		case "skip":
 			return typeof options.amount === "number" && options.amount > 1
 				? ["voice_say_skip_amount", { amount: options.amount }]
@@ -49,11 +49,36 @@ function phrase(intent: VoiceIntent): [string, Record<string, string | number>?]
 	}
 }
 
-/** What to say for `intent`, and the language to say it in. */
-export function announcement(intent: VoiceIntent): Phrase {
+/**
+ * What to say as `intent` starts, and the language to say it in. Nothing for
+ * play, which is said when its search has found something (`foundAnnouncement`).
+ */
+export function announcement(intent: VoiceIntent): Phrase | null {
+	if (intent.command === "play") return null;
 	const { language, code } = spokenLanguage(intent.language);
 	const [id, replace] = phrase(intent);
 	return { text: languageText(id, language, replace), language: code };
+}
+
+/** What to say when a play command's search found `found`. */
+export function foundAnnouncement(found: Found, language: Language): Phrase {
+	const spoken = spokenLanguage(language);
+	const id = found.next ? "voice_say_play_next" : found.queued ? "voice_say_play_queued" : "voice_say_play";
+	return { text: languageText(id, spoken.language, { title: spokenTitle(found.title) }), language: spoken.code };
+}
+
+/**
+ * A video's title as it is worth saying: without what is in brackets ("(Official
+ * Music Video)", "[MV]", "【中字】") or after a bar, unless that leaves nothing.
+ */
+export function spokenTitle(title: string) {
+	const trimmed = title
+		.replace(/\([^)]*\)|\[[^\]]*\]|【[^】]*】|（[^）]*）/gu, " ")
+		.replace(/\s+[|｜].*$/u, "")
+		.replace(/\s+/gu, " ")
+		.replace(/[\s\-–—:,]+$/u, "")
+		.trim();
+	return trimmed || title.trim();
 }
 
 /** Every phrase that is always the same, in each language it is spoken in. */
@@ -61,6 +86,7 @@ export function prepared(): Phrase[] {
 	const ids = new Set<string>();
 	for (const command of MUSIC_COMMANDS) {
 		const base = `voice_say_${command}`;
+		if (command === "play") continue;
 		ids.add(base);
 		if (command === "loop" || command === "autoskipnonmusic") {
 			ids.add(`${base}_on`);

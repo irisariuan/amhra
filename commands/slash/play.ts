@@ -20,6 +20,7 @@ import {
 } from "../../lib/voice/core";
 import { sendInteractionSkipMessage } from "../../lib/voice/segment";
 import { sendSearchAlternatives } from "../../lib/voice/searchPick";
+import { reportFound } from "../../lib/voice/voiceInteraction";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -106,6 +107,9 @@ export default {
 		// find if there is cache, cache is saved in YoutubeVideo form
 		// resultUrl could be a video or playlist
 		let resultUrl: string;
+		// What was found, for a voice command to say. A link to one video has
+		// no title until it is loaded, so it is said only if it starts now.
+		let foundTitle: string | null = null;
 		// Set only when the input was a free-text search, so the user can be
 		// offered the other hits once something is already playing
 		let alternatives: {
@@ -142,6 +146,7 @@ export default {
 				next ? 0 : undefined,
 			);
 			resultUrl = playlist.url;
+			foundTitle = playlist.title;
 		} else if (isVideo(input)) {
 			resultUrl = input;
 			player.addToQueue(resultUrl, false, next ? 0 : undefined);
@@ -154,6 +159,7 @@ export default {
 			const cached = client.cache.get(input);
 			if (cached?.isVideo()) {
 				resultUrl = cached.value.url;
+				foundTitle = cached.value.title;
 			} else {
 				const query = await searchYouTube(input);
 				if (!query.length) {
@@ -163,10 +169,15 @@ export default {
 				}
 				client.cache.set(input, query[0], "video");
 				resultUrl = query[0].url;
+				foundTitle = query[0].title;
 				searchResults = query;
 			}
 			player.addToQueue(resultUrl, false, next ? 0 : undefined);
 			alternatives = { results: searchResults, chosenUrl: resultUrl };
+		}
+
+		if (foundTitle) {
+			reportFound(interaction, { title: foundTitle, queued: player.isPlaying, next });
 		}
 
 		// start playing if the player is not playing
@@ -186,6 +197,9 @@ export default {
 					);
 				}
 				player.playResource(data);
+				if (!foundTitle) {
+					reportFound(interaction, { title: data.title, queued: false, next });
+				}
 
 				dcb.log(`Playing Searched URL ${videoUrl}`);
 				await interaction.editReply({

@@ -8,6 +8,11 @@ export interface UserSetting {
 	 * what they said in the channel.
 	 */
 	showTranscript?: boolean;
+	/**
+	 * Hear the bot say what it does for this user's voice commands, where the
+	 * bot speaks at all. On unless they turn it off.
+	 */
+	spokenAnswers?: boolean;
 }
 
 const store = settingStore<UserSetting>(`${process.cwd()}/data/userSetting.json`);

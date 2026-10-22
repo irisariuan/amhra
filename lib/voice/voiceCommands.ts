@@ -12,7 +12,7 @@ import { languageText, parseLocale } from "../language";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { userSetting } from "../userSetting";
-import { announcement, prepared } from "./announce";
+import { announcement, foundAnnouncement, prepared } from "./announce";
 import { readIntent } from "./intentModel";
 import { getNativeConnection } from "./native";
 import { type SidecarEvent, sidecar } from "./sidecar";
@@ -206,12 +206,17 @@ async function onUtterance(
 	);
 	// Said as it starts, not once it is done: "Leaving the channel" after
 	// leaving would never be heard. A command that is then refused says why
-	// in the chat.
-	if (speaksAnswers()) sidecar().send({ type: "speak", guildId, ...announcement(intent) });
+	// in the chat. Play is said once its search has found something.
+	const speaks = speaksAnswers() && userSetting(userId).spokenAnswers !== false;
+	const said = speaks ? announcement(intent) : null;
+	if (said) sidecar().send({ type: "speak", guildId, ...said });
 	await command.execute({
 		interaction: voiceInteraction(member, channel, intent, {
 			message: waiting,
 			transcript: showTranscript ? text : undefined,
+			onFound: speaks
+				? (found) => sidecar().send({ type: "speak", guildId, ...foundAnnouncement(found, intent.language) })
+				: undefined,
 		}),
 		client,
 		language: intent.language,

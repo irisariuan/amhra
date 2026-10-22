@@ -238,6 +238,15 @@ describe("per-user transcripts", () => {
 		setUserSetting("42", { showTranscript: false }, file);
 		expect(userSetting("42", file).showTranscript).toBe(false);
 	});
+
+	test("spoken answers stay on until someone turns them off, apart from transcripts", () => {
+		dir = mkdtempSync(join(tmpdir(), "amhra-user-"));
+		const file = join(dir, "userSetting.json");
+		expect(userSetting("42", file).spokenAnswers).toBeUndefined();
+		setUserSetting("42", { showTranscript: true }, file);
+		setUserSetting("42", { spokenAnswers: false }, file);
+		expect(userSetting("42", file)).toEqual({ showTranscript: true, spokenAnswers: false });
+	});
 });
 
 describe("sidecar flags", () => {
