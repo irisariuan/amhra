@@ -52,6 +52,9 @@ pub struct SherpaConfig {
 	/// 294ms on one thread, 153ms on two, 83ms on four. Two leaves the cores
 	/// to the audio threads, which must not miss a 20ms tick.
 	pub recogniser_threads: i32,
+	/// A fine-tuned keyword spotter to use instead of the stock one: a
+	/// directory laid out by `training/wake/export.sh`.
+	pub spotter: Option<PathBuf>,
 }
 
 impl SherpaConfig {
@@ -63,6 +66,7 @@ impl SherpaConfig {
 			keyword_threshold: 0.25,
 			vad_threshold: 0.5,
 			recogniser_threads: 2,
+			spotter: None,
 		}
 	}
 }
@@ -93,6 +97,26 @@ impl ModelPaths {
 			vad: dir.join(VAD_FILE),
 			stt_model: stt.join("model.int8.onnx"),
 			stt_tokens: stt.join("tokens.txt"),
+		}
+	}
+
+	/// Swap in a fine-tuned spotter, as `training/wake/export.sh` lays one
+	/// out: `{encoder,decoder,joiner}.int8.onnx`, `tokens.txt`, `bpe.model`.
+	pub fn with_spotter(mut self, dir: &Path) -> Self {
+		self.kws_encoder = dir.join("encoder.int8.onnx");
+		self.kws_decoder = dir.join("decoder.int8.onnx");
+		self.kws_joiner = dir.join("joiner.int8.onnx");
+		self.kws_tokens = dir.join("tokens.txt");
+		self.kws_bpe = dir.join("bpe.model");
+		self
+	}
+
+	/// The paths `config` asks for.
+	pub fn of(config: &SherpaConfig) -> Self {
+		let paths = Self::under(&config.models);
+		match &config.spotter {
+			Some(dir) => paths.with_spotter(dir),
+			None => paths,
 		}
 	}
 
@@ -129,7 +153,7 @@ fn read(path: &Path) -> Result<Vec<u8>, ModelError> {
 
 /// Load everything: the per-speaker model factory and the recogniser.
 pub fn load(config: &SherpaConfig) -> Result<(Arc<SherpaModels>, SenseVoice), ModelError> {
-	let paths = ModelPaths::under(&config.models);
+	let paths = ModelPaths::of(config);
 	paths.check()?;
 	let models = SherpaModels::load(&paths, config)?;
 	let recogniser = SenseVoice::load(&paths, config.recogniser_threads)?;
@@ -431,6 +455,18 @@ mod tests {
 		let ours: Vec<&str> = lines.lines().map(|line| line.split(" :").next().unwrap()).collect();
 		let theirs: Vec<&str> = reference.lines().map(str::trim).filter(|line| !line.is_empty()).collect();
 		assert_eq!(ours, theirs);
+	}
+
+	#[test]
+	fn a_fine_tuned_spotter_replaces_only_the_spotter() {
+		let mut config = SherpaConfig::new(PathBuf::from("/models"), String::new());
+		config.spotter = Some(PathBuf::from("/trained"));
+		let paths = ModelPaths::of(&config);
+		for path in [&paths.kws_encoder, &paths.kws_decoder, &paths.kws_joiner, &paths.kws_tokens, &paths.kws_bpe] {
+			assert!(path.starts_with("/trained"), "{}", path.display());
+		}
+		assert_eq!(paths.kws_encoder, Path::new("/trained/encoder.int8.onnx"));
+		assert!(paths.stt_model.starts_with("/models") && paths.vad.starts_with("/models"));
 	}
 
 	#[test]

@@ -36,3 +36,6 @@ rust/target/
 
 # Voice-command models: scripts/download-voice-models.sh
 /models/
+
+# Wake-word training environment, data and checkpoints
+/training/wake/work/

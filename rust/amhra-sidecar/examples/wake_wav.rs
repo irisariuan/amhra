@@ -13,7 +13,8 @@
 //! For tuning: `--threshold` and `--boost` override the keyword defaults
 //! without editing the keywords file, `--keywords` points at another list, and
 //! `--preroll-ms` moves the start of the window and `--recogniser-threads` sets
-//! how many threads speech recognition gets.
+//! how many threads speech recognition gets. `--wake-model <dir>` tries a
+//! fine-tuned spotter from `training/wake/export.sh`.
 //! `--spell` prints the keywords as the spotter will read them, word pieces and
 //! all, and exits.
 //! `--whole` also transcribes each file entire, ungated, for comparison.
@@ -42,6 +43,7 @@ struct Args {
 	threshold: Option<f32>,
 	boost: Option<f32>,
 	threads: Option<i32>,
+	spotter: Option<PathBuf>,
 	tail_ms: u32,
 	verbose: bool,
 	spell: bool,
@@ -58,6 +60,7 @@ fn args() -> Args {
 		threshold: None,
 		boost: None,
 		threads: None,
+		spotter: None,
 		tail_ms: 1500,
 		verbose: false,
 		spell: false,
@@ -75,6 +78,7 @@ fn args() -> Args {
 			"--threshold" => args.threshold = Some(value().parse().expect("--threshold takes a number")),
 			"--boost" => args.boost = Some(value().parse().expect("--boost takes a number")),
 			"--recogniser-threads" => args.threads = Some(value().parse().expect("--recogniser-threads takes a number")),
+			"--wake-model" => args.spotter = Some(value().into()),
 			"--tail-ms" => args.tail_ms = value().parse().expect("--tail-ms takes a number"),
 			"--verbose" => args.verbose = true,
 			"--spell" => args.spell = true,
@@ -149,9 +153,10 @@ fn main() {
 	if let Some(threads) = args.threads {
 		config.recogniser_threads = threads;
 	}
+	config.spotter = args.spotter.clone();
 
 	if args.spell {
-		let kws = sherpa::ModelPaths::under(&config.models);
+		let kws = sherpa::ModelPaths::of(&config);
 		let read = |path: &std::path::Path| std::fs::read(path).unwrap_or_else(|error| panic!("{}: {error}", path.display()));
 		let vocabulary = voice_commands::keywords::Vocabulary::from_sentencepiece(&read(&kws.kws_bpe)).unwrap();
 		let tokens = voice_commands::keywords::token_set(&String::from_utf8_lossy(&read(&kws.kws_tokens)));

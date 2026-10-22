@@ -417,6 +417,23 @@ Korean from the novelty voices; Yuna's were good, Eddy's and Flo's gibberish.
 Short windows are sometimes taken for the wrong language. Pinning the language
 per guild is a phase C option, since SenseVoice accepts one.
 
+**A wake model trained on the name.** Recall above is capped by the model, so
+`training/wake/` fine-tunes the same spotter on recordings of the name
+(icefall's own recipe, on a CPU, in minutes) and the sidecar loads the result
+with `--wake-model models/voice/kws-emhara --wake-keywords
+training/wake/keywords.txt`. On one member's real Discord recording, cut into
+takes with every other take held out of training:
+
+| | held-out real takes | false wakes in 32 minutes of unseen negatives |
+| --- | --- | --- |
+| stock spotter, `M HARA` | 1/11 | 0 |
+| fine-tuned, threshold 0.25 | **9/11** | 3 (5.6 per hour) |
+
+Ten training takes from one speaker is very little, and training longer
+overfits: later epochs heard every take but woke 25–80 times an hour on
+sentences they had not seen. Recordings from more members are what would
+improve it; `training/wake/README.md` has the steps and every number.
+
 **Not measured:**
 
 - Real voices, real microphones and the Opus round-trip. Every number above is

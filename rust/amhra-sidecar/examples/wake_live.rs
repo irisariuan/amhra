@@ -12,7 +12,8 @@
 //! with `DEV_TOKEN` in the environment, run from the repository root so the
 //! default `--models models/voice` and `--keywords data/wake-keywords.txt`
 //! resolve. Then say "em-ha-ra, skip this song" in the channel. `--threshold`
-//! overrides the keyword threshold for a session of tuning.
+//! overrides the keyword threshold for a session of tuning, and `--wake-model`
+//! loads a fine-tuned spotter (see training/wake).
 
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -43,10 +44,11 @@ struct Args {
 	models: std::path::PathBuf,
 	keywords: std::path::PathBuf,
 	threshold: Option<f32>,
+	spotter: Option<std::path::PathBuf>,
 }
 
 fn args() -> Args {
-	let (mut token, mut guild, mut channel, mut threshold) = (None, None, None, None);
+	let (mut token, mut guild, mut channel, mut threshold, mut spotter) = (None, None, None, None, None);
 	let mut seconds = 300;
 	let mut models = std::path::PathBuf::from("models/voice");
 	let mut keywords = std::path::PathBuf::from("data/wake-keywords.txt");
@@ -61,6 +63,7 @@ fn args() -> Args {
 			"--models" => models = value().into(),
 			"--keywords" => keywords = value().into(),
 			"--threshold" => threshold = Some(value().parse().expect("--threshold takes a number")),
+			"--wake-model" => spotter = Some(value().into()),
 			other => panic!("unknown option {other}"),
 		}
 	}
@@ -76,6 +79,7 @@ fn args() -> Args {
 		models,
 		keywords,
 		threshold,
+		spotter,
 	}
 }
 
@@ -271,6 +275,7 @@ async fn main() {
 	if let Some(threshold) = args.threshold {
 		config.keyword_threshold = threshold;
 	}
+	config.spotter = args.spotter.clone();
 	let loading = Instant::now();
 	let (models, recogniser) = sherpa::load(&config).unwrap_or_else(|error| panic!("{error}"));
 	println!("models loaded in {:?}", loading.elapsed());

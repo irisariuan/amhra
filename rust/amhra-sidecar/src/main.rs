@@ -27,7 +27,9 @@
 //!   `models/voice`;
 //! - `--wake-keywords <file>`: the wake phrases, default
 //!   `data/wake-keywords.txt`;
-//! - `--recogniser-threads <n>`: threads for speech recognition, default 2.
+//! - `--recogniser-threads <n>`: threads for speech recognition, default 2;
+//! - `--wake-model <dir>`: a fine-tuned keyword spotter from
+//!   `training/wake/export.sh`, instead of the stock one.
 //!
 //! Both relative to the directory the sidecar is started in. A model that will
 //! not load is reported once as an `Error` event and the sidecar carries on
@@ -669,6 +671,7 @@ fn start_voice_commands(events: &Sender<Event>) -> Option<Arc<Engine>> {
 			if let Some(threads) = option("--recogniser-threads").and_then(|threads| threads.parse().ok()) {
 				config.recogniser_threads = threads;
 			}
+			config.spotter = option("--wake-model").map(Into::into);
 			sherpa::load(&config).map_err(|error| error.to_string())
 		});
 	let (models, recogniser) = match loaded {
