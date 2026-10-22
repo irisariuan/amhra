@@ -73,9 +73,11 @@ async function onUtterance(
 	if (!guild) return;
 
 	const intent = parseVoiceCommand(text, lang);
-	// What was said stays out of the log, as it does in the sidecar's.
+	// What was said stays out of the log, as it does in the sidecar's, unless
+	// the owner is tuning the matching and asked for it.
+	const heard = readSetting().VOICE_LOG_TRANSCRIPTS ? `: [${lang ?? "?"}] ${JSON.stringify(text)}` : "";
 	if (!intent) {
-		dcb.log(`(Guild ID: ${guildId}) Heard the name, then no command`);
+		dcb.log(`(Guild ID: ${guildId}) Heard the name, then no command${heard}`);
 		return;
 	}
 	const member = await guild.members.fetch(userId).catch(() => null);
@@ -90,7 +92,7 @@ async function onUtterance(
 	}
 
 	dcb.log(
-		`(Guild ID: ${guildId}) ${member.user.tag} said voice command ${intent.command}`,
+		`(Guild ID: ${guildId}) ${member.user.tag} said voice command ${intent.command}${heard}`,
 	);
 	await command.execute({
 		interaction: voiceInteraction(member, channel, intent),

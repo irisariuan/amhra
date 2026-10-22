@@ -461,6 +461,7 @@ starts:
 | `VOICE_WAKE_MODEL` | `models/voice/kws-emhara` | |
 | `VOICE_WAKE_KEYWORDS` | `training/wake/keywords.txt` | |
 | `VOICE_COLLECT_WAKE_CLIPS` | **on** | save wake clips from servers that turned voice commands on |
+| `VOICE_LOG_TRANSCRIPTS` | off | log what was heard after the name, for tuning the matching |
 
 - **Per-server opt-in.** `/voicecommands enabled:true`, by default for members
   with Manage Server, kept in `data/guildSetting.json` (gitignored). It takes

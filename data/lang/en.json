@@ -363,14 +363,21 @@
 			"going",
 			"there",
 			"thing",
-			"tune"
+			"tune",
+			"content",
+			"part",
+			"parts",
+			"section",
+			"segment",
+			"stuff"
 		],
 		"fuzzy": [
 			"play",
 			"pause",
 			"resume",
 			"skip",
-			"stop"
+			"stop",
+			"skipnonmusic"
 		],
 		"verbs": {
 			"play": [
@@ -408,6 +415,17 @@
 				"next",
 				"next song",
 				"next one"
+			],
+			"skipnonmusic": [
+				"skip non music",
+				"skip nonmusic",
+				"skip none music",
+				"skip non musical",
+				"skip the non music",
+				"skip the nonmusic",
+				"skip no music",
+				"skip intro",
+				"skip the intro"
 			],
 			"stop": [
 				"stop",

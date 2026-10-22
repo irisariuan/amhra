@@ -106,4 +106,9 @@ export interface Setting {
 	 * retraining the wake model. On unless set to false; members are told.
 	 */
 	VOICE_COLLECT_WAKE_CLIPS?: boolean;
+	/**
+	 * Log what was heard after the name, for tuning the command matching. Off
+	 * unless set: it writes what people said into the bot's log.
+	 */
+	VOICE_LOG_TRANSCRIPTS?: boolean;
 }

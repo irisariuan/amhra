@@ -48,6 +48,35 @@ describe("what is left of the name is stripped", () => {
 	});
 });
 
+describe("skipping the part of a video that is not music", () => {
+	test.each([
+		// What was said, twice, in the live test of this phase.
+		["Amhra, skip non-music content", "skipnonmusic"],
+		["Empower skip non music content.", "skipnonmusic"],
+		["hammer skip the nonmusic part", "skipnonmusic"],
+		["Em, skip none music", "skipnonmusic"],
+		["skip the intro", "skipnonmusic"],
+		// Plain skip is still skip.
+		["skip this song", "skip"],
+	])("%p", (heard, expected) => {
+		expect(command(heard)).toBe(expected);
+	});
+
+	test.each([
+		["音楽以外をスキップして", "ja"],
+		["音楽以外の部分をスキップ", "ja"],
+		["음악 아닌 부분 건너뛰어", "ko"],
+		["跳过非音乐部分", "zh"],
+		["跳過前奏", "zh"],
+	])("%p", (heard, lang) => {
+		expect(command(heard, lang)).toBe("skipnonmusic");
+	});
+
+	test("but not skipping non-music for a reason", () => {
+		expect(command("skip non music content tomorrow")).toBeNull();
+	});
+});
+
 describe("song requests keep the words after the verb", () => {
 	test.each([
 		["play Bohemian Rhapsody", "play: Bohemian Rhapsody"],

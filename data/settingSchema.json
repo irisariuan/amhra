@@ -154,6 +154,10 @@
    "type": "boolean",
    "default": true,
    "description": "Save the second or so of audio each time the bot hears its name, in servers with voice commands on, to data/recordings/wake-clips for retraining the wake model. Members are told when it is on. Default on. Restart to apply"
+  },
+  "VOICE_LOG_TRANSCRIPTS": {
+   "type": "boolean",
+   "description": "Log what was heard after the bot's name, for tuning the command matching. Off by default: it writes what people said into the log"
   }
  },
  "required": [

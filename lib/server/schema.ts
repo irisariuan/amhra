@@ -241,5 +241,6 @@ export const GlobalSettingSchema = z
 		VOICE_WAKE_MODEL: z.string().optional(),
 		VOICE_WAKE_KEYWORDS: z.string().optional(),
 		VOICE_COLLECT_WAKE_CLIPS: z.boolean().optional(),
+		VOICE_LOG_TRANSCRIPTS: z.boolean().optional(),
 	})
 	.passthrough();

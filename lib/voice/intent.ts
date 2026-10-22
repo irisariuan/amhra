@@ -19,6 +19,8 @@ import { languageVoice, type VoiceVocabulary } from "../language";
  *   matched character by character with spaces ignored, which suits Japanese
  *   and Chinese and, with particles stripped, Korean.
  * - `wake`: how the name, or its tail, comes out at the start of the text.
+ *   In the character languages, nothing one character long: it would be
+ *   stripped off the front of a word ("음" from "음악").
  * - `fillers`: words allowed between the name and the verb ("please").
  * - `particles`: grammar around the object ("を", "를", "吧"), stripped from
  *   what is left once the verb is found. Character languages only.
@@ -36,6 +38,7 @@ export const VOICE_COMMANDS = [
 	"pause",
 	"resume",
 	"skip",
+	"skipnonmusic",
 	"stop",
 	"disconnect",
 ] as const;
