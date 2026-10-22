@@ -384,8 +384,8 @@ recogniser calls the C API directly. That is the one `unsafe` block, in
   the lag worked out from them is nonsense. A lag outside 0.1–1s is taken to
   be the typical 0.45s instead, so later wakes on a stream start their window
   in the right place too. When the spotter puts the end early, a scrap of the
-  name reaches the recogniser anyway ("Ehara play expectations."); the bot's
-  matching allows for that.
+  name reaches the recogniser anyway ("Ehara play expectations."); the model
+  reading the command, and the fallback, allow for that.
 - **Padding.** SenseVoice drops the first syllables of audio that starts
   mid-speech. Measured: a whole clip came back as "Amra, skip this song.", but
   the gate's window of it came back as "Sip this song.". Each window gets 300ms
@@ -542,7 +542,7 @@ starts:
 | `VOICE_WAIT_FOR_COMMAND_MS` | `2500` | how long after the name to wait for the command; a pause for the chime does not end it within this |
 | `VOICE_END_SILENCE_MS` | `500` | silence that ends a command; all of it is added to the wait for an answer |
 | `VOICE_MAX_COMMAND_MS` | `8000` | the longest command |
-| `VOICE_INTENT_MODEL_URL` | empty | an OpenAI-compatible server whose model reads every command; empty, the word matching does |
+| `VOICE_INTENT_MODEL_URL` | empty | an OpenAI-compatible server whose model reads every command; empty, only command names said first are understood |
 | `VOICE_INTENT_MODEL` | `mlx-community/Qwen3-4B-4bit` | the model that server uses |
 
 - **Per-server opt-in.** `/voicecommands enabled:true`, by default for members
@@ -553,16 +553,7 @@ starts:
   listens for its name, what happens to what it hears, and how to turn it
   off. Members who join later are told too, at most every five minutes. With
   wake clips on, the notice says they are kept.
-- **Reading the command** (`lib/voice/intent.ts`). The verb has to come
-  first, after nothing but the tail of the name ("Empower", "hammer", "I'm,"),
-  fillers ("please") or whatever the recogniser put before a comma; only
-  words about the current song ("this song", "it") may follow it. Verbs may
-  be a letter off ("pay", "ski"), but a misheard play only resumes; it never
-  searches. Japanese, Korean and Chinese are matched by characters, verb
-  first or last. The words are in each `data/lang/*.json` under `voice`.
-  `test/voiceIntent.test.ts` holds the live transcripts and the near misses
-  that must not trigger.
-- **Or a model reads it** (`lib/voice/intentModel.ts`). With
+- **Reading the command** (`lib/voice/intentModel.ts`). With
   `VOICE_INTENT_MODEL_URL` set, every transcript goes to a language model on
   the same machine, which answers with any of the bot's music commands —
   play, pause, resume, skip, skipnonmusic, autoskipnonmusic, stop,
@@ -570,8 +561,7 @@ starts:
   relocate — with its options, or none. It is told each command's options
   from the slash command itself, and what it gives back is held to them:
   an option of the wrong type or out of range is left out, a command missing
-  a required one is not run. If it does not answer within 3s, the word
-  matching does. To run one on a Mac:
+  a required one is not run. To run one on a Mac:
 
   ```bash
   uv run --with mlx-lm mlx_lm.server --model mlx-community/Qwen3-4B-4bit --port 8085
@@ -588,15 +578,23 @@ starts:
   "display the queue", "what song is this" and "Mhar, that volume is 50%."
   ran queue, nowplaying and volume.
 
-  It understands requests the word lists do not: of 9 new phrasings ("turn it
-  off", "get out of the call", "I want to hear bad guy by Billie Eilish",
-  "A play expectations by Olro Drigo."), it read every one the word lists
-  read and 5 they could not, and left 3 bits of chatter alone. It is worse at
-  what the recogniser garbles: on 82 labelled live transcripts and near
-  misses, it got 58 right where the word lists got 73, took "live this song"
-  and 下一首歌是什么 ("what is the next song") for commands, and read "play
-  the song" as a search for a song called that. Qwen3 1.7B got 47, and a 27B
-  model 69 at 343ms and 15GB.
+  It understands requests said any way: of 9 new phrasings ("turn it off",
+  "get out of the call", "I want to hear bad guy by Billie Eilish", "A play
+  expectations by Olro Drigo."), it read all but 2, and left 3 bits of
+  chatter alone. What the recogniser garbles it gets wrong more often: on 82
+  labelled live transcripts and near misses it got 58 right, where per-language
+  word lists of names, fillers and mishearings (since removed) got 73. It took
+  "live this song" and 下一首歌是什么 ("what is the next song") for commands,
+  and read "play the song" as a search for a song called that. Qwen3 1.7B got
+  47, and a 27B model 69 at 343ms and 15GB.
+- **When there is no model** (`lib/voice/intent.ts`): no URL set, or no
+  answer within 3s. A command's own slash command name, in any of the bot's
+  languages ("skip", "スキップ", "일시정지", "暫停"), said first, after at most
+  two words of whatever became of the bot's name. For play the rest is the
+  song, and nothing means carry on. It knows play, pause, resume, skip,
+  skipnonmusic, stop and disconnect, nothing misheard, and no simplified
+  Chinese: the names are traditional, and the recogniser mostly writes
+  simplified.
 - **Answering the name.** The moment the spotter hears it, the guild's audio
   thread mixes in a half-second chime (two rising sine notes, synthesised in
   `wake_feedback.rs`), over the music or alone if nothing is playing, and

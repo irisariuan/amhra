@@ -224,7 +224,7 @@
   "VOICE_INTENT_MODEL_URL": {
    "type": "string",
    "default": "",
-   "description": "An OpenAI-compatible server on this machine (mlx_lm.server, LM Studio, Ollama), as http://host:port/v1, whose language model decides what each voice command asks for. Empty: the built-in word matching decides, as it also does whenever the server does not answer within 3 seconds"
+   "description": "An OpenAI-compatible server on this machine (mlx_lm.server, LM Studio, Ollama), as http://host:port/v1, whose language model decides what each voice command asks for. Empty, or when the server does not answer within 3 seconds: only a command's own name said first (\"skip\", \"play <song>\") is understood"
   },
   "VOICE_INTENT_MODEL": {
    "type": "string",

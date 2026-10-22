@@ -20,21 +20,21 @@ import {
  *
  * When `VOICE_INTENT_MODEL_URL` points at an OpenAI-compatible server
  * (`mlx_lm.server`, LM Studio, Ollama), every transcript goes to it and its
- * answer decides what runs. It reads requests the word lists do not know
+ * answer decides what runs. It reads requests said any way at all
  * ("can you put on something by Olivia Rodrigo", "turn it down to 50") and
- * may use any command about the music, with its options. It is also wrong in
- * ways the word lists are not: it can take chatter for a command. Its answer
+ * may use any command about the music, with its options. It can also take
+ * chatter for a command. Its answer
  * is held to those commands and to each option's type and range, and the
  * command's own handler makes every other check, so the worst it can do is
  * what a typed command could.
  *
- * Unset, or when the server does not answer in time, the word matching in
- * `intent.ts` reads the command as before.
+ * Unset, or when the server does not answer in time, the plain fallback in
+ * `intent.ts` reads the command: a command's own name, said first.
  */
 
 export const DEFAULT_INTENT_MODEL = "mlx-community/Qwen3-4B-4bit";
 
-/** Longer than this and the word matching answers instead. */
+/** Longer than this and the fallback answers instead. */
 const ANSWER_WITHIN_MS = 3000;
 
 type Lookup = (name: string) => Command<SlashCommandBuilder> | undefined;
@@ -144,8 +144,8 @@ Examples:
 
 export type IntentReading = {
 	intent: VoiceIntent | null;
-	/** Who decided: the model, or the word matching. */
-	by: "model" | "words";
+	/** Who decided: the model, or the fallback. */
+	by: "model" | "fallback";
 };
 
 /** What someone asked for, read by the model when there is one. */
@@ -164,7 +164,7 @@ export async function readIntent(
 			return { intent: intentFrom(answer, language, lookup), by: "model" };
 		}
 	}
-	return { intent: parseVoiceCommand(text, lang), by: "words" };
+	return { intent: parseVoiceCommand(text, lang), by: "fallback" };
 }
 
 /** The model's answer, or undefined when there was none to be had. */
@@ -197,7 +197,7 @@ async function askModel(
 		if (typeof content !== "string") throw new Error("no answer in the reply");
 		return content;
 	} catch (error) {
-		globalApp.warn(`Voice command model at ${url} did not answer, matching words instead: ${error}`);
+		globalApp.warn(`Voice command model at ${url} did not answer, falling back to command names: ${error}`);
 		return undefined;
 	}
 }

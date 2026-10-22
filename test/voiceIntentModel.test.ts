@@ -10,7 +10,7 @@ import {
 
 /**
  * A local model deciding what a voice command asks for, held to the bot's
- * music commands and their options, with the word matching behind it when
+ * music commands and their options, with the plain fallback behind it when
  * the model is not there.
  */
 
@@ -169,7 +169,7 @@ describe("who reads the command", () => {
 		});
 	});
 
-	test("the model's no is final, even where the words would match", async () => {
+	test("the model's no is final, even where the fallback would match", async () => {
 		answering('{"command": "none"}');
 		const reading = await readIntent("stop talking about it, skip school", "en", lookup, MODEL);
 		expect(reading).toEqual({ intent: null, by: "model" });
@@ -181,26 +181,26 @@ describe("who reads the command", () => {
 		expect(reading.intent?.language).toBe(Language.Japanese);
 	});
 
-	test("the words, when the model is not set up", async () => {
+	test("the fallback, when the model is not set up", async () => {
 		const asked = answering('{"command": "stop"}');
 		const reading = await readIntent("skip this song", "en", lookup, {});
 		expect(reading).toEqual({
 			intent: { command: "skip", language: Language.English },
-			by: "words",
+			by: "fallback",
 		});
 		expect(asked).toHaveLength(0);
 	});
 
-	test("the words, when the server is down or says nothing useful", async () => {
+	test("the fallback, when the server is down or says nothing useful", async () => {
 		globalThis.fetch = (async () => {
 			throw new TypeError("fetch failed");
 		}) as unknown as typeof fetch;
-		expect((await readIntent("skip this song", "en", lookup, MODEL)).by).toBe("words");
+		expect((await readIntent("skip this song", "en", lookup, MODEL)).by).toBe("fallback");
 
 		globalThis.fetch = (async () => new Response("busy", { status: 503 })) as unknown as typeof fetch;
 		expect((await readIntent("pause", "en", lookup, MODEL)).intent?.command).toBe("pause");
 
 		globalThis.fetch = (async () => Response.json({ choices: [] })) as unknown as typeof fetch;
-		expect((await readIntent("pause", "en", lookup, MODEL)).by).toBe("words");
+		expect((await readIntent("pause", "en", lookup, MODEL)).by).toBe("fallback");
 	});
 });

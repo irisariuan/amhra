@@ -26,24 +26,9 @@ export interface CommandLocale {
 	options?: Record<string, CommandLocale>;
 }
 
-/**
- * How a language says the voice commands, from the `voice` block of its file.
- * Read by `lib/voice/intent.ts`, which documents each field.
- */
-export interface VoiceVocabulary {
-	words?: boolean;
-	wake: string[];
-	fillers: string[];
-	particles?: string[];
-	suffixes?: string[];
-	current: string[];
-	fuzzy?: string[];
-	verbs: Record<string, string[]>;
-}
-
 function loadLanguage(
 	lang: Language,
-): { commands: Record<string, CommandLocale>; voice?: VoiceVocabulary } & Record<
+): { commands: Record<string, CommandLocale> } & Record<
 	string,
 	string
 > {
@@ -111,9 +96,4 @@ export function parseLocale(locale: Locale): Language {
 	if (locale === Locale.Japanese) return Language.Japanese;
 	if (locale === Locale.Korean) return Language.Korean;
 	return Language.Unsupported;
-}
-
-/** The voice-command vocabulary of a language, if its file has one. */
-export function languageVoice(language: Language): VoiceVocabulary | null {
-	return languages[language]?.voice ?? null;
 }

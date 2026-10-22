@@ -169,7 +169,7 @@ async function onUtterance(
 	// What was said stays out of the log, as it does in the sidecar's, unless
 	// the owner is tuning the matching and asked for it.
 	const heard = readSetting().VOICE_LOG_TRANSCRIPTS
-		? `: [${lang ?? "?"}] ${JSON.stringify(text)} (read by the ${by === "model" ? "model" : "word matching"})`
+		? `: [${lang ?? "?"}] ${JSON.stringify(text)} (read by the ${by})`
 		: "";
 	const command = intent && lookup(intent.command);
 	const channel = replyChannel(client, guild, member);
