@@ -25,6 +25,7 @@ import {
 	nativeFetchReady,
 } from "./nativeFetch";
 import { nativeNoCache, nativeVoiceActive } from "./native";
+import { stopIntentServer } from "./intentServer";
 import { stopSidecar } from "./sidecar";
 
 if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
@@ -69,6 +70,8 @@ async function closeAllStreams() {
 	// The sidecar is a child process: without this it survives the bot and
 	// keeps holding its voice connections open.
 	stopSidecar();
+	// Started detached, so it too would outlive the bot.
+	stopIntentServer();
 	for (const [id, stream] of streams) {
 		if (stream.rawStream?.destroyed) continue;
 		dcb.log(`Killing stream: ${id}`);

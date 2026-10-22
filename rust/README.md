@@ -670,7 +670,8 @@ starts:
 | `VOICE_END_SILENCE_MS` | `500` | silence that ends a command; all of it is added to the wait for an answer |
 | `VOICE_MAX_COMMAND_MS` | `8000` | the longest command |
 | `VOICE_INTENT_MODEL_URL` | empty | an OpenAI-compatible server whose model reads every command; empty, only command names said first are understood |
-| `VOICE_INTENT_MODEL` | `mlx-community/Qwen3-4B-4bit` | the model that server uses |
+| `VOICE_INTENT_MODEL` | Qwen3 4B | the model that server uses: `mlx-community/Qwen3-4B-4bit` on Apple silicon, `Qwen/Qwen3-4B-GGUF:Q4_K_M` elsewhere |
+| `VOICE_INTENT_MODEL_SERVE` | `true` | with the URL on this machine and nothing answering there, the bot starts the server itself |
 | `VOICE_SPEECH` | off | say aloud what a voice command does, with the models in models/voice (see Speaking) |
 | `VOICE_SPEECH_THREADS` | `1` | CPU threads for making speech |
 
@@ -691,14 +692,14 @@ starts:
   percent", "stop the second mixed in song") — with its options, or none. It is told each command's options
   from the slash command itself, and what it gives back is held to them:
   an option of the wrong type or out of range is left out, a command missing
-  a required one is not run. To run one on a Mac:
-
-  ```bash
-  uv run --with mlx-lm mlx_lm.server --model mlx-community/Qwen3-4B-4bit --port 8085
-  ```
-
-  and set the URL to `http://127.0.0.1:8085/v1`. LM Studio and Ollama serve
-  the same API. Qwen3 4B takes about 2.4GB and answers in about 175ms
+  a required one is not run. Set the URL to `http://127.0.0.1:8085/v1` and
+  the bot runs the server itself (`lib/voice/intentServer.ts`): on Apple
+  silicon `mlx_lm.server` through `uv`, anywhere else llama.cpp's
+  `llama-server`, which needs to be installed. It fetches the model the first
+  time, restarts the server if it dies and stops it on exit; until it answers,
+  the fallback reads every command. A server already answering on that port
+  (LM Studio, Ollama, one started by hand) is used instead, and
+  `VOICE_INTENT_MODEL_SERVE: false` leaves starting one to you. Qwen3 4B takes about 2.4GB and answers in about 175ms
   through the server, 1s for the first command.
 
   Asked for the other commands, it read 15 of 16 right ("set the volume to

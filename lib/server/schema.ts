@@ -345,5 +345,6 @@ export const GlobalSettingSchema = z
 		VOICE_MAX_COMMAND_MS: z.number().int().min(2000).max(20000).optional(),
 		VOICE_INTENT_MODEL_URL: z.string().optional(),
 		VOICE_INTENT_MODEL: z.string().optional(),
+		VOICE_INTENT_MODEL_SERVE: z.boolean().optional(),
 	})
 	.passthrough();

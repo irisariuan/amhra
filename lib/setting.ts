@@ -176,6 +176,15 @@ export interface Setting {
 	 * the server does not answer, only command names said first are understood.
 	 */
 	VOICE_INTENT_MODEL_URL?: string;
-	/** The model that server should use. Defaults to Qwen3 4B in MLX. */
+	/**
+	 * The model that server should use. Defaults to Qwen3 4B: in MLX on Apple
+	 * silicon, as a llama.cpp GGUF elsewhere.
+	 */
 	VOICE_INTENT_MODEL?: string;
+	/**
+	 * Start that server when the URL is on this machine and nothing answers
+	 * there: `mlx_lm.server` on Apple silicon, llama.cpp's `llama-server`
+	 * elsewhere. On unless set to false.
+	 */
+	VOICE_INTENT_MODEL_SERVE?: boolean;
 }
