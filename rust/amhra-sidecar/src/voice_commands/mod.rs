@@ -33,6 +33,7 @@ pub mod keywords;
 #[cfg(feature = "voice-commands")]
 pub mod sherpa;
 pub mod speakers;
+pub mod trim;
 
 pub use amhra_voice::receive::SAMPLE_RATE;
 
@@ -69,12 +70,15 @@ pub trait Vad: Send {
 }
 
 /// What a recogniser made of a window of speech.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Transcript {
 	pub text: String,
 	/// The language the recogniser detected, as an ISO 639-1 code where it has
 	/// one (`en`, `ja`, `ko`, `zh`) and its own tag otherwise (`yue`).
 	pub lang: Option<String>,
+	/// The tokens and when each started, in seconds from the start of the
+	/// window, where the recogniser says. Empty when it does not.
+	pub tokens: Vec<trim::Token>,
 }
 
 /// Offline speech recognition: a whole window in, text out.

@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 
 use super::gate::{GateConfig, GateEvent};
 use super::speakers::Speakers;
-use super::{Models, Transcriber, milliseconds};
+use super::{Models, Transcriber, milliseconds, trim};
 use crate::listen::{Heard, VoiceSink};
 
 /// Frames queued for a guild's gate thread: two seconds of five people.
@@ -75,6 +75,8 @@ struct Job {
 	user_id: u64,
 	keyword: String,
 	samples: Vec<f32>,
+	/// Where in `samples` the name ended.
+	name_end: usize,
 	/// When they stopped talking, as best the gate can tell.
 	speech_ended: Instant,
 }
@@ -209,6 +211,7 @@ fn handle(
 				user_id,
 				keyword: capture.keyword,
 				samples: capture.samples,
+				name_end: capture.name_end,
 				speech_ended: now.checked_sub(since).unwrap_or(now),
 			};
 			match jobs.try_send(job) {
@@ -228,17 +231,21 @@ fn recognise(queue: Receiver<Job>, mut transcriber: Box<dyn Transcriber>, report
 		let started = Instant::now();
 		let outcome = transcriber.transcribe(&job.samples);
 		let done = Instant::now();
-		let Job { guild_id, user_id, keyword, samples, speech_ended } = job;
+		let Job { guild_id, user_id, keyword, samples, name_end, speech_ended } = job;
+		// What the recogniser made of the name's tail goes; the command stays.
+		let outcome = outcome.map(|transcript| {
+			let name_end = milliseconds(name_end) as f32 / 1000.0;
+			let text = trim::after_name(transcript.text.trim(), &transcript.tokens, name_end);
+			(text, transcript.lang)
+		});
 		match outcome {
-			Ok(transcript) if transcript.text.trim().is_empty() => {
-				report(Notice::Unintelligible { guild_id, user_id, keyword })
-			}
-			Ok(transcript) => report(Notice::Utterance {
+			Ok((text, _)) if text.is_empty() => report(Notice::Unintelligible { guild_id, user_id, keyword }),
+			Ok((text, lang)) => report(Notice::Utterance {
 				guild_id,
 				user_id,
 				keyword,
-				text: transcript.text.trim().to_owned(),
-				lang: transcript.lang,
+				text,
+				lang,
 				latency_ms: millis(done.duration_since(speech_ended)),
 				recognition_ms: millis(done.duration_since(started)),
 				audio_ms: milliseconds(samples.len()),
@@ -276,7 +283,11 @@ mod tests {
 
 	impl Transcriber for FakeTranscriber {
 		fn transcribe(&mut self, samples: &[f32]) -> Result<Transcript, ModelError> {
-			Ok(Transcript { text: format!(" {} samples ", samples.len()), lang: Some("en".to_owned()) })
+			Ok(Transcript {
+				text: format!(" {} samples ", samples.len()),
+				lang: Some("en".to_owned()),
+				tokens: Vec::new(),
+			})
 		}
 	}
 

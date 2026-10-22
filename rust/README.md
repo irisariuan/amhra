@@ -361,6 +361,16 @@ recogniser calls the C API directly. That is the one `unsafe` block, in
   goes quiet, so the gate thread feeds zeros in its place, for about a second
   after someone stops and for as long as a command is open. Otherwise a command
   would never end, and a name said last would never be recognised.
+- **The name comes off the text.** The window starts before the name
+  ends, so the recogniser hears its tail and writes it however it likes
+  ("T, skip a song.", "Para, skip this song.", "Per, play the song."). It
+  also stamps each token with when it began, and the gate knows where in the
+  window the spotter put the name's end, so words that began before that
+  (with 50ms of slack; SenseVoice times tokens in 60ms steps) are dropped
+  before the text is reported: "skip a song.". When the spotter puts the end
+  too early the name survives and the bot's matching strips it; when too
+  late, a command's first word is lost and nothing runs. On the real takes
+  in `training/wake` it cleaned every command that followed the name.
 - **Padding.** SenseVoice drops the first syllables of audio that starts
   mid-speech. Measured: a whole clip came back as "Amra, skip this song.", but
   the gate's window of it came back as "Sip this song.". Each window gets 300ms

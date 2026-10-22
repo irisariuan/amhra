@@ -99,6 +99,9 @@ pub struct Capture {
 	pub since_speech: usize,
 	/// Closed by [`GateConfig::max_capture_ms`] rather than by silence.
 	pub capped: bool,
+	/// Where in `samples` the spotter says the name ended: the pre-roll,
+	/// unless there was less history than that.
+	pub name_end: usize,
 }
 
 #[derive(Debug)]
@@ -153,6 +156,8 @@ pub struct Gate {
 	history: VecDeque<f32>,
 	/// The window being built, once the name has been heard.
 	window: Vec<f32>,
+	/// Where in the window the name ended.
+	name_end: usize,
 	state: State,
 }
 
@@ -175,6 +180,7 @@ impl Gate {
 			vad,
 			history: VecDeque::with_capacity(limits.history()),
 			window: Vec::new(),
+			name_end: 0,
 			state: State::Listening,
 		}
 	}
@@ -220,6 +226,7 @@ impl Gate {
 		}
 		self.window.clear();
 		self.window.extend(self.history.range(start..));
+		self.name_end = keyword_end - start;
 		self.history.clear();
 		self.state = State::Armed { keyword, waited: 0, speech: 0 };
 
@@ -299,7 +306,8 @@ impl Gate {
 		samples.truncate(samples.len() - silence.saturating_sub(self.limits.keep_tail));
 		samples.truncate(self.limits.max_capture);
 		self.finish();
-		events(GateEvent::Captured(Capture { keyword, samples, since_speech: silence, capped }));
+		let name_end = self.name_end;
+		events(GateEvent::Captured(Capture { keyword, samples, since_speech: silence, capped, name_end }));
 	}
 
 	/// Back to listening for the name.
