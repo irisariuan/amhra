@@ -65,7 +65,7 @@ pub struct GateConfig {
 impl Default for GateConfig {
 	fn default() -> Self {
 		Self {
-			preroll_ms: 300,
+			preroll_ms: 400,
 			wait_for_speech_ms: 2500,
 			min_speech_ms: 100,
 			end_silence_ms: 700,
@@ -436,7 +436,7 @@ mod tests {
 		assert_eq!(capture.since_speech, samples(700));
 		// Pre-roll + command + the tail that is kept; the rest of the silence
 		// is cut.
-		assert_eq!(capture.samples.len(), samples(300) + samples(600) + samples(200));
+		assert_eq!(capture.samples.len(), samples(400) + samples(600) + samples(200));
 		assert!(gate.is_listening());
 	}
 
@@ -446,7 +446,7 @@ mod tests {
 		// command is already under way.
 		let mut gate = gate(samples(400));
 		let mut audio = frames(0.0, 50);
-		audio.extend(frames(LOUD, 15)); // the name, 300ms
+		audio.extend(frames(LOUD, 20)); // the name, 400ms
 		audio.extend(frames(0.0, 5)); // a breath
 		audio.extend(frames(LOUD, 14)); // the command, already 280ms in…
 		audio.push(keyword_frame()); // …when the detection arrives
@@ -455,11 +455,11 @@ mod tests {
 
 		let captures = captured(&events);
 		assert_eq!(captures.len(), 1);
-		// 300ms of pre-roll back from the keyword's end, everything since,
+		// 400ms of pre-roll back from the keyword's end, everything since,
 		// and the kept tail.
-		assert_eq!(captures[0].samples.len(), samples(300) + samples(400) + samples(200));
+		assert_eq!(captures[0].samples.len(), samples(400) + samples(400) + samples(200));
 		// So the window opens on the name, not on the quiet before it.
-		assert!(captures[0].samples[..samples(300)].iter().all(|&sample| sample >= LOUD));
+		assert!(captures[0].samples[..samples(400)].iter().all(|&sample| sample >= LOUD));
 	}
 
 	#[test]
@@ -595,7 +595,7 @@ mod tests {
 		assert_eq!(captures.len(), 1, "{events:?}");
 		assert!(!captures[0].capped);
 		// Pre-roll, the lag, the wait, the command and the kept tail.
-		assert_eq!(captures[0].samples.len(), samples(300 + 400 + 800 + 600 + 200));
+		assert_eq!(captures[0].samples.len(), samples(400 + 400 + 800 + 600 + 200));
 		assert!(captures[0].samples[captures[0].samples.len() - samples(800)..][..samples(600)]
 			.iter()
 			.all(|&sample| sample >= LOUD));

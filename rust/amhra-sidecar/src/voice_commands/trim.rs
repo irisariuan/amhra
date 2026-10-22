@@ -21,19 +21,26 @@ pub struct Token {
 	pub start: f32,
 }
 
-/// Slack past the name's end. SenseVoice times tokens in 60ms steps, so a
-/// token stamped at the end itself is still the name's; the earliest command
-/// word measured began 120ms after it.
-const TOLERANCE: f32 = 0.05;
+/// How long before the name's end a word has to have begun to be taken for
+/// the name. Back from the end rather than past it: a command whose first word
+/// is cut runs nothing, while a scrap of the name left in front is stripped by
+/// the bot. The name's own words begin well before its end; only one stamped
+/// a SenseVoice step (60ms) or so short of it is in doubt.
+const MARGIN: f32 = 0.05;
 
 /// `text` without the words that began before `name_end` seconds. Unchanged
 /// when there are no tokens to go by, or when the tokens do not line up with
 /// the text closely enough to know which words to drop.
 pub fn after_name(text: &str, tokens: &[Token], name_end: f32) -> String {
+	cut(text, tokens, name_end).0
+}
+
+/// [`after_name`], and how many words it took for the name.
+pub fn cut(text: &str, tokens: &[Token], name_end: f32) -> (String, usize) {
 	let words = words(tokens);
-	let drop = words.iter().take_while(|word| word.start <= name_end + TOLERANCE).count();
+	let drop = words.iter().take_while(|word| word.start <= name_end - MARGIN).count();
 	if drop == 0 {
-		return text.to_owned();
+		return (text.to_owned(), 0);
 	}
 
 	let joined: String = tokens.iter().map(|token| token.text.as_str()).collect();
@@ -46,9 +53,9 @@ pub fn after_name(text: &str, tokens: &[Token], name_end: f32) -> String {
 		// kept the words where they were.
 		text.split_whitespace().skip(drop).collect::<Vec<_>>().join(" ")
 	} else {
-		return text.to_owned();
+		return (text.to_owned(), 0);
 	};
-	kept.trim_start_matches(|c: char| c.is_whitespace() || is_punctuation(c)).trim_end().to_owned()
+	(kept.trim_start_matches(|c: char| c.is_whitespace() || is_punctuation(c)).trim_end().to_owned(), drop)
 }
 
 struct Word<'a> {
@@ -112,13 +119,21 @@ mod tests {
 		let heard = tokens(&[("P", 0.0), ("ara", 0.24), (",", 0.42), (" skip", 0.66), (" this", 0.96), (" song", 1.2), (".", 1.92)]);
 		assert_eq!(after_name("Para, skip this song.", &heard, NAME_END), "skip this song.");
 
-		// Stamped at the end itself: still the name.
+		// A token stamped at the end itself, inside a word begun before it:
+		// still the name.
 		let heard = tokens(&[("P", 0.0), ("er", 0.30), (",", 0.48), (" play", 0.78), (" the", 1.2), (" song", 1.44), (".", 2.22)]);
 		assert_eq!(after_name("Per, play the song.", &heard, NAME_END), "play the song.");
 
 		// Live: "T are play expectations."
 		let heard = tokens(&[("T", 0.0), (" are", 0.18), (" play", 0.48), (" expect", 0.72), ("ations", 0.96), (".", 1.5)]);
 		assert_eq!(after_name("T are play expectations.", &heard, NAME_END), "play expectations.");
+	}
+
+	#[test]
+	fn a_word_begun_at_the_end_is_kept() {
+		// The spotter put the end a little late: "skip" began on it.
+		let heard = tokens(&[("I", 0.0), ("m", 0.12), (" skip", 0.3), (" this", 0.6), (" song", 0.84)]);
+		assert_eq!(cut("Im skip this song", &heard, NAME_END), ("skip this song".to_owned(), 1));
 	}
 
 	#[test]

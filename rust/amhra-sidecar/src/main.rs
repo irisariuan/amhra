@@ -767,10 +767,10 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 
 	let events = events.clone();
 	let report = Arc::new(move |notice: Notice| match notice {
-		Notice::Utterance { guild_id, user_id, keyword, text, lang, latency_ms, recognition_ms, audio_ms } => {
+		Notice::Utterance { guild_id, user_id, keyword, text, lang, latency_ms, recognition_ms, audio_ms, name_words } => {
 			// What was said goes to the bot only, not into the log.
 			eprintln!(
-				"[{guild_id}] voice: {user_id} after {keyword}: {audio_ms}ms of speech, {} chars, {}, text {latency_ms}ms after they stopped ({recognition_ms}ms recognising)",
+				"[{guild_id}] voice: {user_id} after {keyword}: {audio_ms}ms of speech, {} chars ({name_words} word(s) cut as the name), {}, text {latency_ms}ms after they stopped ({recognition_ms}ms recognising)",
 				text.chars().count(),
 				lang.as_deref().unwrap_or("language unknown"),
 			);

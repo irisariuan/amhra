@@ -60,6 +60,8 @@ pub enum Notice {
 		recognition_ms: u32,
 		/// Length of the window recognised.
 		audio_ms: u32,
+		/// Words at the front taken for the tail of the name and dropped.
+		name_words: usize,
 	},
 	/// Speech after the name that the recogniser made nothing of.
 	Unintelligible { guild_id: String, user_id: u64, keyword: String },
@@ -235,12 +237,12 @@ fn recognise(queue: Receiver<Job>, mut transcriber: Box<dyn Transcriber>, report
 		// What the recogniser made of the name's tail goes; the command stays.
 		let outcome = outcome.map(|transcript| {
 			let name_end = milliseconds(name_end) as f32 / 1000.0;
-			let text = trim::after_name(transcript.text.trim(), &transcript.tokens, name_end);
-			(text, transcript.lang)
+			let (text, name_words) = trim::cut(transcript.text.trim(), &transcript.tokens, name_end);
+			(text, name_words, transcript.lang)
 		});
 		match outcome {
-			Ok((text, _)) if text.is_empty() => report(Notice::Unintelligible { guild_id, user_id, keyword }),
-			Ok((text, lang)) => report(Notice::Utterance {
+			Ok((text, ..)) if text.is_empty() => report(Notice::Unintelligible { guild_id, user_id, keyword }),
+			Ok((text, name_words, lang)) => report(Notice::Utterance {
 				guild_id,
 				user_id,
 				keyword,
@@ -249,6 +251,7 @@ fn recognise(queue: Receiver<Job>, mut transcriber: Box<dyn Transcriber>, report
 				latency_ms: millis(done.duration_since(speech_ended)),
 				recognition_ms: millis(done.duration_since(started)),
 				audio_ms: milliseconds(samples.len()),
+				name_words,
 			}),
 			Err(error) => report(Notice::Failed { guild_id, message: error.to_string() }),
 		}

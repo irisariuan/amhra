@@ -353,7 +353,7 @@ recogniser calls the C API directly. That is the one `unsafe` block, in
 
 ### Behaviour
 
-- **Window.** It starts 300ms before the point where the spotter says the name
+- **Window.** It starts 400ms before the point where the spotter says the name
   *ended*, not where it fired. The spotter fires about 300–500ms late, by which
   time the command has often begun. The window closes on 700ms of silence or
   at 8s. With no speech within 2.5s of the name, it times out quietly.
@@ -373,11 +373,12 @@ recogniser calls the C API directly. That is the one `unsafe` block, in
   ends, so the recogniser hears its tail and writes it however it likes
   ("T, skip a song.", "Para, skip this song.", "Per, play the song."). It
   also stamps each token with when it began, and the gate knows where in the
-  window the spotter put the name's end, so words that began before that
-  (with 50ms of slack; SenseVoice times tokens in 60ms steps) are dropped
-  before the text is reported: "skip a song.". When the spotter puts the end
+  window the spotter put the name's end, so words that began at least 50ms
+  before that are dropped before the text is reported: "skip a song.". The
+  sidecar's log says how many words went. When the spotter puts the end
   too early the name survives and the bot's matching strips it; when too
-  late, a command's first word is lost and nothing runs. On the real takes
+  late, a command's first word is lost and nothing runs, which is why the
+  cut errs early. On the real takes
   in `training/wake` it cleaned every command that followed the name.
   sherpa-onnx only counts the keyword's timestamps from the start of the
   stream until its first detection; after the reset that follows, they come
