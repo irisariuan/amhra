@@ -14,9 +14,10 @@
 //! its socket whatever happens downstream, and a command that waited behind a
 //! backlog would be acted on long after the user gave up on it.
 
-use std::sync::Arc;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, SyncSender, TrySendError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use super::gate::{GateConfig, GateEvent};
@@ -36,6 +37,10 @@ const REPORT_DROPS_EVERY: Duration = Duration::from_secs(10);
 /// Both threads only call into the models; neither recurses.
 const STACK_SIZE: usize = 2 * 1024 * 1024;
 
+/// What stands in for the wake word when someone is listened to again after
+/// the bot answered them (see [`Engine::follow_up`]).
+pub const FOLLOW_UP: &str = "FOLLOW-UP";
+
 /// What the pipeline has to say. The sidecar turns `Utterance` into a protocol
 /// event and logs the rest; the examples print all of it.
 #[derive(Debug, Clone, PartialEq)]
@@ -46,6 +51,9 @@ pub enum Notice {
 	Name { guild_id: String, user_id: u64, keyword: String, samples: Vec<f32> },
 	/// …and then nothing.
 	TimedOut { guild_id: String, user_id: u64, keyword: String },
+	/// What followed it has been taken down and is being recognised. An
+	/// `Utterance` or `Unintelligible` follows, unless it was dropped.
+	Captured { guild_id: String, user_id: u64, keyword: String },
 	/// A command, as text.
 	Utterance {
 		guild_id: String,
@@ -61,7 +69,8 @@ pub enum Notice {
 		/// Length of the window recognised.
 		audio_ms: u32,
 	},
-	/// Speech after the name that the recogniser made nothing of.
+	/// Speech after the name that the recogniser made nothing of, or failed
+	/// on (reported as `Failed` first).
 	Unintelligible { guild_id: String, user_id: u64, keyword: String },
 	/// Work shed because a queue was full.
 	Dropped { guild_id: String, what: &'static str, count: u64 },
@@ -85,6 +94,10 @@ pub struct Engine {
 	config: GateConfig,
 	jobs: SyncSender<Job>,
 	report: Report,
+	/// Each listening guild's gate thread, for [`Engine::follow_up`]. A guild
+	/// whose call ended keeps its entry until it is replaced: sending to it
+	/// fails, harmlessly.
+	follow_ups: Mutex<HashMap<String, Sender<u64>>>,
 }
 
 impl Engine {
@@ -102,13 +115,14 @@ impl Engine {
 			.name("recogniser".to_owned())
 			.stack_size(STACK_SIZE)
 			.spawn(move || recognise(queue, transcriber, thread_report))?;
-		Ok(Self { models, config, jobs, report })
+		Ok(Self { models, config, jobs, report, follow_ups: Mutex::default() })
 	}
 
 	/// Start gating one guild's voice. Hand the returned sink to the receive
 	/// thread; when it is dropped, the gate thread ends.
 	pub fn listen(&self, guild_id: &str) -> std::io::Result<VoiceSink> {
 		let (frames, inbox) = std::sync::mpsc::sync_channel(FRAME_QUEUE);
+		let (follow_up, follow_ups) = std::sync::mpsc::channel();
 		let dropped = Arc::new(AtomicU64::new(0));
 		let gate = GateThread {
 			guild_id: guild_id.to_owned(),
@@ -120,13 +134,25 @@ impl Engine {
 		std::thread::Builder::new()
 			.name(format!("gate-{guild_id}"))
 			.stack_size(STACK_SIZE)
-			.spawn(move || gate.run(inbox))?;
+			.spawn(move || gate.run(inbox, follow_ups))?;
+		if let Ok(mut map) = self.follow_ups.lock() {
+			map.insert(guild_id.to_owned(), follow_up);
+		}
 
 		Ok(Box::new(move |heard| {
 			if let Err(TrySendError::Full(_)) = frames.try_send(heard) {
 				dropped.fetch_add(1, Ordering::Relaxed);
 			}
 		}))
+	}
+
+	/// Listen to `user_id` in `guild_id` again, without waiting for the name:
+	/// the bot has answered them and they may answer back. Never blocks, so
+	/// the audio thread may call it.
+	pub fn follow_up(&self, guild_id: &str, user_id: u64) {
+		if let Some(gate) = self.follow_ups.lock().ok().and_then(|map| map.get(guild_id).cloned()) {
+			let _ = gate.send(user_id);
+		}
 	}
 }
 
@@ -140,7 +166,7 @@ struct GateThread {
 }
 
 impl GateThread {
-	fn run(mut self, inbox: Receiver<Heard>) {
+	fn run(mut self, inbox: Receiver<Heard>, follow_ups: Receiver<u64>) {
 		let mut reported_drops = 0;
 		let mut last_drop_report = Instant::now();
 		let mut model_failed = false;
@@ -168,6 +194,11 @@ impl GateThread {
 				}
 				Some(Heard::Left { user_id }) => speakers.left(user_id),
 				None => {}
+			}
+			while let Ok(user_id) = follow_ups.try_recv() {
+				if let Err(error) = speakers.follow_up(user_id, FOLLOW_UP, now, &mut handle) {
+					report(Notice::Failed { guild_id: guild_id.clone(), message: error.to_string() });
+				}
 			}
 			speakers.tick(now, &mut handle);
 
@@ -211,8 +242,9 @@ fn handle(
 				samples: capture.samples,
 				speech_ended: now.checked_sub(since).unwrap_or(now),
 			};
+			let keyword = job.keyword.clone();
 			match jobs.try_send(job) {
-				Ok(()) => {}
+				Ok(()) => report(Notice::Captured { guild_id, user_id, keyword }),
 				Err(TrySendError::Full(_)) => {
 					report(Notice::Dropped { guild_id, what: "commands", count: 1 })
 				}
@@ -243,7 +275,10 @@ fn recognise(queue: Receiver<Job>, mut transcriber: Box<dyn Transcriber>, report
 				recognition_ms: millis(done.duration_since(started)),
 				audio_ms: milliseconds(samples.len()),
 			}),
-			Err(error) => report(Notice::Failed { guild_id, message: error.to_string() }),
+			Err(error) => {
+				report(Notice::Failed { guild_id: guild_id.clone(), message: error.to_string() });
+				report(Notice::Unintelligible { guild_id, user_id, keyword });
+			}
 		}
 	}
 }
@@ -331,6 +366,37 @@ mod tests {
 		// Half a second of silence had to pass before the command was over.
 		assert!(latency_ms >= 450, "{latency_ms}");
 		assert!(matches!(notices.lock().unwrap()[0], Notice::Woke { .. }));
+	}
+
+	fn wait_for(notices: &Mutex<Vec<Notice>>, found: impl Fn(&Notice) -> bool) {
+		let deadline = Instant::now() + Duration::from_secs(5);
+		while !notices.lock().unwrap().iter().any(&found) {
+			assert!(Instant::now() < deadline, "not reported: {:?}", notices.lock().unwrap());
+			std::thread::sleep(Duration::from_millis(20));
+		}
+	}
+
+	#[test]
+	fn a_follow_up_takes_down_an_answer_without_the_name() {
+		let notices = Arc::new(Mutex::new(Vec::new()));
+		let sink_notices = Arc::clone(&notices);
+		let engine = Engine::start(
+			Arc::new(FakeModels),
+			Box::new(FakeTranscriber),
+			GateConfig::default(),
+			Arc::new(move |notice| sink_notices.lock().unwrap().push(notice)),
+		)
+		.unwrap();
+		let mut sink = engine.listen("7").unwrap();
+		engine.follow_up("7", 42);
+		wait_for(&notices, |notice| matches!(notice, Notice::Woke { keyword, .. } if keyword == FOLLOW_UP));
+		for _ in 0..10 {
+			sink(voice(42, &[LOUD; FRAME_SAMPLES]));
+		}
+		wait_for(&notices, |notice| matches!(notice, Notice::Captured { user_id: 42, .. }));
+		wait_for(&notices, |notice| matches!(notice, Notice::Utterance { keyword, .. } if keyword == FOLLOW_UP));
+		// A guild nobody is listening in is not an error.
+		engine.follow_up("8", 42);
 	}
 
 	#[test]

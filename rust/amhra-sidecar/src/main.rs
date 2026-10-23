@@ -44,7 +44,9 @@
 //! - `--wake-clips <dir>`: save the second or so of audio each wake was heard
 //!   in, for retraining the spotter (see `voice_commands::clips`), at most
 //!   `--wake-clips-max <n>` of them, default 2000;
-//! - `--wake-chime`: chime in the call when the name is heard;
+//! - `--wake-chime`: chime in the call when the name is heard, chime again
+//!   when what follows has been taken down, and sound softly every two
+//!   seconds until the bot answers (see `wake_feedback`);
 //! - `--wake-duck <gain>`: lower the music to this from the name until what
 //!   follows has been heard (see `wake_feedback`);
 //! - `--wait-for-speech-ms`, `--end-silence-ms`, `--max-capture-ms`: how long
@@ -57,7 +59,8 @@
 //! voice for Cantonese), on `--speech-threads <n>` CPU threads, default 1.
 //! Phrases are saved under `<cache-dir>/speech` and each model is loaded only
 //! to make new ones (see `speech`). It needs the `voice-commands` feature and
-//! lowers the music to `--wake-duck` meanwhile.
+//! lowers the music to `--wake-duck` meanwhile. A `Speak` that answers a
+//! member can ask to listen to them again afterwards, without the name.
 //!
 //! Paths are relative to the directory the sidecar is started in. A model
 //! that will not load is reported once as an `Error` event and the sidecar
@@ -74,7 +77,7 @@ use amhra_fetch::Extractor;
 use amhra_fetch::download::DownloadOptions;
 use amhra_sidecar::framing::{read_frame, write_frame};
 use amhra_sidecar::protocol::{Command, Event, PROTOCOL_VERSION, SessionState};
-use amhra_sidecar::speech::{Speech, Voice};
+use amhra_sidecar::speech::{Answer, Speech, Voice};
 use amhra_sidecar::worker::{Worker, WorkerCommand};
 
 /// Each connected guild's audio thread, for what the voice-command threads
@@ -236,7 +239,7 @@ async fn main() {
 
 	let workers: Workers = Arc::default();
 	let voice = if voice_commands { start_voice_commands(&events, &workers) } else { None };
-	let speech = start_speech(&cache_dir, &workers);
+	let speech = start_speech(&cache_dir, &workers, voice.clone(), &events);
 
 	// stdin is blocking, so it gets its own thread rather than stalling the
 	// runtime that every gateway connection shares.
@@ -492,9 +495,20 @@ async fn dispatch(
 			})
 		}
 
-		Command::Speak { guild_id, text, language } => {
-			if let Some(speech) = speech {
-				speech.say(guild_id, text, Voice::for_language(language.as_deref()));
+		Command::Speak { guild_id, text, language, user_id, listen } => {
+			let voice = Voice::for_language(language.as_deref());
+			let answers = user_id.and_then(|user_id| user_id.parse::<u64>().ok());
+			match (speech, answers) {
+				(Some(speech), Some(user_id)) => speech.answer(guild_id, text, voice, Answer { user_id, listen }),
+				(Some(speech), None) => speech.say(guild_id, text, voice),
+				// Nothing will be said, so nobody is to be kept waiting for it.
+				(None, Some(user_id)) => settle(guilds, &guild_id, user_id),
+				(None, None) => {}
+			}
+		}
+		Command::Settle { guild_id, user_id } => {
+			if let Ok(user_id) = user_id.parse() {
+				settle(guilds, &guild_id, user_id);
 			}
 		}
 		Command::PrepareSpeech { phrases } => {
@@ -521,6 +535,13 @@ async fn dispatch(
 		}
 
 		Command::Shutdown => {}
+	}
+}
+
+/// Stop waiting on `user_id` in `guild_id`, if the bot is still there.
+fn settle(guilds: &HashMap<String, GuildSession>, guild_id: &str, user_id: u64) {
+	if let Some(session) = guilds.get(guild_id) {
+		session.worker.send(WorkerCommand::Settled { user_id });
 	}
 }
 
@@ -973,6 +994,7 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 		Notice::TimedOut { guild_id, user_id, keyword } => {
 			eprintln!("[{guild_id}] voice: {user_id} said {keyword} and nothing after it");
 			tell(&guild_id, WorkerCommand::Heard);
+			tell(&guild_id, WorkerCommand::Closed { chime });
 			let _ = events.send(Event::NothingHeard { guild_id, user_id: user_id.to_string() });
 		}
 		Notice::Name { guild_id, user_id, samples, .. } => {
@@ -986,9 +1008,13 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 				Err(error) => eprintln!("[{guild_id}] voice: could not save a wake clip: {error}"),
 			}
 		}
+		Notice::Captured { guild_id, user_id, .. } => {
+			tell(&guild_id, WorkerCommand::Captured { user_id, chime, duck });
+		}
 		Notice::Unintelligible { guild_id, user_id, keyword } => {
 			eprintln!("[{guild_id}] voice: {user_id} said {keyword}, then nothing recognisable");
 			tell(&guild_id, WorkerCommand::Heard);
+			tell(&guild_id, WorkerCommand::Settled { user_id });
 			let _ = events.send(Event::NothingHeard { guild_id, user_id: user_id.to_string() });
 		}
 		Notice::Dropped { guild_id, what, count } => {
@@ -1050,7 +1076,12 @@ fn start_voice_commands(events: &Sender<Event>, _workers: &Workers) -> Option<Ar
 /// there. The models themselves are not loaded until something new has to be
 /// said.
 #[cfg(feature = "voice-commands")]
-fn start_speech(cache_dir: &std::path::Path, workers: &Workers) -> Option<Speech> {
+fn start_speech(
+	cache_dir: &std::path::Path,
+	workers: &Workers,
+	voice: Option<Arc<Engine>>,
+	events: &Sender<Event>,
+) -> Option<Speech> {
 	use amhra_sidecar::speech::models;
 
 	if !flag("--speech") {
@@ -1074,10 +1105,24 @@ fn start_speech(cache_dir: &std::path::Path, workers: &Workers) -> Option<Speech
 	}
 	let duck = option("--wake-duck").and_then(|gain| gain.parse::<f32>().ok()).unwrap_or(1.0);
 	let workers = Arc::clone(workers);
-	let deliver = Box::new(move |guild_id: &str, pcm| {
-		if let Some(worker) = workers.lock().ok().and_then(|workers| workers.get(guild_id).cloned()) {
-			let _ = worker.send(WorkerCommand::Say { pcm, duck });
+	let events = events.clone();
+	let deliver = Box::new(move |guild_id: &str, pcm: Arc<[i16]>, answer: Option<Answer>| {
+		// Listening again needs voice commands, and something said to answer
+		// back to. An answer that was to be listened back to and cannot be
+		// said comes to nothing, as a wake does that nothing follows.
+		let listen = answer.filter(|answer| answer.listen && voice.is_some());
+		if let Some(answer) = listen
+			&& pcm.is_empty()
+		{
+			let _ = events.send(Event::NothingHeard { guild_id: guild_id.to_owned(), user_id: answer.user_id.to_string() });
 		}
+		let Some(worker) = workers.lock().ok().and_then(|workers| workers.get(guild_id).cloned()) else { return };
+		let then = listen.filter(|_| !pcm.is_empty()).and_then(|answer| {
+			let engine = Arc::clone(voice.as_ref()?);
+			let guild_id = guild_id.to_owned();
+			Some(Box::new(move || engine.follow_up(&guild_id, answer.user_id)) as amhra_sidecar::wake_feedback::Then)
+		});
+		let _ = worker.send(WorkerCommand::Say { pcm, duck, answers: answer.map(|answer| answer.user_id), then });
 	});
 	match Speech::start(found, Some(cache_dir.join("speech")), deliver) {
 		Ok(speech) => Some(speech),
@@ -1089,7 +1134,12 @@ fn start_speech(cache_dir: &std::path::Path, workers: &Workers) -> Option<Speech
 }
 
 #[cfg(not(feature = "voice-commands"))]
-fn start_speech(_cache_dir: &std::path::Path, _workers: &Workers) -> Option<Speech> {
+fn start_speech(
+	_cache_dir: &std::path::Path,
+	_workers: &Workers,
+	_voice: Option<Arc<Engine>>,
+	_events: &Sender<Event>,
+) -> Option<Speech> {
 	if flag("--speech") {
 		eprintln!("speech is off: this sidecar was built without the voice-commands feature");
 	}

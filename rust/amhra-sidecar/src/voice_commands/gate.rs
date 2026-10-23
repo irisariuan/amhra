@@ -22,6 +22,11 @@
 //! window where the spotter says the keyword *ended* — not at the moment it
 //! fired — less [`GateConfig::preroll_ms`], which is none by default.
 //!
+//! A gate can also be armed without the name ([`Gate::follow_up`]), for a
+//! conversation: once the bot has answered someone, it listens to them again
+//! as though they had just said it, waiting [`GateConfig::follow_up_wait_ms`]
+//! for them to start.
+//!
 //! Whether anything was said after the name is decided on the audio after the
 //! keyword's end only. Counting the pre-roll would count the name itself as
 //! speech, and "Amhra" on its own would then be transcribed rather than time
@@ -64,6 +69,10 @@ pub struct GateConfig {
 	/// Audio kept from before the keyword's end for [`GateEvent::Name`], so
 	/// the name itself can be saved to train the spotter on. Zero sends none.
 	pub name_clip_ms: u32,
+	/// How long to wait for someone to start, when listening to them again
+	/// after the bot answered them. Longer than after the name: they are
+	/// answering a question, not finishing a sentence.
+	pub follow_up_wait_ms: u32,
 }
 
 impl Default for GateConfig {
@@ -77,6 +86,7 @@ impl Default for GateConfig {
 			keep_tail_ms: 200,
 			max_lag_ms: 1500,
 			name_clip_ms: 0,
+			follow_up_wait_ms: 5000,
 		}
 	}
 }
@@ -112,13 +122,14 @@ pub struct Capture {
 #[derive(Debug)]
 enum State {
 	Listening,
-	/// Heard the name, waiting for the command to start. `speech` counts all
-	/// of it, `answered` only what was said after the name was heard.
-	Armed { keyword: String, waited: usize, speech: usize, answered: usize },
+	/// Heard the name, waiting `wait` samples for the command to start.
+	/// `speech` counts all of it, `answered` only what was said after the name
+	/// was heard.
+	Armed { keyword: String, wait: usize, waited: usize, speech: usize, answered: usize },
 	/// Taking the command down. Until `answered` reaches the minimum speech,
 	/// all that has been said may be the name, so silence only ends the
 	/// window once the wait for speech is over too.
-	Capturing { keyword: String, silence: usize, waited: usize, answered: usize },
+	Capturing { keyword: String, wait: usize, silence: usize, waited: usize, answered: usize },
 }
 
 /// Timings converted to samples once.
@@ -132,6 +143,7 @@ struct Limits {
 	keep_tail: usize,
 	max_lag: usize,
 	name_clip: usize,
+	follow_up_wait: usize,
 }
 
 impl Limits {
@@ -152,6 +164,7 @@ impl From<GateConfig> for Limits {
 			keep_tail: samples(config.keep_tail_ms),
 			max_lag: samples(config.max_lag_ms),
 			name_clip: samples(config.name_clip_ms),
+			follow_up_wait: samples(config.follow_up_wait_ms),
 		}
 	}
 }
@@ -233,7 +246,8 @@ impl Gate {
 		self.window.clear();
 		self.window.extend(self.history.range(start..));
 		self.history.clear();
-		self.state = State::Armed { keyword, waited: 0, speech: 0, answered: 0 };
+		self.state =
+			State::Armed { keyword, wait: self.limits.wait_for_speech, waited: 0, speech: 0, answered: 0 };
 
 		// What has been said since the name ended was heard before the
 		// detection arrived. It is the start of the command, if there is one,
@@ -249,6 +263,27 @@ impl Gate {
 		}
 	}
 
+	/// Listen for a command as though `keyword` had just been heard, waiting
+	/// the follow-up's time for it to start. Nothing, if a command is already
+	/// open: theirs is under way.
+	pub fn follow_up(&mut self, keyword: &str, events: &mut dyn FnMut(GateEvent)) {
+		if !self.is_listening() {
+			return;
+		}
+		self.spotter.reset();
+		self.vad.reset();
+		self.history.clear();
+		self.window.clear();
+		self.state = State::Armed {
+			keyword: keyword.to_owned(),
+			wait: self.limits.follow_up_wait,
+			waited: 0,
+			speech: 0,
+			answered: 0,
+		};
+		events(GateEvent::Woke { keyword: keyword.to_owned() });
+	}
+
 	/// Move the state machine on by `heard` samples, which the VAD judged to be
 	/// speech or not. `waiting` is false for audio from before the detection,
 	/// which cannot have used up time the speaker was given to start.
@@ -256,7 +291,7 @@ impl Gate {
 		let limits = self.limits;
 		match &mut self.state {
 			State::Listening => {}
-			State::Armed { keyword, waited, speech: said, answered } => {
+			State::Armed { keyword, wait, waited, speech: said, answered } => {
 				if speech {
 					*said += heard;
 				}
@@ -268,8 +303,9 @@ impl Gate {
 				}
 				if *said >= limits.min_speech {
 					let keyword = std::mem::take(keyword);
-					self.state = State::Capturing { keyword, silence: 0, waited: *waited, answered: *answered };
-				} else if *waited >= limits.wait_for_speech {
+					self.state =
+						State::Capturing { keyword, wait: *wait, silence: 0, waited: *waited, answered: *answered };
+				} else if *waited >= *wait {
 					let keyword = std::mem::take(keyword);
 					self.finish();
 					events(GateEvent::TimedOut { keyword });
@@ -277,7 +313,7 @@ impl Gate {
 				}
 				self.check_cap(events);
 			}
-			State::Capturing { silence, waited, answered, .. } => {
+			State::Capturing { wait, silence, waited, answered, .. } => {
 				*silence = if speech { 0 } else { *silence + heard };
 				if waiting {
 					*waited += heard;
@@ -285,7 +321,7 @@ impl Gate {
 						*answered += heard;
 					}
 				}
-				let started = *answered >= limits.min_speech || *waited >= limits.wait_for_speech;
+				let started = *answered >= limits.min_speech || *waited >= *wait;
 				if started && *silence >= limits.end_silence {
 					self.close(false, events);
 				} else {
@@ -526,6 +562,45 @@ mod tests {
 		// And it listens again afterwards.
 		let events = feed(&mut gate, &[keyword_frame()]);
 		assert_eq!(events.len(), 1);
+	}
+
+	#[test]
+	fn a_follow_up_listens_without_the_name_and_waits_longer() {
+		let mut gate = gate(0);
+		let mut events = Vec::new();
+		gate.follow_up("FOLLOW-UP", &mut |event| events.push(event));
+		assert_eq!(events, vec![GateEvent::Woke { keyword: "FOLLOW-UP".to_owned() }]);
+		// Past the wait after a name, and still listening…
+		events.extend(feed(&mut gate, &frames(0.0, 3000 / MS_PER_FRAME)));
+		assert!(!gate.is_listening(), "{events:?}");
+		// …for the answer, taken down as a command would be.
+		events.extend(feed(&mut gate, &frames(LOUD, 600 / MS_PER_FRAME)));
+		events.extend(feed(&mut gate, &frames(0.0, 800 / MS_PER_FRAME)));
+		let captures = captured(&events);
+		assert_eq!(captures.len(), 1, "{events:?}");
+		assert_eq!(captures[0].keyword, "FOLLOW-UP");
+		assert!(gate.is_listening());
+	}
+
+	#[test]
+	fn a_follow_up_nobody_answers_times_out() {
+		let mut gate = gate(0);
+		let mut events = Vec::new();
+		gate.follow_up("FOLLOW-UP", &mut |event| events.push(event));
+		events.extend(feed(&mut gate, &frames(0.0, 5000 / MS_PER_FRAME)));
+		assert_eq!(events.last(), Some(&GateEvent::TimedOut { keyword: "FOLLOW-UP".to_owned() }));
+		assert!(gate.is_listening());
+	}
+
+	#[test]
+	fn a_follow_up_does_not_cut_into_a_command_under_way() {
+		let mut gate = gate(0);
+		let mut events = feed(&mut gate, &[keyword_frame()]);
+		events.extend(feed(&mut gate, &frames(LOUD, 10)));
+		gate.follow_up("FOLLOW-UP", &mut |event| events.push(event));
+		assert_eq!(events.iter().filter(|event| matches!(event, GateEvent::Woke { .. })).count(), 1);
+		events.extend(feed(&mut gate, &frames(0.0, 800 / MS_PER_FRAME)));
+		assert_eq!(captured(&events)[0].keyword, "AMHRA");
 	}
 
 	#[test]

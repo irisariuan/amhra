@@ -331,6 +331,8 @@
 	"VOICE_TRANSCRIPT_LISTENING": "-# 🎙️ {user}: listening…",
 	"VOICE_TRANSCRIPT_NOTHING": "-# 🎙️ {user}: didn't catch anything",
 	"VOICE_TRANSCRIPT_UNMATCHED": "-# 🎙️ {user}: “{text}” · not a command",
+	"VOICE_ANSWER": "-# 🎙️ {user}\n🗣️ {answer}",
+	"VOICE_ANSWER_TRANSCRIPT": "-# 🎙️ {user}: “{text}”\n🗣️ {answer}",
 	"VOICE_SAY_PLAY": "Playing {title}.",
 	"VOICE_SAY_PLAY_NEXT": "Playing {title} next.",
 	"VOICE_SAY_PLAY_QUEUED": "Added {title} to the queue.",

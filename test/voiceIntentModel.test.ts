@@ -5,6 +5,10 @@ import {
 	catalogue,
 	DEFAULT_INTENT_MODEL,
 	intentFrom,
+	intentPrompt,
+	intentsFrom,
+	MAX_ACTIONS,
+	MAX_SPOKEN,
 	readIntent,
 } from "../lib/voice/intentModel";
 
@@ -122,6 +126,92 @@ describe("what the model is told", () => {
 	});
 });
 
+describe("several things asked for at once", () => {
+	const all = (answer: string) => intentsFrom(answer, Language.English, lookup);
+
+	test("a list is done in its order", () => {
+		expect(all('[{"command": "skip"}, {"command": "volume", "volume": 40}]')).toEqual([
+			{ command: "skip", language: Language.English },
+			{ command: "volume", language: Language.English, options: { volume: 40 } },
+		]);
+	});
+
+	test("one object is a list of one, and none is an empty one", () => {
+		expect(all('{"command": "pause"}')).toEqual([{ command: "pause", language: Language.English }]);
+		expect(all('{"command": "none"}')).toEqual([]);
+		expect(all("[]")).toEqual([]);
+		expect(all("I think you mean skip")).toEqual([]);
+	});
+
+	test("what is not a command is left out, and the rest still done", () => {
+		expect(all('[{"command": "explode"}, "skip", {"command": "pause"}, {"command": "volume"}]')).toEqual([
+			{ command: "pause", language: Language.English },
+		]);
+	});
+
+	test("brackets in a spoken answer do not end the list", () => {
+		expect(
+			all('<think>[x]</think> Sure: [{"command": "pause"}, {"command": "speak", "text": "Paused [for now] {ok}."}] done'),
+		).toEqual([
+			{ command: "pause", language: Language.English },
+			{ command: "speak", text: "Paused [for now] {ok}.", language: Language.English },
+		]);
+	});
+
+	test("no more than the most one request may ask for", () => {
+		const many = `[${Array(MAX_ACTIONS + 3).fill('{"command": "skip"}').join(", ")}]`;
+		expect(all(many)).toHaveLength(MAX_ACTIONS);
+	});
+
+	test("a list is not one command", () => {
+		expect(read('[{"command": "skip"}]')).toBeNull();
+	});
+
+	test("the model is told it may answer with a list", () => {
+		expect(intentPrompt(lookup)).toContain('-> [{"command": "skip"}, {"command": "volume", "volume": 40}]');
+	});
+});
+
+describe("answering aloud", () => {
+	test("the model is offered speak, and told the bot's state", () => {
+		const prompt = intentPrompt(lookup, "Volume: 80%");
+		expect(prompt).toContain('- speak: Answer them aloud');
+		expect(prompt).toContain("The bot right now:\nVolume: 80%");
+		expect(intentPrompt(lookup)).not.toContain("The bot right now");
+	});
+
+	test("a spoken answer is what to say, in the language heard", () => {
+		expect(intentFrom('{"command": "speak", "text": " Three more. "}', Language.Japanese, lookup)).toEqual({
+			command: "speak",
+			text: "Three more.",
+			language: Language.Japanese,
+		});
+	});
+
+	test("with nothing to say it is no answer, and a long one is cut", () => {
+		expect(read('{"command": "speak"}')).toBeNull();
+		expect(read('{"command": "speak", "text": "  "}')).toBeNull();
+		expect(read('{"command": "speak", "text": 3}')).toBeNull();
+		const long = read(`{"command": "speak", "text": "${"a".repeat(MAX_SPOKEN * 2)}"}`);
+		expect(long?.command === "speak" && long.text.length).toBe(MAX_SPOKEN);
+	});
+
+	test("a reply is read with the state and what was said before", async () => {
+		const asked = answering('{"command": "skip", "amount": 2}');
+		const history = [
+			{ role: "user" as const, content: "what's coming up" },
+			{ role: "assistant" as const, content: '{"command": "speak", "text": "Two songs by Adele. Skip them?"}' },
+		];
+		const reading = await readIntent("yes please", "en", lookup, MODEL, { context: "Queue: 2 songs", history });
+		expect(reading.intents).toEqual([{ command: "skip", language: Language.English, options: { amount: 2 } }]);
+		expect(reading.answer).toBe('{"command": "skip", "amount": 2}');
+		const messages = asked[0].body.messages as { role: string; content: string }[];
+		expect(messages.map((message) => message.role)).toEqual(["system", "user", "assistant", "user"]);
+		expect(messages[0].content).toContain("Queue: 2 songs");
+		expect(messages.slice(1)).toEqual([...history, { role: "user", content: "yes please" }]);
+	});
+});
+
 describe("what the model's answer is taken to mean", () => {
 	test.each([
 		['{"command": "skip"}', { command: "skip" }],
@@ -195,11 +285,13 @@ describe("who reads the command", () => {
 		const asked = answering('{"command": "play", "search": "expectations by Olivia Rodrigo"}');
 		const reading = await readIntent("A play expectations by Olro Drigo.", "en", lookup, MODEL);
 		expect(reading.by).toBe("model");
-		expect(reading.intent).toEqual({
-			command: "play",
-			query: "expectations by Olivia Rodrigo",
-			language: Language.English,
-		});
+		expect(reading.intents).toEqual([
+			{
+				command: "play",
+				query: "expectations by Olivia Rodrigo",
+				language: Language.English,
+			},
+		]);
 		expect(asked[0].url).toBe("http://127.0.0.1:8085/v1/chat/completions");
 		expect(asked[0].body.model).toBe(DEFAULT_INTENT_MODEL);
 		expect(asked[0].body.temperature).toBe(0);
@@ -212,20 +304,20 @@ describe("who reads the command", () => {
 	test("the model's no is final, even where the fallback would match", async () => {
 		answering('{"command": "none"}');
 		const reading = await readIntent("stop talking about it, skip school", "en", lookup, MODEL);
-		expect(reading).toEqual({ intent: null, by: "model" });
+		expect(reading).toEqual({ intents: [], by: "model", answer: '{"command": "none"}' });
 	});
 
 	test("it answers in the language that was heard", async () => {
 		answering('{"command": "skip"}');
 		const reading = await readIntent("次の曲", "ja", lookup, MODEL);
-		expect(reading.intent?.language).toBe(Language.Japanese);
+		expect(reading.intents[0]?.language).toBe(Language.Japanese);
 	});
 
 	test("the fallback, when the model is not set up", async () => {
 		const asked = answering('{"command": "stop"}');
 		const reading = await readIntent("skip this song", "en", lookup, {});
 		expect(reading).toEqual({
-			intent: { command: "skip", language: Language.English },
+			intents: [{ command: "skip", language: Language.English }],
 			by: "fallback",
 		});
 		expect(asked).toHaveLength(0);
@@ -238,7 +330,7 @@ describe("who reads the command", () => {
 		expect((await readIntent("skip this song", "en", lookup, MODEL)).by).toBe("fallback");
 
 		globalThis.fetch = (async () => new Response("busy", { status: 503 })) as unknown as typeof fetch;
-		expect((await readIntent("pause", "en", lookup, MODEL)).intent?.command).toBe("pause");
+		expect((await readIntent("pause", "en", lookup, MODEL)).intents[0]?.command).toBe("pause");
 
 		globalThis.fetch = (async () => Response.json({ choices: [] })) as unknown as typeof fetch;
 		expect((await readIntent("pause", "en", lookup, MODEL)).by).toBe("fallback");

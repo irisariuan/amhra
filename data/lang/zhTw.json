@@ -382,6 +382,8 @@
 	"VOICE_TRANSCRIPT_LISTENING": "-# 🎙️ {user}:聆聽中…",
 	"VOICE_TRANSCRIPT_NOTHING": "-# 🎙️ {user}:沒有聽到內容",
 	"VOICE_TRANSCRIPT_UNMATCHED": "-# 🎙️ {user}:「{text}」· 不是指令",
+	"VOICE_ANSWER": "-# 🎙️ {user}\n🗣️ {answer}",
+	"VOICE_ANSWER_TRANSCRIPT": "-# 🎙️ {user}:「{text}」\n🗣️ {answer}",
 	"VOICE_SAY_PLAY": "播放{title}。",
 	"VOICE_SAY_PLAY_NEXT": "下一首播放{title}。",
 	"VOICE_SAY_PLAY_QUEUED": "已把{title}加入播放佇列。",

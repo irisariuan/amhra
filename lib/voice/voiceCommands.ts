@@ -3,6 +3,7 @@ import {
 	type Guild,
 	type GuildMember,
 	type Message,
+	type SendableChannels,
 	type SlashCommandBuilder,
 	type VoiceState,
 } from "discord.js";
@@ -12,10 +13,11 @@ import { languageText, parseLocale } from "../language";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { userSetting } from "../userSetting";
-import { announcement, foundAnnouncement, prepared } from "./announce";
-import { readIntent } from "./intentModel";
+import { announcement, foundAnnouncement, prepared, spokenReply } from "./announce";
+import { readIntent, SPEAK, type SpokenReply, type Turn } from "./intentModel";
 import { getNativeConnection } from "./native";
 import { type SidecarEvent, sidecar } from "./sidecar";
+import { describePlayback, playbackState } from "./voiceContext";
 import { voiceInteraction } from "./voiceInteraction";
 import { collectsWakeClips, guildListens, speaksAnswers } from "./voiceSetting";
 
@@ -38,6 +40,15 @@ const NEWCOMER_BATCH_MS = 3_000;
 const NEWCOMER_EVERY_MS = 5 * 60 * 1000;
 /** A "didn't catch that" is cleared away after this. */
 const NOTHING_HEARD_FOR_MS = 15_000;
+/**
+ * A conversation the bot is listening to the reply to, and has not heard
+ * back on, is forgotten after this. The reply is normally heard, or given up
+ * on, within seconds of the answer being said; this covers an answer that
+ * could not be said, after which nothing is listened for.
+ */
+const CONVERSATION_FOR_MS = 60_000;
+/** Turns of a conversation the model is sent, latest last. */
+const CONVERSATION_TURNS = 12;
 
 type Lookup = (name: string) => Command<SlashCommandBuilder> | undefined;
 
@@ -143,10 +154,41 @@ function takeListening(guildId: string, userId: string) {
 	return post ?? Promise.resolve(null);
 }
 
+/**
+ * What was said between the bot and someone it answered aloud and is
+ * listening to again. Kept only while it is listening: whatever ends that —
+ * a command, nothing heard, an answer that will not be listened to — ends
+ * the conversation.
+ */
+const conversations = new Map<string, { turns: Turn[]; at: number }>();
+
+/** The conversation with them that the bot is still listening in on. */
+function conversation(guildId: string, userId: string): Turn[] {
+	const key = listeningKey(guildId, userId);
+	const found = conversations.get(key);
+	if (!found) return [];
+	if (Date.now() - found.at > CONVERSATION_FOR_MS) {
+		conversations.delete(key);
+		return [];
+	}
+	return found.turns;
+}
+
+function endConversation(guildId: string, userId: string) {
+	conversations.delete(listeningKey(guildId, userId));
+}
+
+/** Stop the waiting sound for them: the bot has done what it will. */
+function settle(guildId: string, userId: string) {
+	sidecar().send({ type: "settle", guildId, userId });
+}
+
 async function onNothingHeard(
 	client: CustomClient,
 	{ guildId, userId }: Extract<SidecarEvent, { type: "nothingHeard" }>,
 ) {
+	// Not listened to any further, so there is nothing to carry on.
+	endConversation(guildId, userId);
 	const message = await takeListening(guildId, userId);
 	if (!message) return;
 	const guild = client.guilds.cache.get(guildId);
@@ -168,22 +210,42 @@ async function onUtterance(
 	lookup: Lookup,
 	{ guildId, userId, text, lang }: Extract<SidecarEvent, { type: "utterance" }>,
 ) {
+	// The sidecar plays the waiting sound until it is answered for them; any
+	// way this ends without having said something to them has to say so.
+	let answered = false;
+	try {
+		answered = await handleUtterance(client, lookup, { guildId, userId, text, lang });
+	} finally {
+		if (!answered) settle(guildId, userId);
+	}
+}
+
+/** Act on what they said. True if what was sent to be said answers them. */
+async function handleUtterance(
+	client: CustomClient,
+	lookup: Lookup,
+	{ guildId, userId, text, lang }: Pick<Extract<SidecarEvent, { type: "utterance" }>, "guildId" | "userId" | "text" | "lang">,
+): Promise<boolean> {
 	const waiting = await takeListening(guildId, userId);
+	const history = conversation(guildId, userId);
+	// Whatever comes of this, the conversation goes on only if the bot speaks
+	// and listens again, which sets it anew.
+	endConversation(guildId, userId);
 	const found = await speaker(client, guildId, userId);
-	if (!found) return;
+	if (!found) return false;
 	const { guild, member } = found;
 	const showTranscript = userSetting(userId).showTranscript === true;
 
-	const { intent, by } = await readIntent(text, lang, lookup);
+	const context = describePlayback(await playbackState(client, guildId));
+	const { intents, by, answer } = await readIntent(text, lang, lookup, readSetting(), { context, history });
 	// What was said stays out of the log, as it does in the sidecar's, unless
 	// the owner is tuning the matching and asked for it.
 	const heard = readSetting().VOICE_LOG_TRANSCRIPTS
 		? `: [${lang ?? "?"}] ${JSON.stringify(text)} (read by the ${by})`
 		: "";
-	const command = intent && lookup(intent.command);
 	const channel = replyChannel(client, guild, member);
 
-	if (!intent || !command) {
+	if (!intents.length) {
 		dcb.log(`(Guild ID: ${guildId}) Heard the name, then no command${heard}`);
 		if (showTranscript) {
 			const content = languageText("voice_transcript_unmatched", guildLanguage(guild), {
@@ -194,34 +256,132 @@ async function onUtterance(
 			if (waiting) await waiting.edit(answer).catch(() => {});
 			else await channel?.send(answer).catch(() => {});
 		}
-		return;
-	}
-	if (!channel) {
-		globalApp.warn(`(Guild ID: ${guildId}) Nowhere to answer a voice command`);
-		return;
+		return false;
 	}
 
 	dcb.log(
-		`(Guild ID: ${guildId}) ${member.user.tag} said voice command ${intent.command}${heard}`,
+		`(Guild ID: ${guildId}) ${member.user.tag} said voice command ${intents.map((intent) => intent.command).join(", ")}${heard}`,
 	);
-	// Said as it starts, not once it is done: "Leaving the channel" after
-	// leaving would never be heard. A command that is then refused says why
-	// in the chat. Play is said once its search has found something.
 	const speaks = speaksAnswers() && userSetting(userId).spokenAnswers !== false;
-	const said = speaks ? announcement(intent, lang) : null;
-	if (said) sidecar().send({ type: "speak", guildId, ...said });
-	await command.execute({
-		interaction: voiceInteraction(member, channel, intent, {
-			message: waiting,
-			transcript: showTranscript ? text : undefined,
-			onFound: speaks
-				? (found) =>
-						sidecar().send({ type: "speak", guildId, ...foundAnnouncement(found, intent.language, lang) })
-				: undefined,
-		}),
-		client,
-		language: intent.language,
+	let answered = false;
+	const say = (phrase: { text: string; language: string | null }) => {
+		answered = true;
+		sidecar().send({ type: "speak", guildId, ...phrase, userId, listen: false });
+	};
+	// The "listening…" posted on the wake, and their words, go with the first
+	// answer written; the rest answer under their own headings.
+	let message = waiting;
+	let transcript = showTranscript ? text : undefined;
+
+	// One after another, each finished before the next starts, so a later one
+	// acts on what the earlier ones did.
+	for (const [index, intent] of intents.entries()) {
+		const last = index === intents.length - 1;
+		if (intent.command === SPEAK) {
+			// Only an answer at the end is listened back to: the bot has more
+			// to do after one in the middle.
+			const spoken = await speakBack(guildId, userId, intent, {
+				channel,
+				waiting: message,
+				transcript,
+				lang,
+				listen: last,
+				turns: [...history, { role: "user", content: text }, { role: "assistant", content: answer ?? "" }],
+			});
+			answered ||= spoken;
+			message = null;
+			transcript = undefined;
+			continue;
+		}
+		const command = lookup(intent.command);
+		if (!command) continue;
+		if (!channel) {
+			globalApp.warn(`(Guild ID: ${guildId}) Nowhere to answer a voice command`);
+			return answered;
+		}
+		// Said as it starts, not once it is done: "Leaving the channel" after
+		// leaving would never be heard. A command that is then refused says
+		// why in the chat. Play is said once its search has found something.
+		const said = speaks ? announcement(intent, lang) : null;
+		if (said) say(said);
+		try {
+			await command.execute({
+				interaction: voiceInteraction(member, channel, intent, {
+					message,
+					transcript,
+					onFound: speaks ? (found) => say(foundAnnouncement(found, intent.language, lang)) : undefined,
+				}),
+				client,
+				language: intent.language,
+			});
+		} catch (error) {
+			// What came after it may have counted on it.
+			globalApp.err(`Voice command ${intent.command} failed; not doing the rest`, error);
+			return answered;
+		}
+		message = null;
+		transcript = undefined;
+	}
+	return answered;
+}
+
+/**
+ * Answer them aloud with what the model said, whatever they chose about
+ * hearing what their commands do: they asked a question. It is also written
+ * where the bot answers. Then, if it could be said and `listen` asks, listen
+ * to them again, with the conversation kept for their reply.
+ */
+async function speakBack(
+	guildId: string,
+	userId: string,
+	reply: SpokenReply,
+	{
+		channel,
+		waiting,
+		transcript,
+		lang,
+		listen,
+		turns,
+	}: {
+		channel: SendableChannels | null;
+		waiting: Message | null;
+		transcript?: string;
+		lang: string | null;
+		/** Listen to them again after it, with `turns` kept for their reply. */
+		listen: boolean;
+		turns: Turn[];
+	},
+): Promise<boolean> {
+	const content = transcript
+		? languageText("voice_answer_transcript", reply.language, {
+				user: `<@${userId}>`,
+				text: escapeMarkdown(transcript),
+				answer: escapeMarkdown(reply.text),
+			})
+		: languageText("voice_answer", reply.language, {
+				user: `<@${userId}>`,
+				answer: escapeMarkdown(reply.text),
+			});
+	const message = { content, allowedMentions: { parse: [] } };
+	if (waiting) await waiting.edit(message).catch(() => {});
+	else await channel?.send(message).catch(() => {});
+
+	// Without speech nothing is said, so nothing is listened for after it.
+	if (!speaksAnswers()) return false;
+	if (listen) {
+		conversations.set(listeningKey(guildId, userId), {
+			turns: turns.slice(-CONVERSATION_TURNS),
+			at: Date.now(),
+		});
+	}
+	sidecar().send({
+		type: "speak",
+		guildId,
+		...spokenReply(reply.text, reply.language, lang),
+		userId,
+		listen,
 	});
+	return true;
 }
 
 /**

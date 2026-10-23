@@ -80,18 +80,31 @@ impl Speakers {
 		now: Instant,
 		events: &mut dyn FnMut(u64, GateEvent),
 	) -> Result<(), ModelError> {
-		let speaker = match self.speakers.entry(user_id) {
-			std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
-			std::collections::hash_map::Entry::Vacant(entry) => entry.insert(Speaker {
-				gate: Gate::new(self.config, self.models.spotter()?, self.models.vad()?),
-				last_heard: now,
-				filled: 0,
-			}),
-		};
+		let Self { models, config, speakers, samples, .. } = self;
+		to_float(pcm, samples);
+		let speaker = speaker(speakers, models.as_ref(), *config, user_id, now)?;
 		speaker.last_heard = now;
 		speaker.filled = 0;
-		to_float(pcm, &mut self.samples);
-		speaker.gate.push(&self.samples, &mut |event| events(user_id, event));
+		speaker.gate.push(samples, &mut |event| events(user_id, event));
+		Ok(())
+	}
+
+	/// Listen to `user_id` for a command without waiting for the name, as
+	/// [`Gate::follow_up`] does. Fails only as [`Speakers::frame`] does.
+	pub fn follow_up(
+		&mut self,
+		user_id: u64,
+		keyword: &str,
+		now: Instant,
+		events: &mut dyn FnMut(u64, GateEvent),
+	) -> Result<(), ModelError> {
+		let speaker = speaker(&mut self.speakers, self.models.as_ref(), self.config, user_id, now)?;
+		// The silence to fill starts now, not when they last spoke: that was
+		// before the bot answered them, and counting it would close the window
+		// as soon as it opened.
+		speaker.last_heard = now;
+		speaker.filled = 0;
+		speaker.gate.follow_up(keyword, &mut |event| events(user_id, event));
 		Ok(())
 	}
 
@@ -119,6 +132,22 @@ impl Speakers {
 			}
 		}
 	}
+}
+
+/// `user_id`'s entry, made with a gate of their own if they are new.
+fn speaker<'a>(
+	speakers: &'a mut HashMap<u64, Speaker>,
+	models: &dyn Models,
+	config: GateConfig,
+	user_id: u64,
+	now: Instant,
+) -> Result<&'a mut Speaker, ModelError> {
+	Ok(match speakers.entry(user_id) {
+		std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
+		std::collections::hash_map::Entry::Vacant(entry) => {
+			entry.insert(Speaker { gate: Gate::new(config, models.spotter()?, models.vad()?), last_heard: now, filled: 0 })
+		}
+	})
 }
 
 #[cfg(test)]
@@ -316,6 +345,26 @@ mod tests {
 			heard.iter().any(|(_, event)| matches!(event, GateEvent::Woke { .. })),
 			"{heard:?}"
 		);
+	}
+
+	#[test]
+	fn a_follow_up_long_after_they_spoke_waits_for_them() {
+		let mut speakers = speakers();
+		let mut clock = Clock { now: Instant::now() };
+		let mut heard = Vec::new();
+		say(&mut speakers, ALICE, &frames(LOUD, 5), &mut clock, &mut heard);
+		// The bot takes a while to answer.
+		wait(&mut speakers, 300, &mut clock, &mut heard);
+		let now = clock.step();
+		speakers.follow_up(ALICE, "FOLLOW-UP", now, &mut |user, event| heard.push((user, event))).unwrap();
+		wait(&mut speakers, 10, &mut clock, &mut heard);
+		assert!(
+			!heard.iter().any(|(_, event)| matches!(event, GateEvent::TimedOut { .. })),
+			"the old silence did not count against the wait: {heard:?}"
+		);
+		say(&mut speakers, ALICE, &frames(LOUD, 20), &mut clock, &mut heard);
+		wait(&mut speakers, 40, &mut clock, &mut heard);
+		assert_eq!(captures(&heard).len(), 1, "{heard:?}");
 	}
 
 	#[test]

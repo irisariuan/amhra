@@ -29,7 +29,7 @@ use amhra_voice::{SILENCE_FRAME, Session};
 
 use crate::listen::{self, ListenHandle, ListenSetup};
 use crate::protocol::Event;
-use crate::wake_feedback::{Clip, Clips, Duck, FRAME_PCM};
+use crate::wake_feedback::{Clip, Clips, Duck, FRAME_PCM, Then, Waits};
 
 /// One audio frame's worth of time.
 const TICK: Duration = Duration::from_millis(20);
@@ -78,9 +78,21 @@ pub enum WorkerCommand {
 	Woke { chime: bool, duck: f32 },
 	/// A wake has been dealt with; the music may come back up.
 	Heard,
+	/// What `user_id` said after the name has been taken down: the end chime
+	/// and then the waiting sound, if `chime`, with the music held at `duck`
+	/// until a `Settled` for them or an answer to them starts.
+	Captured { user_id: u64, chime: bool, duck: f32 },
+	/// The name came to nothing: the end chime, if `chime`.
+	Closed { chime: bool },
+	/// The bot is done with what `user_id` said, without anything to say.
+	Settled { user_id: u64 },
 	/// Say this, after anything already being said, with the music lowered
 	/// to `duck` meanwhile. Interleaved stereo PCM at the Opus rate.
-	Say { pcm: Arc<[i16]>, duck: f32 },
+	///
+	/// `answers` ends the wait for that speaker as it starts; `then` runs once
+	/// it has been said. Nothing is said if too much is queued already, and
+	/// then `then` does not run either.
+	Say { pcm: Arc<[i16]>, duck: f32, answers: Option<u64>, then: Option<Then> },
 	Shutdown,
 }
 
@@ -223,7 +235,10 @@ fn run(
 
 		ticks = ticks.wrapping_add(1);
 		let now = Instant::now();
-		let playing = output.clips.next_frame(&mut overlay, &mut output.duck, now);
+		if output.waits.due(!output.clips.is_empty(), &mut output.duck, now) {
+			output.say(Clip::waiting());
+		}
+		let playing = output.clips.next_frame(&mut overlay, &mut output.duck, &mut output.waits, now);
 		output.update(now);
 		let overlay = playing.then_some(&overlay[..]);
 
@@ -356,6 +371,8 @@ struct Output {
 	volume: Volume,
 	clips: Clips,
 	duck: Duck,
+	/// Commands taken down and not yet answered.
+	waits: Waits,
 	/// What the volume was last set to, so it is only touched on a change.
 	applied: Option<f32>,
 }
@@ -368,6 +385,16 @@ impl Output {
 		if self.applied != Some(gain) {
 			self.applied = Some(gain);
 			self.volume.set_gain(gain);
+		}
+	}
+
+	/// Queue `clip`. One that does not fit still answers whoever it was for:
+	/// nothing else will.
+	fn say(&mut self, clip: Clip) {
+		if let Some(dropped) = self.clips.push(clip)
+			&& let Some(user_id) = dropped.answers()
+		{
+			self.waits.settle(user_id, &mut self.duck);
 		}
 	}
 }
@@ -527,7 +554,7 @@ fn apply(
 		}
 		WorkerCommand::Woke { chime, duck } => {
 			if chime {
-				output.clips.push(Clip::chime());
+				output.say(Clip::chime());
 			}
 			if duck < 1.0 {
 				output.duck.woke(duck, Instant::now());
@@ -538,7 +565,32 @@ fn apply(
 			output.duck.heard();
 			output.update(Instant::now());
 		}
-		WorkerCommand::Say { pcm, duck } => output.clips.push(Clip::new(pcm, (duck < 1.0).then_some(duck))),
+		WorkerCommand::Captured { user_id, chime, duck } => {
+			if chime {
+				output.say(Clip::end_chime());
+			}
+			output.waits.start(user_id, chime, duck, &mut output.duck, Instant::now());
+			output.update(Instant::now());
+		}
+		WorkerCommand::Closed { chime } => {
+			if chime {
+				output.say(Clip::end_chime());
+			}
+		}
+		WorkerCommand::Settled { user_id } => {
+			output.waits.settle(user_id, &mut output.duck);
+			output.update(Instant::now());
+		}
+		WorkerCommand::Say { pcm, duck, answers, then } => {
+			let mut clip = Clip::new(pcm, (duck < 1.0).then_some(duck));
+			if let Some(user_id) = answers {
+				clip = clip.answering(user_id);
+			}
+			if let Some(then) = then {
+				clip = clip.then(then);
+			}
+			output.say(clip);
+		}
 		WorkerCommand::SetFades(fades) => player.set_fades(fades),
 		WorkerCommand::Shutdown => {}
 	}

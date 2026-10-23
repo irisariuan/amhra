@@ -98,8 +98,18 @@ pub trait Synthesiser {
 /// having been let go.
 pub type Load = Box<dyn FnMut() -> Result<Box<dyn Synthesiser>, String> + Send>;
 
-/// Hands a guild's worker what to play.
-pub type Deliver = Box<dyn Fn(&str, Arc<[i16]>) + Send>;
+/// Hands a guild's worker what to play, and who it answers. Called with
+/// nothing to play for an answer that could not be said, so whoever it was
+/// for is not kept waiting, nor listened to for a reply.
+pub type Deliver = Box<dyn Fn(&str, Arc<[i16]>, Option<Answer>) + Send>;
+
+/// Someone a phrase answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Answer {
+	pub user_id: u64,
+	/// Listen to them again once it has been said.
+	pub listen: bool,
+}
 
 /// A speech model and the voices it says.
 pub struct Model {
@@ -112,7 +122,7 @@ pub struct Model {
 }
 
 enum Request {
-	Say { guild_id: String, text: String, voice: Voice, asked: Instant },
+	Say { guild_id: String, text: String, voice: Voice, asked: Instant, answer: Option<Answer> },
 	Prepare { text: String, voice: Voice },
 }
 
@@ -137,7 +147,12 @@ impl Speech {
 
 	/// Say `text` in this guild's call.
 	pub fn say(&self, guild_id: String, text: String, voice: Voice) {
-		let _ = self.requests.send(Request::Say { guild_id, text, voice, asked: Instant::now() });
+		let _ = self.requests.send(Request::Say { guild_id, text, voice, asked: Instant::now(), answer: None });
+	}
+
+	/// Say `text` in this guild's call in answer to someone.
+	pub fn answer(&self, guild_id: String, text: String, voice: Voice, answer: Answer) {
+		let _ = self.requests.send(Request::Say { guild_id, text, voice, asked: Instant::now(), answer: Some(answer) });
 	}
 
 	/// Have `text` ready to say, synthesising it now if it is not saved.
@@ -244,6 +259,7 @@ fn run(inbox: &Receiver<Request>, models: Vec<Model>, store: Option<PathBuf>, de
 			if unspoken.insert(asked_voice) {
 				eprintln!("speech: no model says {}", asked_voice.name());
 			}
+			finish(request, None, deliver);
 			continue;
 		};
 		let slot = &mut slots[at];
@@ -268,11 +284,18 @@ fn run(inbox: &Receiver<Request>, models: Vec<Model>, store: Option<PathBuf>, de
 			}
 			remembered.insert(key, Arc::clone(pcm));
 		}
-		if let (Some(pcm), Request::Say { guild_id, asked, .. }) = (pcm, request)
-			&& asked.elapsed() <= STALE
-		{
-			deliver(&guild_id, pcm);
-		}
+		finish(request, pcm, deliver);
+	}
+}
+
+/// Hand over what `request` asked to say, if it is still worth saying. An
+/// answer that is not said is still handed over, with nothing to play.
+fn finish(request: Request, pcm: Option<Arc<[i16]>>, deliver: &Deliver) {
+	let Request::Say { guild_id, asked, answer, .. } = request else { return };
+	match (pcm.filter(|_| asked.elapsed() <= STALE), answer) {
+		(Some(pcm), answer) => deliver(&guild_id, pcm, answer),
+		(None, Some(answer)) => deliver(&guild_id, Arc::from([]), Some(answer)),
+		(None, None) => {}
 	}
 }
 
@@ -581,7 +604,7 @@ mod tests {
 	fn listener() -> (Heard, Deliver) {
 		let heard: Heard = Arc::default();
 		let into = Arc::clone(&heard);
-		(heard, Box::new(move |guild: &str, pcm: Arc<[i16]>| into.lock().unwrap().push((guild.to_owned(), pcm.len()))))
+		(heard, Box::new(move |guild: &str, pcm: Arc<[i16]>, _| into.lock().unwrap().push((guild.to_owned(), pcm.len()))))
 	}
 
 	fn settle(heard: &Heard, count: usize) {
@@ -684,6 +707,29 @@ mod tests {
 		speech.say("g".into(), "Skipping.".into(), Voice::English);
 		std::thread::sleep(Duration::from_millis(50));
 		assert!(heard.lock().unwrap().is_empty());
+	}
+
+	#[test]
+	fn an_answer_says_who_it_is_for_even_when_it_cannot_be_said() {
+		type Answers = Arc<Mutex<Vec<(usize, Option<Answer>)>>>;
+		let answers: Answers = Arc::default();
+		let into = Arc::clone(&answers);
+		let deliver: Deliver =
+			Box::new(move |_: &str, pcm: Arc<[i16]>, answer| into.lock().unwrap().push((pcm.len(), answer)));
+		let counts = Counts::default();
+		let speech = Speech::start(vec![fake("m", vec![Voice::English], &counts)], None, deliver).unwrap();
+		let answer = Answer { user_id: 7, listen: true };
+		speech.answer("g".into(), "Two songs are queued.".into(), Voice::English, answer);
+		// No model says Korean: nothing is said, and they are told so.
+		speech.answer("g".into(), "두 곡".into(), Voice::Korean, answer);
+		let deadline = Instant::now() + Duration::from_secs(5);
+		while answers.lock().unwrap().len() < 2 && Instant::now() < deadline {
+			std::thread::sleep(Duration::from_millis(5));
+		}
+		let answers = answers.lock().unwrap();
+		assert!(answers[0].0 > 0);
+		assert_eq!(answers[0].1, Some(answer));
+		assert_eq!(answers[1], (0, Some(answer)));
 	}
 
 	#[test]

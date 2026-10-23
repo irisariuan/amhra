@@ -105,6 +105,11 @@ export function foundAnnouncement(found: Found, language: Language, heard?: stri
 	return { text: languageText(id, spoken.language, { title: spokenTitle(found.title) }), language: spoken.code };
 }
 
+/** What the model said to answer someone aloud, in the voice for it. */
+export function spokenReply(text: string, language: Language, heard?: string | null): Phrase {
+	return { text, language: spokenLanguage(language, heard).code };
+}
+
 /**
  * A video's title as it is worth saying: without what is in brackets ("(Official
  * Music Video)", "[MV]", "【中字】") or after a bar, unless that leaves nothing.

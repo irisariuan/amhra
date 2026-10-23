@@ -123,7 +123,20 @@ pub enum Command {
 		/// else, or nothing, is English.
 		#[serde(default)]
 		language: Option<String>,
+		/// The member this answers. Their command stops being waited on (the
+		/// waiting sound stops) once it starts, or at once if it cannot be said.
+		#[serde(default)]
+		user_id: Option<String>,
+		/// Listen to that member again once it has been said, without waiting
+		/// for the name: the start chime, then whatever they say back is an
+		/// `Utterance` like any other. Only with `user_id`.
+		#[serde(default)]
+		listen: bool,
 	},
+	/// The bot is done with what a member said, and has nothing to say about
+	/// it: stop the waiting sound for them. Harmless if it already stopped.
+	#[serde(rename_all = "camelCase")]
+	Settle { guild_id: String, user_id: String },
 	/// Have these phrases ready, so saying them never waits on the model:
 	/// what is not yet saved is synthesised in the background, once.
 	#[serde(rename_all = "camelCase")]
@@ -208,7 +221,8 @@ pub enum Event {
 	#[serde(rename_all = "camelCase")]
 	Woke { guild_id: String, user_id: String },
 	/// The wake came to nothing: no speech followed it, or none that could be
-	/// made out.
+	/// made out. Also sent for a `Speak` that was to listen to its member
+	/// again and could not be said: nothing will be listened for.
 	#[serde(rename_all = "camelCase")]
 	NothingHeard { guild_id: String, user_id: String },
 	/// Someone said the wake word and then something, transcribed. Only sent
@@ -275,7 +289,8 @@ impl Command {
 			| Self::SwapLayer { guild_id, .. }
 			| Self::SetFades { guild_id, .. }
 			| Self::SetListen { guild_id, .. }
-			| Self::Speak { guild_id, .. } => Some(guild_id),
+			| Self::Speak { guild_id, .. }
+			| Self::Settle { guild_id, .. } => Some(guild_id),
 			Self::PrepareSpeech { .. } | Self::ListSessions | Self::Shutdown => None,
 		}
 	}
@@ -373,6 +388,18 @@ mod tests {
 	}
 
 	#[test]
+	fn a_speak_answers_nobody_and_listens_for_nothing_unless_told() {
+		let command: Command = serde_json::from_str(r#"{"type":"speak","guildId":"g","text":"Skipping."}"#).unwrap();
+		assert!(matches!(command, Command::Speak { user_id: None, listen: false, .. }));
+		let command: Command = serde_json::from_str(
+			r#"{"type":"speak","guildId":"g","text":"Two songs.","userId":"5","listen":true}"#,
+		)
+		.unwrap();
+		let Command::Speak { user_id, listen, .. } = command else { panic!("wrong variant") };
+		assert_eq!((user_id.as_deref(), listen), (Some("5"), true));
+	}
+
+	#[test]
 	fn unknown_commands_are_rejected_rather_than_guessed() {
 		assert!(serde_json::from_str::<Command>(r#"{"type":"explode","guildId":"1"}"#).is_err());
 		assert!(serde_json::from_str::<Command>(r#"{"guildId":"1"}"#).is_err());
@@ -394,6 +421,7 @@ mod tests {
 			r#"{"type":"swapLayer","guildId":"g","layerId":"l"}"#,
 			r#"{"type":"setListen","guildId":"g","listen":true}"#,
 			r#"{"type":"speak","guildId":"g","text":"Skipping."}"#,
+			r#"{"type":"settle","guildId":"g","userId":"2"}"#,
 		];
 		for json in commands {
 			let command: Command = serde_json::from_str(json).unwrap();

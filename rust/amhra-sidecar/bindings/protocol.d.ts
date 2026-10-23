@@ -28,7 +28,18 @@ layerId: string, trackId: string, gain: number, startMs: number, stream: boolean
  * `en`, `ja`, `ko`, `zh` (Mandarin) or `yue` (Cantonese); anything
  * else, or nothing, is English.
  */
-language: string | null, } | { "type": "prepareSpeech", phrases: Array<Phrase>, } | { "type": "listSessions" } | { "type": "shutdown" };
+language: string | null, 
+/**
+ * The member this answers. Their command stops being waited on (the
+ * waiting sound stops) once it starts, or at once if it cannot be said.
+ */
+userId: string | null, 
+/**
+ * Listen to that member again once it has been said, without waiting
+ * for the name: the start chime, then whatever they say back is an
+ * `Utterance` like any other. Only with `user_id`.
+ */
+listen: boolean, } | { "type": "settle", guildId: string, userId: string, } | { "type": "prepareSpeech", phrases: Array<Phrase>, } | { "type": "listSessions" } | { "type": "shutdown" };
 
 /**
  * What this process reports back.

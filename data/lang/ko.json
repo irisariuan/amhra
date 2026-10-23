@@ -371,6 +371,8 @@
 	"VOICE_TRANSCRIPT_LISTENING": "-# 🎙️ {user}: 듣는 중…",
 	"VOICE_TRANSCRIPT_NOTHING": "-# 🎙️ {user}: 아무것도 못 들었어요",
 	"VOICE_TRANSCRIPT_UNMATCHED": "-# 🎙️ {user}: “{text}” · 명령이 아님",
+	"VOICE_ANSWER": "-# 🎙️ {user}\n🗣️ {answer}",
+	"VOICE_ANSWER_TRANSCRIPT": "-# 🎙️ {user}: “{text}”\n🗣️ {answer}",
 	"TRANSCRIPT_ON": "이제 제 이름을 부르면 들은 내용을 채널에 올립니다 (음성 명령이 켜진 모든 서버에서). `/transcript enabled:false`로 끌 수 있습니다.",
 	"TRANSCRIPT_OFF": "이제 당신의 말을 올리지 않습니다.",
 	"VOICE_FEEDBACK_ON": "이제 당신의 음성 명령으로 무엇을 하는지 소리로 알려 줍니다 (봇이 말할 수 있는 경우). `/voicefeedback enabled:false`로 끌 수 있습니다.",

@@ -339,7 +339,7 @@ starts:
 | `--wake-model <dir>` | the stock spotter | a fine-tuned one from `training/wake` |
 | `--wake-clips <dir>` | off | save the audio each wake was heard in (below) |
 | `--wake-clips-max <n>` | `2000` | stop saving after this many clips (about 75MB) |
-| `--wake-chime` | off | chime in the call when the name is heard |
+| `--wake-chime` | off | chime in the call when the name is heard, chime again when the command has been taken down, and sound softly every 2s until it is answered |
 | `--wake-duck <gain>` | off | lower the music to this until the command is heard |
 
 Even started this way, the sidecar hears a guild only while the bot says it
@@ -661,7 +661,7 @@ starts:
 | `VOICE_WAKE_KEYWORDS` | `training/wake/keywords.txt` | |
 | `VOICE_COLLECT_WAKE_CLIPS` | **on** | save wake clips from servers that turned voice commands on |
 | `VOICE_LOG_TRANSCRIPTS` | off | log what was heard after the name, for tuning the matching |
-| `VOICE_WAKE_CHIME` | **on** | a chime in the call when the name is heard |
+| `VOICE_WAKE_CHIME` | **on** | a chime in the call when the name is heard, another when the command has been taken down, and a soft sound every 2s until the bot answers |
 | `VOICE_DUCK_VOLUME` | `0.3` | the music's volume from the name until the command is heard; 1 leaves it |
 | `VOICE_RECOGNISER_PROVIDER` | `cpu` | `cpu` or `coreml` |
 | `VOICE_RECOGNISER_THREADS` | `2` | threads for speech recognition |
@@ -688,7 +688,13 @@ starts:
   play, pause, resume, skip, skipnonmusic, autoskipnonmusic, stop,
   disconnect, join, loop, queue, nowplaying, remove, volume, lyrics,
   relocate, and mix with its subcommands ("mix in some rain at 30
-  percent", "stop the second mixed in song") — with its options, or none. It is told each command's options
+  percent", "stop the second mixed in song") — with its options, or none,
+  or `speak` (below). One request may ask for several ("skip this and turn
+  it down to 40"): the model answers with a list, at most five, and each is
+  run in turn, finished before the next starts, as if typed one after
+  another. One that is not a command is left out and the rest still run; one
+  that fails stops the rest, since they may have counted on it. Only a
+  `speak` at the end listens for a reply. It is told each command's options
   from the slash command itself, and what it gives back is held to them:
   an option of the wrong type or out of range is left out, a command missing
   a required one is not run. To run one on a Mac:
@@ -725,12 +731,31 @@ starts:
   skipnonmusic, stop and disconnect, nothing misheard, and no simplified
   Chinese: the names are traditional, and the recogniser mostly writes
   simplified.
+- **Telling the model the state** (`lib/voice/voiceContext.ts`). With the
+  transcript it is sent what is playing and where, the first ten songs in
+  the queue, the volume, loop, song suggestions, skipping non-music parts,
+  the crossfade and what is mixed in. A queued song's title and channel are
+  given when already looked up, or when looking it up takes under 400ms;
+  otherwise its link.
+- **Answering aloud, and listening for the reply.** The model's own command,
+  `speak`, is something to say: an answer from the state ("Three more after
+  this one.") or a question back ("Which song?"). It is said whatever the
+  member chose with `/voicefeedback`, since they asked, and written in the
+  chat. Once it has been said the sidecar listens to the same member again
+  without the name (`speak` with `listen`, then `Engine::follow_up`): the
+  start chime, five seconds to begin, and their reply is read with what was
+  said before. The conversation is kept only while the bot is going to
+  listen: a command, nothing heard, or an answer that could not be said ends
+  it.
 - **Answering the name.** The moment the spotter hears it, the guild's audio
   thread mixes in a half-second chime (two rising sine notes, synthesised in
   `wake_feedback.rs`), over the music or alone if nothing is playing, and
   lowers the music until the command has been transcribed or the wake comes
   to nothing. Wakes are counted, so a second speaker keeps it down, and ten
-  seconds is the most one wake can hold it there.
+  seconds is the most one wake can hold it there. When the command has been
+  taken down, the same notes falling say so; then a soft low note every two
+  seconds until the bot answers, by saying something to them or by sending
+  `settle`, with the music held down meanwhile (twenty seconds at most).
 - **Seeing what was heard.** `/transcript enabled:true` is each member's own
   choice, kept in `data/userSetting.json` (gitignored). The sidecar reports
   `woke` and `nothingHeard` as well as `utterance`; for those members the bot
