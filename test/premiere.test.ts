@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { getUpcoming, parseUpcoming } from "../lib/premiere";
+import { YtdlError } from "@distube/ytdl-core";
+import { getUpcoming, parseUpcoming, upcomingFrom } from "../lib/premiere";
 import { forgetVisitorData } from "../lib/youtubePlaylist";
 
 /**
@@ -100,5 +101,65 @@ describe("getUpcoming", () => {
 
 		expect((await getUpcoming("x2AJxEQBD9o"))?.startsAt).toBe(1792643400_000);
 		expect(bodies[0].videoId).toBe("x2AJxEQBD9o");
+	});
+});
+
+describe("upcomingFrom", () => {
+	const realFetch = globalThis.fetch;
+	afterEach(() => {
+		globalThis.fetch = realFetch;
+		forgetVisitorData();
+	});
+
+	/** InnerTube answering `answer`, or failing with none; counts the asks. */
+	function innertube(answer: unknown) {
+		const asked: string[] = [];
+		globalThis.fetch = (async (input: string | URL | Request) => {
+			const url = String(input);
+			asked.push(url);
+			if (!url.includes("/youtubei/") || answer === undefined) return new Response("", { status: 500 });
+			return new Response(JSON.stringify(answer));
+		}) as typeof fetch;
+		return asked;
+	}
+
+	const notStarted = (startTime?: Date) =>
+		new YtdlError("NOT_STARTED", "Could not play x2AJxEQBD9o: This live event will begin in 16 hours.", {
+			...(startTime ? { startTime } : {}),
+		});
+
+	test("any other refusal is not a premiere, and asks nothing more", async () => {
+		const asked = innertube(upcoming);
+		expect(await upcomingFrom(new YtdlError("PRIVATE", "Video unavailable"), "x2AJxEQBD9o")).toBeNull();
+		expect(await upcomingFrom(new Error("fetch failed"), "x2AJxEQBD9o")).toBeNull();
+		expect(await upcomingFrom(undefined, "x2AJxEQBD9o")).toBeNull();
+		expect(asked).toHaveLength(0);
+	});
+
+	test("a premiere is looked up for its title", async () => {
+		innertube(upcoming);
+		expect(await upcomingFrom(notStarted(new Date(1792643400_000)), "x2AJxEQBD9o")).toEqual({
+			videoId: "x2AJxEQBD9o",
+			url: "https://www.youtube.com/watch?v=x2AJxEQBD9o",
+			title: "A premiere",
+			channel: "Some Channel",
+			startsAt: 1792643400_000,
+		});
+	});
+
+	test("without that lookup, ytdl-core's start time schedules it by its link", async () => {
+		innertube(undefined);
+		expect(await upcomingFrom(notStarted(new Date(1792643400_000)), "x2AJxEQBD9o")).toEqual({
+			videoId: "x2AJxEQBD9o",
+			url: "https://www.youtube.com/watch?v=x2AJxEQBD9o",
+			title: "https://www.youtube.com/watch?v=x2AJxEQBD9o",
+			channel: "",
+			startsAt: 1792643400_000,
+		});
+	});
+
+	test("with no start time anywhere, there is nothing to schedule", async () => {
+		innertube(undefined);
+		expect(await upcomingFrom(notStarted(), "x2AJxEQBD9o")).toBeNull();
 	});
 });

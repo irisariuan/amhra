@@ -11,7 +11,7 @@ import type { CustomClient } from "../custom";
 import { Language } from "../interaction";
 import { languageText } from "../language";
 import { dcb, globalApp } from "../misc";
-import { getUpcoming, type Upcoming } from "../premiere";
+import { type Upcoming, upcomingFrom } from "../premiere";
 import { event } from "../server/event";
 import { getYouTubeVideoId } from "../youtube";
 import {
@@ -378,7 +378,8 @@ export type ScheduleRequestError = "not_found" | "need_time" | "past";
  *
  * ytdl-core is asked first: it answers every ordinary video, and its answer is
  * cached for the `createResource` that follows, so the common case costs
- * nothing extra. Only a video it refuses is looked up as a premiere.
+ * nothing extra. Only a video it refuses as not started yet is looked up as a
+ * premiere.
  */
 export async function findUpcoming(url: string): Promise<Upcoming | null> {
 	const id = getYouTubeVideoId(url);
@@ -386,8 +387,8 @@ export async function findUpcoming(url: string): Promise<Upcoming | null> {
 	try {
 		await getVideoInfo(url);
 		return null;
-	} catch {
-		const upcoming = await getUpcoming(id).catch(() => null);
+	} catch (error) {
+		const upcoming = await upcomingFrom(error, id);
 		return upcoming && upcoming.startsAt > Date.now() ? upcoming : null;
 	}
 }
