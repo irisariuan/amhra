@@ -37,8 +37,12 @@
 //! - `--recogniser-threads <n>`: threads for speech recognition, default 2;
 //! - `--recogniser-language <lang>`: auto (the default), en, zh, ja, ko or
 //!   yue, for every guild;
-//! - `--recogniser-provider cpu|coreml`: where speech recognition runs,
-//!   default cpu; coreml needs a build with the `shared-onnxruntime` feature;
+//! - `--recogniser-provider cpu|gpu|coreml`: where speech recognition runs,
+//!   default cpu; coreml needs a build with the `shared-onnxruntime` feature
+//!   on macOS, gpu one with `cuda-onnxruntime`; a provider the build lacks
+//!   falls back to the cpu, saying so;
+//! - `--wake-provider cpu|gpu|coreml`: where the keyword spotter runs, the
+//!   same way; the wake classifier only runs on the cpu;
 //! - `--wake-model <dir>`: a fine-tuned keyword spotter from
 //!   `training/wake/export.sh`, instead of the stock one;
 //! - `--wake-classifier <dir>`: the wake word classifier from
@@ -60,7 +64,8 @@
 //! `--speech` lets the bot speak (`Speak`, `PrepareSpeech`) with whichever
 //! speech models are unpacked under `--voice-models` (see `speech::models`:
 //! Supertonic 3 for English, Japanese and Korean, Kokoro for Mandarin, a VITS
-//! voice for Cantonese), on `--speech-threads <n>` CPU threads, default 1.
+//! voice for Cantonese), on `--speech-threads <n>` threads, default 1, and on
+//! `--speech-provider cpu|gpu|coreml`, as for recognition.
 //! Phrases are saved under `<cache-dir>/speech` and each model is loaded only
 //! to make new ones (see `speech`). It needs the `voice-commands` feature and
 //! lowers the music to `--wake-duck` meanwhile. A `Speak` that answers a
@@ -952,7 +957,17 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 			}
 			config.spotter = option("--wake-model").map(Into::into);
 			config.classifier = classifier.clone().map(Into::into);
-			config.recogniser_provider = recogniser_provider(events);
+			config.recogniser_provider = provider(events, "--recogniser-provider", "speech recognition");
+			config.spotter_provider = match (&config.classifier, option("--wake-provider")) {
+				(Some(_), Some(name)) if name != "cpu" => {
+					let message = format!("voice commands: the wake classifier only runs on the cpu, not {name}");
+					eprintln!("{message}");
+					let _ = events.send(Event::Error { guild_id: None, message });
+					sherpa::Provider::Cpu
+				}
+				(Some(_), _) => sherpa::Provider::Cpu,
+				(None, _) => provider(events, "--wake-provider", "the wake word"),
+			};
 			if let Some(language) = option("--recogniser-language") {
 				config.recogniser_language = language;
 			}
@@ -1073,12 +1088,12 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 	}
 }
 
-/// The provider asked for, or the CPU, saying why when that is not what was
-/// asked for.
+/// The provider `flag` asks for `what` to run on, or the CPU, saying why
+/// when that is not what was asked for.
 #[cfg(feature = "voice-commands")]
-fn recogniser_provider(events: &Sender<Event>) -> amhra_sidecar::voice_commands::sherpa::Provider {
+fn provider(events: &Sender<Event>, flag: &str, what: &str) -> amhra_sidecar::voice_commands::sherpa::Provider {
 	use amhra_sidecar::voice_commands::sherpa::Provider;
-	let Some(name) = option("--recogniser-provider") else { return Provider::Cpu };
+	let Some(name) = option(flag) else { return Provider::Cpu };
 	let fallback = |message: String| {
 		eprintln!("{message}");
 		let _ = events.send(Event::Error { guild_id: None, message });
@@ -1086,14 +1101,15 @@ fn recogniser_provider(events: &Sender<Event>) -> amhra_sidecar::voice_commands:
 	};
 	match Provider::parse(&name) {
 		Some(provider) if provider.available() => {
-			eprintln!("voice commands: recognising on {}", provider.name());
+			eprintln!("voice commands: {what} on {}", provider.name());
 			provider
 		}
 		Some(provider) => fallback(format!(
-			"voice commands: {} is not in this build (it needs --features shared-onnxruntime, on macOS); recognising on the cpu",
-			provider.name()
+			"voice commands: {} is not in this build (it needs {}); {what} on the cpu",
+			provider.name(),
+			provider.needs()
 		)),
-		None => fallback(format!("voice commands: unknown recogniser provider {name:?}; recognising on the cpu")),
+		None => fallback(format!("voice commands: unknown {flag} {name:?}; {what} on the cpu")),
 	}
 }
 
@@ -1122,7 +1138,8 @@ fn start_speech(
 	}
 	let dir = option("--voice-models").unwrap_or_else(|| "models/voice".to_owned());
 	let threads = option("--speech-threads").and_then(|threads| threads.parse().ok()).filter(|n| *n >= 1).unwrap_or(1);
-	let found = models::under(std::path::Path::new(&dir), threads);
+	let provider = provider(events, "--speech-provider", "speech");
+	let found = models::under(std::path::Path::new(&dir), threads, provider);
 	if found.is_empty() {
 		eprintln!(
 			"speech is off: none of {}, {} or {} is in {dir}; run scripts/download-voice-models.sh --speech",
@@ -1134,7 +1151,11 @@ fn start_speech(
 	}
 	for model in &found {
 		let voices: Vec<&str> = model.voices.iter().map(|voice| voice.name()).collect();
-		eprintln!("speech: {} for {}, on {threads} thread(s) when a phrase is new", model.name, voices.join(", "));
+		eprintln!("speech: {} for {}, on {threads} thread(s) on {} when a phrase is new",
+			model.name,
+			voices.join(", "),
+			provider.name()
+		);
 	}
 	let duck = option("--wake-duck").and_then(|gain| gain.parse::<f32>().ok()).unwrap_or(1.0);
 	let workers = Arc::clone(workers);

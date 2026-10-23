@@ -343,6 +343,20 @@ describe("sidecar flags", () => {
 		expect(voiceCommandArgs({ ...base, VOICE_SPEECH: true })).toEqual([]);
 	});
 
+	test("where each model runs, only when set", () => {
+		const allowed = { ...base, VOICE_COMMANDS: true, VOICE_SPEECH: true };
+		expect(voiceCommandArgs(allowed).join(" ")).not.toContain("-provider");
+		const placed = voiceCommandArgs({
+			...allowed,
+			VOICE_RECOGNISER_PROVIDER: "coreml",
+			VOICE_WAKE_PROVIDER: "gpu",
+			VOICE_SPEECH_PROVIDER: "coreml",
+		}).join(" ");
+		expect(placed).toContain("--recogniser-provider coreml");
+		expect(placed).toContain("--wake-provider gpu");
+		expect(placed).toContain("--speech-provider coreml");
+	});
+
 	test("where recognition runs, and on how many threads", () => {
 		const allowed = { ...base, VOICE_COMMANDS: true };
 		const args = voiceCommandArgs({

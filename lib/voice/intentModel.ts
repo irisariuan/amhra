@@ -14,7 +14,7 @@ import {
 	type VoiceIntent,
 	type VoiceOptions,
 } from "./intent";
-import { defaultIntentModel, intentServer } from "./intentServer";
+import { defaultIntentModel, intentRuntime, intentServer } from "./intentServer";
 
 /**
  * Reading a command with a language model running on the bot's own machine.
@@ -273,7 +273,8 @@ export async function readIntent(
 	const server = intentServer();
 	// Still starting: nothing is gained by asking it, or by saying so each time.
 	if (url && server?.ready !== false) {
-		const model = setting.VOICE_INTENT_MODEL ?? DEFAULT_INTENT_MODEL;
+		const model =
+			setting.VOICE_INTENT_MODEL ?? defaultIntentModel(process.platform, process.arch, intentRuntime(setting));
 		const messages = [
 			{ role: "system", content: intentPrompt(lookup, context) },
 			...history,

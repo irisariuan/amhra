@@ -9,7 +9,9 @@ import { readSetting, type Setting } from "../setting";
  * the bot runs the server as a child process on that port, restarts it if it
  * dies, and stops it on exit. On Apple silicon that is `mlx_lm.server`
  * through `uv`; anywhere else, llama.cpp's `llama-server`, which runs on a
- * plain CPU. Either fetches the model itself the first time, which can take
+ * plain CPU. `VOICE_INTENT_PROVIDER` "cpu" runs `llama-server` with no layers
+ * on the GPU, on Apple silicon too, and "gpu" all of them; MLX is always on
+ * the GPU. Either fetches the model itself the first time, which can take
  * minutes; until it answers, commands are read by the fallback.
  *
  * A server that already answers on the port — started by hand, LM Studio, or
@@ -26,16 +28,29 @@ const CONTEXT_TOKENS = 4096;
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
+/**
+ * Where the model runs, as far as the bot can choose: unset leaves it to the
+ * runtime. Core ML runs neither, so it is the CPU.
+ */
+export type IntentRuntime = "cpu" | "gpu" | undefined;
+
+export function intentRuntime(setting: Setting = readSetting()): IntentRuntime {
+	const provider = setting.VOICE_INTENT_PROVIDER;
+	return provider === "coreml" ? "cpu" : provider;
+}
+
 /** Qwen3 4B, in the runtime this machine will serve it with. */
 export function defaultIntentModel(
 	platform: NodeJS.Platform = process.platform,
 	arch: string = process.arch,
+	runtime: IntentRuntime = undefined,
 ) {
-	return usesMlx(platform, arch) ? "mlx-community/Qwen3-4B-4bit" : "Qwen/Qwen3-4B-GGUF:Q4_K_M";
+	return usesMlx(platform, arch, runtime) ? "mlx-community/Qwen3-4B-4bit" : "Qwen/Qwen3-4B-GGUF:Q4_K_M";
 }
 
-function usesMlx(platform: NodeJS.Platform, arch: string) {
-	return platform === "darwin" && arch === "arm64";
+/** MLX has no CPU-only mode worth having, so the CPU is llama.cpp's. */
+function usesMlx(platform: NodeJS.Platform, arch: string, runtime: IntentRuntime) {
+	return platform === "darwin" && arch === "arm64" && runtime !== "cpu";
 }
 
 export type Launch = { command: string; args: string[] };
@@ -49,6 +64,7 @@ export function launchFor(
 	model: string,
 	platform: NodeJS.Platform = process.platform,
 	arch: string = process.arch,
+	runtime: IntentRuntime = undefined,
 ): Launch | null {
 	let parsed: URL;
 	try {
@@ -59,7 +75,7 @@ export function launchFor(
 	if (!LOOPBACK.has(parsed.hostname)) return null;
 	const host = parsed.hostname.replace(/^\[|\]$/g, "");
 	const port = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
-	if (usesMlx(platform, arch)) {
+	if (usesMlx(platform, arch, runtime)) {
 		return {
 			command: "uv",
 			args: [
@@ -74,6 +90,7 @@ export function launchFor(
 		args: [
 			"-hf", model, "--alias", model, "--host", host, "--port", port,
 			"-c", String(CONTEXT_TOKENS),
+			...(runtime ? ["-ngl", runtime === "cpu" ? "0" : "999"] : []),
 		],
 	};
 }
@@ -215,7 +232,12 @@ export function startIntentServer(setting: Setting = readSetting()) {
 	if (shared) return shared;
 	const url = setting.VOICE_INTENT_MODEL_URL;
 	if (!url || setting.VOICE_INTENT_MODEL_SERVE === false) return null;
-	const launch = launchFor(url, setting.VOICE_INTENT_MODEL ?? defaultIntentModel());
+	const runtime = intentRuntime(setting);
+	if (setting.VOICE_INTENT_PROVIDER === "coreml") {
+		globalApp.warn("Voice command model: neither MLX nor llama.cpp runs on Core ML; running it on the cpu");
+	}
+	const model = setting.VOICE_INTENT_MODEL ?? defaultIntentModel(process.platform, process.arch, runtime);
+	const launch = launchFor(url, model, process.platform, process.arch, runtime);
 	if (!launch) return null;
 	shared = new IntentServer(url, launch);
 	shared.start();

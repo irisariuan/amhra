@@ -60,6 +60,9 @@ export function voiceCommandArgs(setting: Setting = readSetting()): string[] {
 	if (setting.VOICE_RECOGNISER_PROVIDER) {
 		args.push("--recogniser-provider", setting.VOICE_RECOGNISER_PROVIDER);
 	}
+	if (setting.VOICE_WAKE_PROVIDER) {
+		args.push("--wake-provider", setting.VOICE_WAKE_PROVIDER);
+	}
 	if (setting.VOICE_LANGUAGE && setting.VOICE_LANGUAGE !== "auto") {
 		args.push("--recogniser-language", setting.VOICE_LANGUAGE);
 	}
@@ -72,6 +75,9 @@ export function voiceCommandArgs(setting: Setting = readSetting()): string[] {
 		const threads = setting.VOICE_SPEECH_THREADS;
 		if (threads !== undefined && Number.isInteger(threads) && threads >= 1) {
 			args.push("--speech-threads", String(threads));
+		}
+		if (setting.VOICE_SPEECH_PROVIDER) {
+			args.push("--speech-provider", setting.VOICE_SPEECH_PROVIDER);
 		}
 	}
 	const { waitForSpeechMs, endSilenceMs, maxCaptureMs } = voiceTimings(setting);

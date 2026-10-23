@@ -334,7 +334,9 @@ starts:
 | `--voice-models <dir>` | `models/voice` | where the download script put them (gitignored) |
 | `--wake-keywords <file>` | `data/wake-keywords.txt` | the wake phrases; edit and restart, no rebuild |
 | `--recogniser-threads <n>` | `2` | speech-recognition threads |
-| `--recogniser-provider <p>` | `cpu` | `cpu`, or `coreml` with `shared-onnxruntime` on macOS |
+| `--recogniser-provider <p>` | `cpu` | `cpu`, `coreml` with `shared-onnxruntime` on macOS, or `gpu` (CUDA) with `cuda-onnxruntime` and `SHERPA_ONNX_LIB_DIR` at a sherpa-onnx GPU release; one the build lacks falls back to `cpu`, saying so |
+| `--wake-provider <p>` | `cpu` | the keyword spotter's, the same way; the wake classifier only runs on `cpu` |
+| `--speech-provider <p>` | `cpu` | the speech models', the same way |
 | `--recogniser-language <l>` | `auto` | pin SenseVoice to one language |
 | `--wake-model <dir>` | the stock spotter | a fine-tuned one from `training/wake` |
 | `--wake-classifier <dir>` | off | the wake word classifier from `training/wake/classifier`, instead of any spotter (`VOICE_WAKE_CLASSIFIER`) |
@@ -610,7 +612,10 @@ every phrase with nearly half a second either side.
 Kokoro, on an M5 Pro, makes a second of speech in 0.8 to 0.95s on one CPU
 thread (0.7 for a long sentence), and takes 727MB loaded. Core ML saves
 nothing: the fp32 model ran on the same CPU, and the int8 one aborts on Core
-ML and produces only NaN on the CPU. A Raspberry Pi class board, which this
+ML and produces only NaN on the CPU. Nor do the other two: through
+`tts_check --provider coreml`, Supertonic took 15 to 20% longer per phrase
+than on one CPU thread (and 2.5s to load against 0.2s), and the Cantonese
+voice the same time either way. A Raspberry Pi class board, which this
 is meant to run on, has several times less per core, so a new phrase takes
 seconds there. So:
 
@@ -676,7 +681,9 @@ starts:
 | `VOICE_LOG_TRANSCRIPTS` | off | log what was heard after the name, for tuning the matching |
 | `VOICE_WAKE_CHIME` | **on** | a chime in the call when the name is heard, another when the command has been taken down, and a soft sound every 2s until the bot answers |
 | `VOICE_DUCK_VOLUME` | `0.3` | the music's volume from the name until the command is heard; 1 leaves it |
-| `VOICE_RECOGNISER_PROVIDER` | `cpu` | `cpu` or `coreml` |
+| `VOICE_RECOGNISER_PROVIDER` | `cpu` | `cpu`, `gpu` or `coreml`, as `--recogniser-provider` |
+| `VOICE_WAKE_PROVIDER` | `cpu` | the same, for the keyword spotter |
+| `VOICE_SPEECH_PROVIDER` | `cpu` | the same, for speech |
 | `VOICE_RECOGNISER_THREADS` | `2` | threads for speech recognition |
 | `VOICE_LANGUAGE` | `auto` | pin recognition to `en`, `zh`, `ja`, `ko` or `yue`, for every server |
 | `VOICE_WAIT_FOR_COMMAND_MS` | `2500` | how long after the name to wait for the command; a pause for the chime does not end it within this |
@@ -685,6 +692,7 @@ starts:
 | `VOICE_INTENT_MODEL_URL` | empty | an OpenAI-compatible server whose model reads every command; empty, only command names said first are understood |
 | `VOICE_INTENT_MODEL` | Qwen3 4B | the model that server uses: `mlx-community/Qwen3-4B-4bit` on Apple silicon, `Qwen/Qwen3-4B-GGUF:Q4_K_M` elsewhere |
 | `VOICE_INTENT_MODEL_SERVE` | `true` | with the URL on this machine and nothing answering there, the bot starts the server itself |
+| `VOICE_INTENT_PROVIDER` | the runtime's | for a server the bot starts: `cpu` is `llama-server -ngl 0`, on Apple silicon too instead of MLX; `gpu` is MLX, or `llama-server -ngl 999`; `coreml`, which neither has, is `cpu` |
 | `VOICE_SPEECH` | off | say aloud what a voice command does, with the models in models/voice (see Speaking) |
 | `VOICE_SPEECH_THREADS` | `1` | CPU threads for making speech |
 
