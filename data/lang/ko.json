@@ -85,6 +85,7 @@
 	"LYRICS_FOLLOW": "실시간 가사",
 	"LYRICS_FULL": "전체 가사",
 	"LYRICS_SONG_CHANGED": "곡이 바뀌었습니다. 새 곡은 /lyrics를 다시 실행하세요",
+	"LYRICS_DELAY_SET": "이 곡의 가사 지연: {ms} ms",
 	"commands": {
 		"schedule": {
 			"name": "예약",
@@ -250,6 +251,9 @@
 			"options": {
 				"search": {
 					"description": "재생 중인 곡 대신 가사를 검색합니다"
+				},
+				"delay": {
+					"description": "이 곡의 가사를 모두에게 이만큼(밀리초) 늦게 표시합니다 (음수는 빠르게)"
 				}
 			}
 		},

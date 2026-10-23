@@ -150,7 +150,7 @@
    "type": "integer",
    "minimum": -10000,
    "maximum": 10000,
-   "description": "Shift synced lyrics by this many milliseconds; positive shows each line later, negative sooner (default 0)"
+   "description": "Shift synced lyrics by this many milliseconds; positive shows each line later, negative sooner. The default for songs without their own delay, which is set per song from /lyrics or the dashboard (default 0)"
   },
   "VOICE_COMMANDS": {
    "type": "boolean",

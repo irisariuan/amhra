@@ -22,6 +22,8 @@ data/guildSetting.json
 data/guildSetting.json.tmp
 data/userSetting.json
 data/userSetting.json.tmp
+data/lyricsDelay.json
+data/lyricsDelay.json.tmp
 data/recordings/*
 data/lastUsed.record
 

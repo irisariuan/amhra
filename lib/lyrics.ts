@@ -1,6 +1,8 @@
+import { parseVideoId } from "@distube/ytdl-core";
 import z from "zod";
 import { globalApp } from "./misc";
 import { readSetting } from "./setting";
+import { settingStore } from "./settingStore";
 
 /**
  * Lyrics from LRCLIB (https://lrclib.net), a free, keyless lyrics database
@@ -128,10 +130,49 @@ export function delayLyrics(lyrics: Lyrics, delayMs: number): Lyrics {
 	};
 }
 
-/** The bot-wide lyrics delay from LYRICS_DELAY_MS, read fresh each time. */
-export function lyricsDelayMs(): number {
+/** How far a delay may move the lyrics either way. */
+export const MAX_LYRICS_DELAY_MS = 10_000;
+
+/**
+ * Each song's own lyrics delay, keyed by video. Shared by every guild and
+ * account: how far LRCLIB's timing is off is a property of the upload, not of
+ * who is listening.
+ */
+const delayStore = settingStore<{ delayMs: number }>(
+	`${process.cwd()}/data/lyricsDelay.json`,
+);
+
+/** One key per video, whichever link form or playlist it was played from. */
+function delayKey(url: string) {
+	return parseVideoId(url) ?? url;
+}
+
+/**
+ * The lyrics delay for a song: its own when someone has set one, otherwise
+ * the bot-wide LYRICS_DELAY_MS. Read fresh each time.
+ */
+export function lyricsDelayMs(url?: string, file?: string): number {
+	const own = url ? delayStore.get(delayKey(url), file).delayMs : undefined;
+	if (typeof own === "number" && Number.isFinite(own)) return own;
 	const delay = readSetting().LYRICS_DELAY_MS;
 	return typeof delay === "number" && Number.isFinite(delay) ? delay : 0;
+}
+
+/**
+ * Sets a song's own lyrics delay, or with null returns it to the bot-wide one.
+ * Returns the delay now in effect.
+ */
+export function setLyricsDelayMs(
+	url: string,
+	delayMs: number | null,
+	file?: string,
+): number {
+	const value =
+		delayMs === null
+			? undefined
+			: Math.max(-MAX_LYRICS_DELAY_MS, Math.min(MAX_LYRICS_DELAY_MS, Math.round(delayMs)));
+	delayStore.set(delayKey(url), { delayMs: value }, file);
+	return lyricsDelayMs(url, file);
 }
 
 // ---- Reading a YouTube title ----

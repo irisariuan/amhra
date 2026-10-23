@@ -85,6 +85,7 @@
 	"LYRICS_FOLLOW": "同步歌詞",
 	"LYRICS_FULL": "完整歌詞",
 	"LYRICS_SONG_CHANGED": "歌曲已切換，請再次使用 /lyrics 查看新歌曲",
+	"LYRICS_DELAY_SET": "這首歌的歌詞延遲：{ms} 毫秒",
 	"commands": {
 		"schedule": {
 			"name": "預約",
@@ -261,6 +262,9 @@
 			"options": {
 				"search": {
 					"description": "搜尋歌詞，而不是使用正在播放的歌曲"
+				},
+				"delay": {
+					"description": "將這首歌的歌詞對所有人延後這麼多毫秒顯示（負數為提前）"
 				}
 			}
 		},

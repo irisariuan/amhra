@@ -14,6 +14,8 @@ import {
 	lyricsDelayMs,
 	lyricsForQuery,
 	lyricsForTrack,
+	MAX_LYRICS_DELAY_MS,
+	setLyricsDelayMs,
 	type LyricLine,
 	type Lyrics,
 } from "../../lib/lyrics";
@@ -84,9 +86,19 @@ export default {
 			opt
 				.setName("search")
 				.setDescription("Search for lyrics instead of using the song playing"),
+		)
+		.addIntegerOption((opt) =>
+			opt
+				.setName("delay")
+				.setDescription(
+					"Show this song's lyrics this many milliseconds later (negative for sooner), for everyone",
+				)
+				.setMinValue(-MAX_LYRICS_DELAY_MS)
+				.setMaxValue(MAX_LYRICS_DELAY_MS),
 		),
 	async execute({ interaction, client, language }) {
 		const query = interaction.options.getString("search")?.trim() || null;
+		const newDelay = interaction.options.getInteger("delay");
 		const player = interaction.guildId
 			? getAudioPlayer(client, interaction.guildId, interaction.channel, language, {
 					createPlayer: false,
@@ -94,7 +106,8 @@ export default {
 			: null;
 		const track = player?.isPlaying ? player.nowPlaying : null;
 
-		if (!query && !track) {
+		// The delay belongs to the playing video, so it needs one
+		if ((!query || newDelay !== null) && !track) {
 			return interaction.reply({
 				content: languageText("lyrics_no_song", language),
 				ephemeral: true,
@@ -102,6 +115,15 @@ export default {
 		}
 
 		await interaction.deferReply();
+
+		const delayMs =
+			newDelay !== null
+				? setLyricsDelayMs(track!.url, newDelay)
+				: lyricsDelayMs(track?.url);
+		const delayNote =
+			newDelay !== null
+				? languageText("lyrics_delay_set", language, { ms: delayMs })
+				: undefined;
 
 		let lyrics: Lyrics | null;
 		try {
@@ -135,7 +157,7 @@ export default {
 		}
 
 		const pages = paginate(text);
-		const synced = delayLyrics(lyrics, lyricsDelayMs()).synced;
+		const synced = delayLyrics(lyrics, delayMs).synced;
 		// Following only means something for the track the bot is playing
 		const canFollow = Boolean(synced && track && player && !query);
 		const playCount = player?.playCounter;
@@ -156,6 +178,7 @@ export default {
 				.setFooter({
 					text: [
 						endedNote,
+						delayNote,
 						!state.following && pages.length > 1
 							? languageText("lyrics_page", language, {
 									page: state.page + 1,

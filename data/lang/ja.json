@@ -85,6 +85,7 @@
 	"LYRICS_FOLLOW": "同期表示",
 	"LYRICS_FULL": "全歌詞",
 	"LYRICS_SONG_CHANGED": "曲が変わりました。新しい曲は /lyrics をもう一度実行してください",
+	"LYRICS_DELAY_SET": "この曲の歌詞の遅延：{ms} ms",
 	"commands": {
 		"schedule": {
 			"name": "予約",
@@ -261,6 +262,9 @@
 			"options": {
 				"search": {
 					"description": "再生中の曲の代わりに歌詞を検索"
+				},
+				"delay": {
+					"description": "この曲の歌詞を全員に対してこのミリ秒だけ遅らせて表示（負の値で早める）"
 				}
 			}
 		},
