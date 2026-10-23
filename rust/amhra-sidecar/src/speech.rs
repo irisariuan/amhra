@@ -365,6 +365,7 @@ pub mod models {
 	use std::path::{Path, PathBuf};
 
 	use super::{Load, Model, Synthesiser, Voice};
+	use crate::voice_commands::sherpa::Provider;
 	use sherpa_onnx::{
 		GenerationConfig, OfflineTts, OfflineTtsConfig, OfflineTtsKokoroModelConfig, OfflineTtsModelConfig,
 		OfflineTtsSupertonicModelConfig, OfflineTtsVitsModelConfig,
@@ -384,12 +385,12 @@ pub mod models {
 	/// The speech models unpacked under `dir`, each to speak what it says
 	/// best: Supertonic before Kokoro, so English is Supertonic's when both
 	/// are there.
-	pub fn under(dir: &Path, threads: i32) -> Vec<Model> {
+	pub fn under(dir: &Path, threads: i32, provider: Provider) -> Vec<Model> {
 		let mut models = Vec::new();
-		let mut add = |name: &str, voices: Vec<Voice>, load: fn(PathBuf, i32) -> Load| {
+		let mut add = |name: &str, voices: Vec<Voice>, load: fn(PathBuf, i32, Provider) -> Load| {
 			let path = dir.join(name);
 			if path.is_dir() {
-				models.push(Model { name: name.to_owned(), voices, load: load(path, threads) });
+				models.push(Model { name: name.to_owned(), voices, load: load(path, threads, provider) });
 			}
 		};
 		add(SUPERTONIC, vec![Voice::English, Voice::Japanese, Voice::Korean], supertonic);
@@ -398,7 +399,7 @@ pub mod models {
 		models
 	}
 
-	fn cpu(threads: i32, provider: &str) -> OfflineTtsModelConfig {
+	fn runtime(threads: i32, provider: &str) -> OfflineTtsModelConfig {
 		OfflineTtsModelConfig {
 			vits: Default::default(),
 			matcha: Default::default(),
@@ -428,7 +429,7 @@ pub mod models {
 					lang,
 					..OfflineTtsKokoroModelConfig::default()
 				},
-				..cpu(threads, provider)
+				..runtime(threads, provider)
 			},
 			rule_fsts: Some(format!("{dir}/date-zh.fst,{dir}/phone-zh.fst,{dir}/number-zh.fst")),
 			max_num_sentences: 1,
@@ -437,7 +438,7 @@ pub mod models {
 	}
 
 	/// Supertonic 3's int8 release, unpacked in `dir`.
-	pub fn supertonic_config(dir: &str, threads: i32) -> OfflineTtsConfig {
+	pub fn supertonic_config(dir: &str, threads: i32, provider: &str) -> OfflineTtsConfig {
 		let file = |name: &str| Some(format!("{dir}/{name}"));
 		OfflineTtsConfig {
 			model: OfflineTtsModelConfig {
@@ -450,7 +451,7 @@ pub mod models {
 					unicode_indexer: file("unicode_indexer.bin"),
 					voice_style: file("voice.bin"),
 				},
-				..cpu(threads, "cpu")
+				..runtime(threads, provider)
 			},
 			max_num_sentences: 1,
 			..OfflineTtsConfig::default()
@@ -460,7 +461,7 @@ pub mod models {
 	/// A VITS voice from sherpa-onnx's releases, unpacked in `dir`: its one
 	/// `.onnx`, and whichever of a lexicon, tokens, espeak data and text rules
 	/// it came with.
-	pub fn vits_config(dir: &str, threads: i32) -> OfflineTtsConfig {
+	pub fn vits_config(dir: &str, threads: i32, provider: &str) -> OfflineTtsConfig {
 		let names: Vec<String> = std::fs::read_dir(dir)
 			.map(|entries| entries.filter_map(|entry| entry.ok()?.file_name().into_string().ok()).collect())
 			.unwrap_or_default();
@@ -479,7 +480,7 @@ pub mod models {
 					dict_dir: file("dict"),
 					..OfflineTtsVitsModelConfig::default()
 				},
-				..cpu(threads, "cpu")
+				..runtime(threads, provider)
 			},
 			rule_fsts: (!fsts.is_empty()).then(|| fsts.join(",")),
 			max_num_sentences: 1,
@@ -512,9 +513,9 @@ pub mod models {
 		}
 	}
 
-	fn kokoro(dir: PathBuf, threads: i32) -> Load {
+	fn kokoro(dir: PathBuf, threads: i32, provider: Provider) -> Load {
 		Box::new(move || {
-			let config = kokoro_config(&dir.to_string_lossy(), threads, "cpu", None);
+			let config = kokoro_config(&dir.to_string_lossy(), threads, provider.onnx(), None);
 			create(&config, &dir).map(|tts| Box::new(Kokoro(tts)) as Box<dyn Synthesiser>)
 		})
 	}
@@ -536,9 +537,9 @@ pub mod models {
 		}
 	}
 
-	fn supertonic(dir: PathBuf, threads: i32) -> Load {
+	fn supertonic(dir: PathBuf, threads: i32, provider: Provider) -> Load {
 		Box::new(move || {
-			let config = supertonic_config(&dir.to_string_lossy(), threads);
+			let config = supertonic_config(&dir.to_string_lossy(), threads, provider.onnx());
 			create(&config, &dir).map(|tts| Box::new(Supertonic(tts)) as Box<dyn Synthesiser>)
 		})
 	}
@@ -554,9 +555,9 @@ pub mod models {
 		}
 	}
 
-	fn cantonese(dir: PathBuf, threads: i32) -> Load {
+	fn cantonese(dir: PathBuf, threads: i32, provider: Provider) -> Load {
 		Box::new(move || {
-			let config = vits_config(&dir.to_string_lossy(), threads);
+			let config = vits_config(&dir.to_string_lossy(), threads, provider.onnx());
 			create(&config, &dir).map(|tts| Box::new(Cantonese(tts)) as Box<dyn Synthesiser>)
 		})
 	}

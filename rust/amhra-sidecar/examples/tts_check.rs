@@ -9,7 +9,9 @@
 //! `--engine kokoro|supertonic|vits` and `--model <dir>` name the model, as
 //! sherpa-onnx's releases unpack it; `--sid <n>` the voice; `--lang <code>` is
 //! passed to Supertonic, which needs it, and printed for the rest;
-//! `--threads <n>` (default 1) the synthesis threads. The phrases file has one
+//! `--threads <n>` (default 1) the synthesis threads; `--provider cpu|gpu|coreml`
+//! where synthesis runs (coreml needs `--features shared-onnxruntime`, gpu
+//! `cuda-onnxruntime`). The phrases file has one
 //! sentence a line. One JSON line is printed per sentence: what was asked, how
 //! long the speech is, how long it took to make (after one untimed warm-up),
 //! and what SenseVoice (`--voice-models`, default models/voice; language
@@ -30,6 +32,7 @@ fn main() {
 	let mut sid = 0;
 	let mut lang = String::from("en");
 	let mut threads = 1;
+	let mut provider = Provider::Cpu;
 	let mut voice_models = String::from("models/voice");
 	let mut out = None;
 	let mut phrases = None;
@@ -42,6 +45,7 @@ fn main() {
 			"--sid" => sid = value().parse().expect("--sid takes a number"),
 			"--lang" => lang = value(),
 			"--threads" => threads = value().parse().expect("--threads takes a number"),
+			"--provider" => provider = Provider::parse(&value()).expect("--provider takes cpu, gpu or coreml"),
 			"--voice-models" => voice_models = value(),
 			"--out" => out = Some(value()),
 			other if other.starts_with("--") => panic!("unknown option {other}"),
@@ -52,9 +56,9 @@ fn main() {
 	let phrases: Vec<&str> = phrases.lines().map(str::trim).filter(|line| !line.is_empty()).collect();
 
 	let config = match engine.as_str() {
-		"kokoro" => models::kokoro_config(&model, threads, "cpu", None),
-		"supertonic" => models::supertonic_config(&model, threads),
-		"vits" => models::vits_config(&model, threads),
+		"kokoro" => models::kokoro_config(&model, threads, provider.onnx(), None),
+		"supertonic" => models::supertonic_config(&model, threads, provider.onnx()),
+		"vits" => models::vits_config(&model, threads, provider.onnx()),
 		other => panic!("unknown engine {other}"),
 	};
 	let loading = Instant::now();
@@ -69,7 +73,7 @@ fn main() {
 	let speak = |text: &str| tts.generate_with_config(text, &generation, None::<fn(&[f32], f32) -> bool>);
 
 	speak(phrases[0]);
-	eprintln!("{engine} loaded in {load_ms}ms, {} voices, {} Hz", tts.num_speakers(), tts.sample_rate());
+	eprintln!("{engine} on {} loaded in {load_ms}ms, {} voices, {} Hz", provider.name(), tts.num_speakers(), tts.sample_rate());
 	if let Some(out) = &out {
 		std::fs::create_dir_all(out).expect("cannot make the output directory");
 	}

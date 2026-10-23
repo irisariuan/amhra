@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createServer } from "node:net";
-import { defaultIntentModel, IntentServer, launchFor } from "../lib/voice/intentServer";
+import type { Setting } from "../lib/setting";
+import { defaultIntentModel, IntentServer, intentRuntime, launchFor } from "../lib/voice/intentServer";
 
 /**
  * The bot starting the voice command model's server itself, so nobody has to
@@ -33,6 +34,27 @@ describe("what it runs", () => {
 	test("nothing for a server on another machine, or no URL at all", () => {
 		expect(launchFor("http://192.168.1.20:8085/v1", "m", "linux", "arm64")).toBeNull();
 		expect(launchFor("not a url", "m", "linux", "arm64")).toBeNull();
+	});
+
+	test("on the cpu, llama-server with nothing on the GPU, on Apple silicon too", () => {
+		const model = defaultIntentModel("darwin", "arm64", "cpu");
+		expect(model).toBe("Qwen/Qwen3-4B-GGUF:Q4_K_M");
+		const launch = launchFor("http://127.0.0.1:8085/v1", model, "darwin", "arm64", "cpu");
+		expect(launch?.command).toBe("llama-server");
+		expect(launch?.args.slice(-2)).toEqual(["-ngl", "0"]);
+	});
+
+	test("on the gpu, MLX on Apple silicon and every layer elsewhere", () => {
+		expect(launchFor("http://127.0.0.1:8085/v1", "m", "darwin", "arm64", "gpu")?.command).toBe("uv");
+		expect(launchFor("http://127.0.0.1:8085/v1", "m", "linux", "x64", "gpu")?.args.slice(-2)).toEqual([
+			"-ngl",
+			"999",
+		]);
+	});
+
+	test("coreml, which neither runtime has, is the cpu", () => {
+		expect(intentRuntime({ VOICE_INTENT_PROVIDER: "coreml" } as Setting)).toBe("cpu");
+		expect(intentRuntime({} as Setting)).toBeUndefined();
 	});
 
 	test("the IPv6 loopback is this machine too", () => {

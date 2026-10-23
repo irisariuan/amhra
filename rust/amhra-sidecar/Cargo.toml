@@ -49,6 +49,11 @@ voice-commands = ["dep:sherpa-onnx", "dep:sherpa-onnx-sys", "dep:fast2s", "dep:t
 # has Core ML on macOS for `--recogniser-provider coreml`. The libraries are
 # copied next to the binaries, and build.rs points them there.
 shared-onnxruntime = ["voice-commands", "sherpa-onnx/shared", "sherpa-onnx-sys/shared"]
+# Say the shared build linked is one of sherpa-onnx's GPU releases (its
+# linux-x64-gpu or win-x64-cuda archives, unpacked and named by
+# SHERPA_ONNX_LIB_DIR), so `gpu` providers run on CUDA rather than falling
+# back to the CPU. Nothing checks the libraries really have CUDA in them.
+cuda-onnxruntime = ["shared-onnxruntime"]
 
 [[example]]
 name = "wake_wav"

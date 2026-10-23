@@ -189,6 +189,16 @@
    "default": 1,
    "description": "CPU threads for making speech. More makes a new phrase sooner but takes cores from playback and recognition. Restart to apply"
   },
+  "VOICE_SPEECH_PROVIDER": {
+   "type": "string",
+   "enum": [
+    "cpu",
+    "gpu",
+    "coreml"
+   ],
+   "default": "cpu",
+   "description": "Where speech is made, with the same needs as VOICE_RECOGNISER_PROVIDER. On an M5 Pro, coreml made Supertonic 15 to 20% slower and the Cantonese voice no faster, and gains Kokoro nothing. Restart to apply"
+  },
   "VOICE_WAKE_CHIME": {
    "type": "boolean",
    "default": true,
@@ -205,10 +215,21 @@
    "type": "string",
    "enum": [
     "cpu",
+    "gpu",
     "coreml"
    ],
    "default": "cpu",
-   "description": "Where speech recognition runs. coreml needs a sidecar built with --features shared-onnxruntime on macOS (otherwise it stays on cpu), and measured slower than cpu on this model. Restart to apply"
+   "description": "Where speech recognition runs. coreml needs a sidecar built with --features shared-onnxruntime on macOS, gpu (CUDA) one built with --features cuda-onnxruntime against a sherpa-onnx GPU release; otherwise it says so and stays on cpu. coreml measured slower than cpu on this model. Restart to apply"
+  },
+  "VOICE_WAKE_PROVIDER": {
+   "type": "string",
+   "enum": [
+    "cpu",
+    "gpu",
+    "coreml"
+   ],
+   "default": "cpu",
+   "description": "Where the keyword spotter that hears the name runs, with the same needs as VOICE_RECOGNISER_PROVIDER. It runs every 20ms for everyone speaking, so cpu is usually fastest. The wake classifier only runs on cpu. Restart to apply"
   },
   "VOICE_RECOGNISER_THREADS": {
    "type": "integer",
@@ -260,6 +281,15 @@
    "type": "string",
    "default": "mlx-community/Qwen3-4B-4bit",
    "description": "The model that server should use for voice commands"
+  },
+  "VOICE_INTENT_PROVIDER": {
+   "type": "string",
+   "enum": [
+    "cpu",
+    "gpu",
+    "coreml"
+   ],
+   "description": "Where the server the bot starts runs the voice command model. cpu: llama.cpp's llama-server with nothing on the GPU, on Apple silicon too instead of MLX, so a VOICE_INTENT_MODEL naming an MLX model will not load. gpu: everything on the GPU. coreml: neither runtime has it, so cpu. Unset: MLX on Apple silicon, llama.cpp's own choice elsewhere. A server the bot did not start is left as it is. Restart to apply"
   }
  },
  "required": [

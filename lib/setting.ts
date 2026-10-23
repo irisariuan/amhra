@@ -154,6 +154,8 @@ export interface Setting {
 	VOICE_SPEECH?: boolean;
 	/** CPU threads for making speech. Defaults to 1. */
 	VOICE_SPEECH_THREADS?: number;
+	/** Where speech is made, as `VOICE_RECOGNISER_PROVIDER`. Defaults to the CPU. */
+	VOICE_SPEECH_PROVIDER?: ModelProvider;
 	/** Chime in the call when the bot hears its name. On unless false. */
 	VOICE_WAKE_CHIME?: boolean;
 	/**
@@ -163,10 +165,18 @@ export interface Setting {
 	VOICE_DUCK_VOLUME?: number;
 	/**
 	 * Where speech recognition runs. Core ML needs a sidecar built with
-	 * `--features shared-onnxruntime`, on macOS; otherwise it says so and
-	 * stays on the CPU. Defaults to the CPU, which measured faster.
+	 * `--features shared-onnxruntime`, on macOS; "gpu" is CUDA, and needs one
+	 * built with `--features cuda-onnxruntime` against a sherpa-onnx GPU
+	 * release. Otherwise it says so and stays on the CPU. Defaults to the
+	 * CPU, which measured faster.
 	 */
-	VOICE_RECOGNISER_PROVIDER?: "cpu" | "coreml";
+	VOICE_RECOGNISER_PROVIDER?: ModelProvider;
+	/**
+	 * Where the keyword spotter that hears the name runs, as
+	 * `VOICE_RECOGNISER_PROVIDER`. The wake classifier only runs on the CPU.
+	 * Defaults to the CPU.
+	 */
+	VOICE_WAKE_PROVIDER?: ModelProvider;
 	/** Threads for speech recognition. Defaults to 2. */
 	VOICE_RECOGNISER_THREADS?: number;
 	/**
@@ -202,4 +212,15 @@ export interface Setting {
 	 * elsewhere. On unless set to false.
 	 */
 	VOICE_INTENT_MODEL_SERVE?: boolean;
+	/**
+	 * Where the server the bot starts runs the model: "cpu" is `llama-server`
+	 * with no layers on the GPU (on Apple silicon too, instead of MLX, so a
+	 * VOICE_INTENT_MODEL set to an MLX model will not load), "gpu" all of
+	 * them, and "coreml", which neither runs, the CPU. Unset leaves it to the
+	 * runtime: MLX on Apple silicon, llama.cpp's own choice elsewhere.
+	 */
+	VOICE_INTENT_PROVIDER?: ModelProvider;
 }
+
+/** Where a model runs. */
+export type ModelProvider = "cpu" | "gpu" | "coreml";

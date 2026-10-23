@@ -57,10 +57,13 @@ pub struct SherpaConfig {
 	/// 294ms on one thread, 153ms on two, 83ms on four. Two leaves the cores
 	/// to the audio threads, which must not miss a 20ms tick.
 	pub recogniser_threads: i32,
-	/// Where the recogniser runs. The spotter and the VAD stay on the CPU:
-	/// they take 20ms at a time from every speaker, which is the worst case
-	/// for handing work to another device.
+	/// Where the recogniser runs.
 	pub recogniser_provider: Provider,
+	/// Where the keyword spotter runs. It takes 20ms at a time from every
+	/// speaker, the worst case for handing work to another device, so the
+	/// CPU is the default. The VAD, for the same reason, is always there, and
+	/// so is the classifier, which tract runs.
+	pub spotter_provider: Provider,
 	/// The language SenseVoice listens for: `auto`, or one of
 	/// [`LANGUAGES`]. Pinned, it stops short windows being taken for another
 	/// language: four of seven live takes of the name, said in English, came
@@ -89,6 +92,7 @@ impl SherpaConfig {
 			vad_threshold: 0.5,
 			recogniser_threads: 2,
 			recogniser_provider: Provider::Cpu,
+			spotter_provider: Provider::Cpu,
 			recogniser_language: "auto".to_owned(),
 			spotter: None,
 			classifier: None,
@@ -110,6 +114,10 @@ pub enum Provider {
 	/// of a quantised model's operations are not ones Core ML runs, so it
 	/// keeps handing them back.
 	CoreMl,
+	/// An NVIDIA GPU, through CUDA. sherpa-onnx's prebuilt libraries have no
+	/// CUDA in them, so it takes a build linked against one of its GPU
+	/// releases (see the `cuda-onnxruntime` feature).
+	Gpu,
 }
 
 impl Provider {
@@ -117,24 +125,48 @@ impl Provider {
 		match name.to_ascii_lowercase().as_str() {
 			"cpu" => Some(Self::Cpu),
 			"coreml" => Some(Self::CoreMl),
+			"gpu" | "cuda" => Some(Self::Gpu),
 			_ => None,
 		}
 	}
 
+	/// As the settings and flags name it.
 	pub fn name(self) -> &'static str {
 		match self {
 			Self::Cpu => "cpu",
 			Self::CoreMl => "coreml",
+			Self::Gpu => "gpu",
+		}
+	}
+
+	/// As sherpa-onnx names it.
+	pub fn onnx(self) -> &'static str {
+		match self {
+			Self::Cpu => "cpu",
+			Self::CoreMl => "coreml",
+			Self::Gpu => "cuda",
 		}
 	}
 
 	/// Whether this build can run it. The static onnxruntime that is linked
-	/// by default has no Core ML in it, and sherpa-onnx would quietly fall
-	/// back to the CPU rather than say so.
+	/// by default has neither Core ML nor CUDA in it, and sherpa-onnx would
+	/// quietly fall back to the CPU rather than say so.
 	pub fn available(self) -> bool {
 		match self {
 			Self::Cpu => true,
 			Self::CoreMl => cfg!(all(feature = "shared-onnxruntime", target_os = "macos")),
+			Self::Gpu => cfg!(all(feature = "cuda-onnxruntime", not(target_os = "macos"))),
+		}
+	}
+
+	/// What a build needs to run it, for saying why it is not there.
+	pub fn needs(self) -> &'static str {
+		match self {
+			Self::Cpu => "nothing",
+			Self::CoreMl => "--features shared-onnxruntime, on macOS",
+			Self::Gpu => {
+				"--features cuda-onnxruntime and SHERPA_ONNX_LIB_DIR at a sherpa-onnx GPU release, on Linux or Windows"
+			}
 		}
 	}
 }
@@ -293,7 +325,7 @@ fn load_spotter(paths: &ModelPaths, config: &SherpaConfig) -> Result<KeywordSpot
 	spotter.model_config.transducer.joiner = Some(path_string(&paths.kws_joiner));
 	spotter.model_config.tokens = Some(path_string(&paths.kws_tokens));
 	spotter.model_config.num_threads = 1;
-	spotter.model_config.provider = Some("cpu".to_owned());
+	spotter.model_config.provider = Some(config.spotter_provider.onnx().to_owned());
 	spotter.keywords_buf = Some(lines);
 	// The decoder needs a moment of nothing after a keyword before it
 	// commits to it; one blank frame keeps that moment short.
@@ -440,7 +472,7 @@ impl SenseVoice {
 				reason: format!("unknown language {language:?}; use auto, {}", LANGUAGES.join(", ")),
 			});
 		};
-		let provider = cstring(provider.name().to_owned())?;
+		let provider = cstring(provider.onnx().to_owned())?;
 		let decoding = cstring("greedy_search".to_owned())?;
 
 		// SAFETY: the config is plain C data — pointers, integers and floats —
