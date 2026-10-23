@@ -218,7 +218,7 @@
     "sensevoice"
    ],
    "default": "qwen3",
-   "description": "The speech recogniser. qwen3 is Qwen3-ASR 0.6B, in 30 languages, but the sidecar then holds about 2.3GB and each command takes about seven times as long. sensevoice is SenseVoice-Small, in five languages and about 650MB, for small machines like a Raspberry Pi. Restart to apply"
+   "description": "The speech recogniser. qwen3 is Qwen3-ASR 0.6B, in 30 languages, but the sidecar then holds about 1.05GB, up to 1.65GB in use, and each command takes about seven times as long. sensevoice is SenseVoice-Small, in five languages and about 600MB, for small machines like a Raspberry Pi. Restart to apply"
   },
   "VOICE_RECOGNISER_PROVIDER": {
    "type": "string",

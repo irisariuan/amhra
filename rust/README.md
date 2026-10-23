@@ -352,9 +352,11 @@ then the guild's packets are read off the socket and dropped before they are
 decrypted.
 
 If a model is missing, or the build lacks the feature, the sidecar sends one
-`error` event and plays on without voice commands. Loading takes about half a
-second, and the process then holds about 2.3GB, nearly all of it Qwen3-ASR;
-with `--recogniser sensevoice`, about half a second and 650MB.
+`error` event and plays on without voice commands. Loading takes about a
+second, briefly reaching 1.45GB; the process then holds about 1.05GB, nearly
+all of it Qwen3-ASR's weights, and up to about 1.65GB once it has heard
+commands of every length. With `--recogniser sensevoice`, about half a
+second and 550–600MB.
 
 The keywords file holds plain phrases. They are spelled into the spotter's word
 pieces at load, using the model's own `bpe.model`, because sherpa-onnx only
@@ -595,7 +597,8 @@ M5 Pro:
 | --- | --- | --- |
 | per command | 230–360ms | 30–50ms |
 | loading | 1.1s | 0.5s |
-| process memory | 2.3GB | 650MB |
+| memory, idle after loading | 1.05GB | 550MB |
+| memory, peak in use | 1.65GB | 600MB |
 | languages | 30, and Chinese dialects | 5 |
 
 On these clips neither heard clearly better. Both missed "Blinding Lights"
@@ -628,6 +631,32 @@ Differences that matter downstream:
 On a Raspberry Pi-class machine, several times slower per core and with
 4–8GB to share with the intent model, `--recogniser sensevoice`
 (`VOICE_RECOGNISER`) is likely the better fit.
+
+**Memory.** The process's peak, measured over 40 commands of up to 8s, the
+longest window the gate sends. It levels off rather than leaks: with 30s
+clips in the mix, 42 and 140 commands peaked within 3MB of each other, at
+2.1GB. That is also where the first figure given for it, 2.3GB, came from;
+no command reaches 30s. Loading spikes to 1.45GB while onnxruntime
+reads the 985MB of weights, then settles at 1.05GB; the rest of the peak is
+what decoding windows of different lengths leaves behind.
+
+onnxruntime's own options barely move it. sherpa-onnx reads them from a
+file named in the provider string (`cpu:<file>`); peaks over the same 40
+commands:
+
+| option | peak | per command |
+| --- | --- | --- |
+| defaults | 1653MB | 320ms |
+| `EnableCpuMemArena=0` | 1594MB | 320ms |
+| `EnableMemPattern=0` | 1635MB | 320ms |
+| both | 1608MB | 320ms |
+| `SessionConfig.session.disable_prepacking=1` | no less | 2× slower |
+| `max_total_len` 256 instead of 512 | 1690MB | 320ms |
+
+Threads change the time (544ms on one, 228ms on four), not the memory.
+None of this is used: 60MB is not worth writing an options file at startup
+for. A smaller Qwen3-ASR takes smaller weights, which only exist for other
+runtimes (4-bit GGUF and MLX builds), or SenseVoice.
 
 **Pinning the language.** On `auto`, four of seven live takes of the name
 said in English came back as Chinese ("什么号啊？"); pinned to `en` they read

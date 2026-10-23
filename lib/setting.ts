@@ -165,9 +165,9 @@ export interface Setting {
 	VOICE_DUCK_VOLUME?: number;
 	/**
 	 * The speech recogniser: "qwen3" (the default), Qwen3-ASR 0.6B, in 30
-	 * languages, but the sidecar then holds about 2.3GB and each command takes
-	 * about seven times as long; or "sensevoice", SenseVoice-Small, in five,
-	 * for small machines.
+	 * languages, but the sidecar then holds about 1.05GB, up to 1.65GB in use,
+	 * and each command takes about seven times as long; or "sensevoice",
+	 * SenseVoice-Small, in five and about 600MB, for small machines.
 	 */
 	VOICE_RECOGNISER?: "qwen3" | "sensevoice";
 	/**
