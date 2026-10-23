@@ -52,7 +52,7 @@ trackId: string, positionMs: number,
 /**
  * What the layer is playing now: the queue's former track.
  */
-layerTrackId: string, layerPositionMs: number, } | { "type": "position", guildId: string, trackId: string, positionMs: number, } | { "type": "idle", guildId: string, } | { "type": "reconnecting", guildId: string, reason: string, } | { "type": "disconnected", guildId: string, reason: string, } | { "type": "error", guildId: string | null, message: string, } | { "type": "sessions", guilds: Array<SessionState>, } | { "type": "woke", guildId: string, userId: string, } | { "type": "nothingHeard", guildId: string, userId: string, } | { "type": "utterance", guildId: string, userId: string, text: string, 
+layerTrackId: string, layerPositionMs: number, } | { "type": "position", guildId: string, trackId: string, positionMs: number, } | { "type": "idle", guildId: string, } | { "type": "reconnecting", guildId: string, reason: string, } | { "type": "disconnected", guildId: string, reason: string, } | { "type": "error", guildId: string | null, message: string, } | { "type": "sessions", guilds: Array<SessionState>, } | { "type": "woke", guildId: string, userId: string, } | { "type": "captured", guildId: string, userId: string, } | { "type": "nothingHeard", guildId: string, userId: string, } | { "type": "utterance", guildId: string, userId: string, text: string, 
 /**
  * The language the recogniser detected: `en`, `ja`, `ko`, `zh` or
  * `yue`, or null when it could not tell.

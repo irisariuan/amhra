@@ -1063,6 +1063,7 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 		}
 		Notice::Captured { guild_id, user_id, .. } => {
 			tell(&guild_id, WorkerCommand::Captured { user_id, chime, duck });
+			let _ = events.send(Event::Captured { guild_id, user_id: user_id.to_string() });
 		}
 		Notice::Unintelligible { guild_id, user_id, keyword } => {
 			eprintln!("[{guild_id}] voice: {user_id} said {keyword}, then nothing recognisable");

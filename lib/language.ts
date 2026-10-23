@@ -64,6 +64,29 @@ export function languageText(
 	return fallback ?? id;
 }
 
+/**
+ * Every wording of a label that has several: `{id}_1`, `{id}_2` and on, as
+ * long as they go, in the language, or in English if it has none.
+ */
+export function languageVariants(
+	id: string,
+	language: Language,
+	replace?: Record<string, string | number>,
+) {
+	const processedId = id.trim().toUpperCase();
+	const count = (lang: Language) => {
+		let n = 0;
+		while (languages[lang]?.[`${processedId}_${n + 1}`] !== undefined) n++;
+		return n;
+	};
+	const from = count(language) > 0 ? language : Language.English;
+	const variants = Array.from({ length: count(from) }, (_, index) =>
+		languageText(`${processedId}_${index + 1}`, from, replace),
+	);
+	if (!variants.length) globalApp.warn(`Unknown label: ${id}`);
+	return variants;
+}
+
 export function languageCommandName(
 	name: string,
 	language: Language,

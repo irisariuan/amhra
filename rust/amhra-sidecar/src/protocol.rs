@@ -233,6 +233,11 @@ pub enum Event {
 	/// person follows.
 	#[serde(rename_all = "camelCase")]
 	Woke { guild_id: String, user_id: String },
+	/// What they said after the wake word has ended and is being transcribed.
+	/// An `Utterance` or a `NothingHeard` follows. Not sent for speech the
+	/// recogniser was too far behind to take.
+	#[serde(rename_all = "camelCase")]
+	Captured { guild_id: String, user_id: String },
 	/// The wake came to nothing: no speech followed it, or none that could be
 	/// made out. Also sent for a `Speak` that was to listen to its member
 	/// again and could not be said: nothing will be listened for.

@@ -9,7 +9,7 @@ import {
 } from "discord.js";
 import type { CustomClient } from "../custom";
 import { type Command, Language } from "../interaction";
-import { languageText, parseLocale } from "../language";
+import { languageText, languageVariants, parseLocale } from "../language";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { userSetting } from "../userSetting";
@@ -18,6 +18,7 @@ import { isSpoken, readIntent, REQUEST_INPUT, type SpokenReply } from "./intentM
 import { startIntentServer } from "./intentServer";
 import { getNativeConnection } from "./native";
 import { type SidecarEvent, sidecar } from "./sidecar";
+import { type TranscriptStage, TranscriptStatus } from "./transcriptStatus";
 import { describePlayback, playbackState } from "./voiceContext";
 import { voiceInteraction } from "./voiceInteraction";
 import { REMEMBER_FOR_MS, VoiceMemory } from "./voiceMemory";
@@ -67,6 +68,9 @@ export function bindVoiceCommands(client: CustomClient, lookup: Lookup) {
 			globalApp.err("Voice transcript failed", error),
 		);
 	});
+	bus.on("captured", ({ guildId, userId }: Extract<SidecarEvent, { type: "captured" }>) => {
+		listening.get(listeningKey(guildId, userId))?.set("transcribing");
+	});
 	bus.on("nothingHeard", (payload: Extract<SidecarEvent, { type: "nothingHeard" }>) => {
 		onNothingHeard(client, payload).catch((error) =>
 			globalApp.err("Voice transcript failed", error),
@@ -95,12 +99,23 @@ export function bindVoiceCommands(client: CustomClient, lookup: Lookup) {
 }
 
 /**
- * "Listening…" messages for people who asked to see what was heard, posted on
- * the wake and filled in when the words arrive. Keyed by guild and user, and
- * held as the promise of the message: the words can come back before the
- * post has.
+ * Status lines for people who asked to see what was heard, posted on the wake
+ * and moved on through transcribing and the model generating until the answer
+ * replaces them (see transcriptStatus.ts). Keyed by guild and user; each holds
+ * the promise of its message, as the words can come back before the post has.
  */
-const listening = new Map<string, Promise<Message | null>>();
+const listening = new Map<string, TranscriptStatus<Message>>();
+
+/** A stage's wordings, for someone in a guild. */
+function stageWordings(guild: Guild, userId: string) {
+	const keys: Record<TranscriptStage, string> = {
+		listening: "voice_transcript_listening",
+		transcribing: "voice_transcript_transcribing",
+		generating: "voice_transcript_generating",
+	};
+	return (stage: TranscriptStage) =>
+		languageVariants(keys[stage], guildLanguage(guild), { user: `<@${userId}>` });
+}
 
 function listeningKey(guildId: string, userId: string) {
 	return `${guildId}:${userId}`;
@@ -124,28 +139,31 @@ async function onWoke(
 ) {
 	if (!userSetting(userId).showTranscript) return;
 	const key = listeningKey(guildId, userId);
+	// One from an earlier wake that never got an answer stays as it is.
+	void takeListening(guildId, userId);
+	const guild = client.guilds.cache.get(guildId);
+	if (!guild) return;
+	const wordings = stageWordings(guild, userId);
 	const post = (async () => {
 		const found = await speaker(client, guildId, userId);
 		const channel = found && replyChannel(client, found.guild, found.member);
 		if (!found || !channel) return null;
 		return channel
-			.send({
-				content: languageText("voice_transcript_listening", guildLanguage(found.guild), {
-					user: `<@${userId}>`,
-				}),
-				allowedMentions: { parse: [] },
-			})
+			.send({ content: wordings("listening")[0] ?? "", allowedMentions: { parse: [] } })
 			.catch(() => null);
 	})();
-	listening.set(key, post);
+	listening.set(key, new TranscriptStatus(post, "listening", wordings));
 }
 
-/** The wake's "listening…", if one was posted, no longer waiting for words. */
+/**
+ * The wake's status line, if one was posted, no longer changing, for the
+ * answer to replace.
+ */
 function takeListening(guildId: string, userId: string) {
 	const key = listeningKey(guildId, userId);
-	const post = listening.get(key);
+	const status = listening.get(key);
 	listening.delete(key);
-	return post ?? Promise.resolve(null);
+	return status?.finish() ?? Promise.resolve(null);
 }
 
 /** What each member said to the bot lately, and its answers. */
@@ -197,16 +215,28 @@ async function handleUtterance(
 	lookup: Lookup,
 	{ guildId, userId, text, lang }: Pick<Extract<SidecarEvent, { type: "utterance" }>, "guildId" | "userId" | "text" | "lang">,
 ): Promise<boolean> {
-	const waiting = await takeListening(guildId, userId);
 	const key = listeningKey(guildId, userId);
+	listening.get(key)?.set("generating");
 	const history = memory.recall(key);
 	const found = await speaker(client, guildId, userId);
-	if (!found) return false;
+	if (!found) {
+		await takeListening(guildId, userId);
+		return false;
+	}
 	const { guild, member } = found;
 	const showTranscript = userSetting(userId).showTranscript === true;
 
-	const context = describePlayback(await playbackState(client, guildId));
-	const { intents, by, turns } = await readIntent(text, lang, lookup, readSetting(), { context, history });
+	let read: Awaited<ReturnType<typeof readIntent>>;
+	try {
+		const context = describePlayback(await playbackState(client, guildId));
+		read = await readIntent(text, lang, lookup, readSetting(), { context, history });
+	} catch (error) {
+		// Or the status line rotates on with nothing to replace it.
+		await takeListening(guildId, userId);
+		throw error;
+	}
+	const { intents, by, turns } = read;
+	const waiting = await takeListening(guildId, userId);
 	// Only what the model read: the fallback has no answer to carry on from.
 	if (by === "model") memory.remember(key, [{ role: "user", content: text }, ...(turns ?? [])]);
 	// What was said stays out of the log, as it does in the sidecar's, unless
