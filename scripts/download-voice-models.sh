@@ -4,8 +4,8 @@
 #   scripts/download-voice-models.sh [--speech] [target dir]
 #
 # Idempotent: anything already in place is left alone, so rerunning after a
-# partial download only fetches what is missing. About 180MB to download and
-# 260MB unpacked, nearly all of it SenseVoice. `--speech` also fetches the
+# partial download only fetches what is missing. About 1.2GB to download and
+# unpacked, nearly all of it Qwen3-ASR, then SenseVoice. `--speech` also fetches the
 # speech models for VOICE_SPEECH: about 380MB more to download, 600MB unpacked.
 #
 # The sidecar finds them with `--voice-models <dir>` (default models/voice,
@@ -26,8 +26,16 @@ KWS="sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01"
 # Speech to text: SenseVoice-Small, int8. zh, en, ja, ko and Cantonese, with
 # the language detected per utterance. The 2024-07-17 export is FunASR's own
 # weights; the later 2025-09-09 one is a Cantonese fine-tune (WSYue) and
-# trades the other languages away for it.
+# trades the other languages away for it. The smaller of the two recognisers
+# (`--recogniser sensevoice`), and what tts_check listens with.
 STT="sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17"
+# Speech to text, the default: Qwen3-ASR 0.6B, int8. From Hugging Face, file
+# by file: the same export as the asr-models release's tarball, which GitHub
+# served here at a thirtieth of the speed.
+QWEN3="sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25"
+QWEN3_FILES=(conv_frontend.onnx encoder.int8.onnx decoder.int8.onnx
+	tokenizer/vocab.json tokenizer/merges.txt tokenizer/tokenizer_config.json)
+HUGGING_FACE="https://huggingface.co/csukuangfj2"
 # End of speech.
 VAD="silero_vad.onnx"
 # Speech, for answering aloud (see the sidecar's speech::models). English,
@@ -73,6 +81,18 @@ fetch_archive() {
 
 fetch_archive kws-models "$KWS"
 fetch_archive asr-models "$STT"
+
+if [[ -d "$QWEN3" ]]; then
+	echo "have $QWEN3"
+else
+	echo "fetching $QWEN3"
+	# Into a staging directory, renamed when complete, as the archives are.
+	mkdir -p ".staging.$QWEN3/tokenizer"
+	for file in "${QWEN3_FILES[@]}"; do
+		download "$HUGGING_FACE/$QWEN3/resolve/main/$file" ".staging.$QWEN3/$file"
+	done
+	mv ".staging.$QWEN3" "$QWEN3"
+fi
 
 if [[ -f "$VAD" ]]; then
 	echo "have $VAD"

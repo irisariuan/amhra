@@ -164,6 +164,13 @@ export interface Setting {
 	 */
 	VOICE_DUCK_VOLUME?: number;
 	/**
+	 * The speech recogniser: "qwen3" (the default), Qwen3-ASR 0.6B, in 30
+	 * languages, but the sidecar then holds about 2.3GB and each command takes
+	 * about seven times as long; or "sensevoice", SenseVoice-Small, in five,
+	 * for small machines.
+	 */
+	VOICE_RECOGNISER?: "qwen3" | "sensevoice";
+	/**
 	 * Where speech recognition runs. Core ML needs a sidecar built with
 	 * `--features shared-onnxruntime`, on macOS; "gpu" is CUDA, and needs one
 	 * built with `--features cuda-onnxruntime` against a sherpa-onnx GPU

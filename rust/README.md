@@ -289,7 +289,7 @@ command out of the text and runs it (see [In the bot](#in-the-bot)). Off
 unless the bot's owner allows it and each server opts in.
 
 ```text
-16 kHz PCM ─▶ keyword spotter ──"Amhra"──▶ window ─▶ end of speech ─▶ SenseVoice ─▶ utterance
+16 kHz PCM ─▶ keyword spotter ──"Amhra"──▶ window ─▶ end of speech ─▶ Qwen3-ASR ─▶ utterance
 per speaker   (streaming, always on)  (from the name's end) (Silero, 500ms)  (one thread)
 ```
 
@@ -333,11 +333,12 @@ starts:
 | --- | --- | --- |
 | `--voice-models <dir>` | `models/voice` | where the download script put them (gitignored) |
 | `--wake-keywords <file>` | `data/wake-keywords.txt` | the wake phrases; edit and restart, no rebuild |
+| `--recogniser <r>` | `qwen3` | the speech recogniser: `qwen3` (Qwen3-ASR) or `sensevoice` (see [Qwen3-ASR or SenseVoice](#qwen3-asr-or-sensevoice)) |
 | `--recogniser-threads <n>` | `2` | speech-recognition threads |
 | `--recogniser-provider <p>` | `cpu` | `cpu`, `coreml` with `shared-onnxruntime` on macOS, or `gpu` (CUDA) with `cuda-onnxruntime` and `SHERPA_ONNX_LIB_DIR` at a sherpa-onnx GPU release; one the build lacks falls back to `cpu`, saying so |
 | `--wake-provider <p>` | `cpu` | the keyword spotter's, the same way; the wake classifier only runs on `cpu` |
 | `--speech-provider <p>` | `cpu` | the speech models', the same way |
-| `--recogniser-language <l>` | `auto` | pin SenseVoice to one language |
+| `--recogniser-language <l>` | `auto` | pin the recogniser to one language |
 | `--wake-model <dir>` | the stock spotter | a fine-tuned one from `training/wake` |
 | `--wake-classifier <dir>` | off | the wake word classifier from `training/wake/classifier`, instead of any spotter (`VOICE_WAKE_CLASSIFIER`) |
 | `--wake-clips <dir>` | off | save the audio each wake was heard in (below) |
@@ -352,7 +353,8 @@ decrypted.
 
 If a model is missing, or the build lacks the feature, the sidecar sends one
 `error` event and plays on without voice commands. Loading takes about half a
-second, and the process then holds about 570MB, nearly all of it SenseVoice.
+second, and the process then holds about 2.3GB, nearly all of it Qwen3-ASR;
+with `--recogniser sensevoice`, about half a second and 650MB.
 
 The keywords file holds plain phrases. They are spelled into the spotter's word
 pieces at load, using the model's own `bpe.model`, because sherpa-onnx only
@@ -376,7 +378,15 @@ runs whenever the models are present.
 | --- | --- | --- |
 | wake word | `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` (streaming zipformer, int8) | Apache-2.0 |
 | end of speech | Silero VAD (`silero_vad.onnx`) | MIT |
-| speech to text | `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` | FunASR Model License 1.1 |
+| speech to text | `sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25` (default) | Apache-2.0 |
+| speech to text | `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` (`--recogniser sensevoice`) | FunASR Model License 1.1 |
+
+**Qwen3-ASR attribution.** The default speech recogniser is **Qwen3-ASR
+0.6B** by the Qwen team, Alibaba Group
+(<https://github.com/QwenLM/Qwen3-ASR>), under Apache-2.0, via the
+sherpa-onnx int8 export. The download script fetches it file by file from
+the exporter's Hugging Face repository, which here was about thirty times
+faster than the GitHub release.
 
 **SenseVoice attribution.** The speech recogniser is **SenseVoice-Small** by
 Tongyi Lab, Alibaba Group (<https://github.com/FunAudioLLM/SenseVoice>), via
@@ -391,8 +401,9 @@ The download script deliberately fetches the **2024-07-17** export. The newer
 2025-09-09 one is a Cantonese fine-tune (WSYue) and gives up other languages
 for it.
 
-The safe `sherpa-onnx` wrapper drops SenseVoice's detected language, so the
-recogniser calls the C API directly. That is the one `unsafe` block, in
+The safe `sherpa-onnx` wrapper drops SenseVoice's detected language, and
+cannot set the per-stream option Qwen3-ASR is pinned to a language with, so
+the recogniser calls the C API directly. That is the one `unsafe` block, in
 `sherpa.rs`.
 
 ### Behaviour
@@ -571,12 +582,59 @@ handing work to another device.
 Either way, 500ms of the wait after someone stops talking is the silence
 that tells the gate they have finished.
 
+### Qwen3-ASR or SenseVoice
+
+Qwen3-ASR is an audio encoder and a 0.6B language model that writes out
+what it heard; SenseVoice is a non-autoregressive model a quarter of its
+size. Thirteen synthesised commands (macOS voices: six English, two each in
+Japanese, Korean and Mandarin, one Cantonese), transcribed whole with
+`wake_wav --whole --recogniser <r>`, `shared-onnxruntime`, two CPU threads,
+M5 Pro:
+
+| | Qwen3-ASR | SenseVoice |
+| --- | --- | --- |
+| per command | 230–360ms | 30–50ms |
+| loading | 1.1s | 0.5s |
+| process memory | 2.3GB | 650MB |
+| languages | 30, and Chinese dialects | 5 |
+
+On these clips neither heard clearly better. Both missed "Blinding Lights"
+(Qwen3: "lighting lights") and 米津玄師 (both wrote it out as sounds);
+Qwen3-ASR got 아이유 where SenseVoice wrote 아유, and wrote "다음 곡으로
+넘겨주어" for 넘겨 줘. On the one live recording here it kept more of the
+speech ("…And then, and do do do do do." against SenseVoice's
+"…the other time嘟."). Synthesised speech is the easy case; the reason to
+prefer it is real voices, noise and accents, and that still wants measuring
+on recordings of the server's own members.
+
+Differences that matter downstream:
+
+- **No number formatting.** Qwen3-ASR writes "thirty percent" where
+  SenseVoice writes "30%"; the intent model reads either.
+- **The language.** sherpa-onnx strips the `language English` Qwen3-ASR
+  writes before the text and keeps nothing of it. Unpinned, the language is
+  read off the writing: any kana is `ja`, any Hangul `ko`, other Han `zh`,
+  Latin letters `en`. Cantonese comes back `zh`, not `yue`, and Japanese in
+  kanji alone does too.
+- **Pinning is per stream.** Qwen3-ASR takes the language each window, so
+  a language per server would cost nothing more; SenseVoice's is per
+  recogniser. Pinned, Qwen3-ASR writes in that language whatever was said,
+  translating if it must: pinned to `en`, "次の曲にスキップして。" came back
+  "Next track, skip."
+- **Time grows with what was said.** It writes a token at a time, about
+  35ms each on two threads. One thread took 400–600ms per command, four
+  170–260ms. Output stops at 96 tokens, far more than an 8s command needs.
+
+On a Raspberry Pi-class machine, several times slower per core and with
+4–8GB to share with the intent model, `--recogniser sensevoice`
+(`VOICE_RECOGNISER`) is likely the better fit.
+
 **Pinning the language.** On `auto`, four of seven live takes of the name
 said in English came back as Chinese ("什么号啊？"); pinned to `en` they read
 "I Har." The pin is the recogniser's: sherpa-onnx takes a per-stream
 `language` option, and SenseVoice ignores it (checked on the same takes), so
 a language per server would mean loading a recogniser per language, about
-250MB each.
+250MB each. (That was SenseVoice; Qwen3-ASR is pinned per stream.)
 
 ### Speaking
 
@@ -681,6 +739,7 @@ starts:
 | `VOICE_LOG_TRANSCRIPTS` | off | log what was heard after the name, for tuning the matching |
 | `VOICE_WAKE_CHIME` | **on** | a chime in the call when the name is heard, another when the command has been taken down, and a soft sound every 2s until the bot answers |
 | `VOICE_DUCK_VOLUME` | `0.3` | the music's volume from the name until the command is heard; 1 leaves it |
+| `VOICE_RECOGNISER` | `qwen3` | `qwen3` or `sensevoice`, as `--recogniser` |
 | `VOICE_RECOGNISER_PROVIDER` | `cpu` | `cpu`, `gpu` or `coreml`, as `--recogniser-provider` |
 | `VOICE_WAKE_PROVIDER` | `cpu` | the same, for the keyword spotter |
 | `VOICE_SPEECH_PROVIDER` | `cpu` | the same, for speech |
@@ -814,7 +873,7 @@ starts:
   choice, kept in `data/userSetting.json` (gitignored). The sidecar reports
   `woke` and `nothingHeard` as well as `utterance`; for those members the bot
   posts "listening…" on the wake and edits in their words and the command's
-  answer when the text arrives. SenseVoice only transcribes a finished
+  answer when the text arrives. The recogniser only transcribes a finished
   window, so there are no partial words to show while they speak.
 - **Running it.** A command runs the same slash-command handler as a typed
   one, with an interaction that answers in the channel the player uses, or the

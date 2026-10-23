@@ -34,6 +34,8 @@
 //!   `models/voice`;
 //! - `--wake-keywords <file>`: the wake phrases, default
 //!   `data/wake-keywords.txt`;
+//! - `--recogniser qwen3|sensevoice`: the speech recogniser, default qwen3
+//!   (Qwen3-ASR); sensevoice is a quarter of the size, for small machines;
 //! - `--recogniser-threads <n>`: threads for speech recognition, default 2;
 //! - `--recogniser-language <lang>`: auto (the default), en, zh, ja, ko or
 //!   yue, for every guild;
@@ -928,8 +930,8 @@ fn voice_sink(engine: &Engine, events: &Sender<Event>, guild_id: &str) -> VoiceS
 	})
 }
 
-/// Load the models and start the recogniser. Slow — the speech model is a
-/// quarter of a gigabyte — so it happens once, at startup, before any guild
+/// Load the models and start the recogniser. Slow — the speech model is up
+/// to a gigabyte — so it happens once, at startup, before any guild
 /// connects.
 #[cfg(feature = "voice-commands")]
 fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc<Engine>> {
@@ -955,6 +957,12 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 			{
 				config.recogniser_threads = threads;
 			}
+			if let Some(name) = option("--recogniser") {
+				config.recogniser = sherpa::Recogniser::parse(&name).ok_or_else(|| {
+					format!("unknown --recogniser {name:?}; use qwen3 or sensevoice")
+				})?;
+			}
+			eprintln!("voice commands: speech recognition by {}", config.recogniser.name());
 			config.spotter = option("--wake-model").map(Into::into);
 			config.classifier = classifier.clone().map(Into::into);
 			config.recogniser_provider = provider(events, "--recogniser-provider", "speech recognition");

@@ -22,7 +22,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use amhra_sidecar::speech::models;
-use amhra_sidecar::voice_commands::sherpa::{ModelPaths, Provider, SenseVoice};
+use amhra_sidecar::voice_commands::sherpa::{ModelPaths, OfflineRecogniser, Provider, Recogniser};
 use amhra_sidecar::voice_commands::{SAMPLE_RATE, Transcriber};
 use sherpa_onnx::{GenerationConfig, OfflineTts};
 
@@ -68,7 +68,8 @@ fn main() {
 	if engine == "supertonic" {
 		generation.extra = Some(HashMap::from([("lang".to_owned(), serde_json::Value::from(lang.clone()))]));
 	}
-	let mut listener = SenseVoice::load(&ModelPaths::under(Path::new(&voice_models)), 4, Provider::Cpu, "auto")
+	let paths = ModelPaths::under(Path::new(&voice_models));
+	let mut listener = OfflineRecogniser::load(&paths, Recogniser::SenseVoice, 4, Provider::Cpu, "auto")
 		.expect("could not load SenseVoice");
 	let speak = |text: &str| tts.generate_with_config(text, &generation, None::<fn(&[f32], f32) -> bool>);
 
