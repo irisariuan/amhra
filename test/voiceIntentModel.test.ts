@@ -173,9 +173,10 @@ describe("several things asked for at once", () => {
 });
 
 describe("answering aloud", () => {
-	test("the model is offered speak, and told the bot's state", () => {
+	test("the model is offered speak and request_input, and told the bot's state", () => {
 		const prompt = intentPrompt(lookup, "Volume: 80%");
-		expect(prompt).toContain('- speak: Answer them aloud');
+		expect(prompt).toContain("- speak: Answer them aloud");
+		expect(prompt).toContain("- request_input: Ask them something aloud and listen");
 		expect(prompt).toContain("The bot right now:\nVolume: 80%");
 		expect(intentPrompt(lookup)).not.toContain("The bot right now");
 	});
@@ -186,6 +187,22 @@ describe("answering aloud", () => {
 			text: "Three more.",
 			language: Language.Japanese,
 		});
+	});
+
+	test("a question back is said and listened after", () => {
+		expect(intentFrom('{"command": "request_input", "text": "Which song?"}', Language.English, lookup)).toEqual({
+			command: "request_input",
+			text: "Which song?",
+			language: Language.English,
+		});
+		expect(read('{"command": "request_input"}')).toBeNull();
+	});
+
+	test("a reply that ends the conversation is no action", () => {
+		const prompt = intentPrompt(lookup);
+		expect(prompt).toContain('"thank you" -> []');
+		expect(prompt).toContain('"Ok." -> []');
+		expect(intentsFrom("[]", Language.English, lookup)).toEqual([]);
 	});
 
 	test("with nothing to say it is no answer, and a long one is cut", () => {

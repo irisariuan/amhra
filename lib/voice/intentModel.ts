@@ -30,10 +30,11 @@ import { defaultIntentModel, intentServer } from "./intentServer";
  * what a typed command could.
  *
  * It is told the bot's state (what is playing, the queue, the volume, the
- * settings), and has one command of its own, `speak`: an answer said aloud,
- * to a question or as a question back. After one, the bot listens to the
- * same person again without the name, and their reply is read with what was
- * said before.
+ * settings), and has two commands of its own, both said aloud: `speak`, an
+ * answer that ends it, and `request_input`, a question back, after which the
+ * bot listens to the same person again without the name and reads their
+ * reply with what was said before. A reply that only closes the conversation
+ * ("ok", "thank you") is no action at all.
  *
  * One request may ask for several things ("skip this and turn it down to
  * 40"): the model answers with a list of actions, done in turn, each as a
@@ -59,11 +60,22 @@ export const MAX_ACTIONS = 5;
 /** The longest spoken answer, in characters: past this it is cut. */
 export const MAX_SPOKEN = 300;
 
-/** The model's own command: answer them aloud, then listen for their reply. */
+/** The model's own command: answer them aloud, and that is all. */
 export const SPEAK = "speak";
+/** The model's other command: ask them aloud, then listen for their reply. */
+export const REQUEST_INPUT = "request_input";
 
-/** An answer the model gives aloud rather than a command it runs. */
-export type SpokenReply = { command: typeof SPEAK; text: string; language: Language };
+/** Something the model says aloud rather than a command it runs. */
+export type SpokenReply = {
+	command: typeof SPEAK | typeof REQUEST_INPUT;
+	text: string;
+	language: Language;
+};
+
+/** Whether `action` is said aloud, rather than run. */
+export function isSpoken(action: Action): action is SpokenReply {
+	return action.command === SPEAK || action.command === REQUEST_INPUT;
+}
 
 /** One thing to do for a request: a command, or an answer said aloud. */
 export type Action = VoiceIntent | SpokenReply;
@@ -199,11 +211,12 @@ export function intentPrompt(lookup: Lookup, context?: string): string {
 
 Decide which of these commands they meant, and its options:
 ${catalogue(lookup)}
-- ${SPEAK}: Answer them aloud instead of running a command: a question about what is playing, the queue, the volume or the settings, answered from the state below; or, when what they want is unclear, a short question back. Give "text": what to say, one or two short sentences, in the language they spoke. They can answer back without saying the name.
+- ${SPEAK}: Answer them aloud instead of running a command: a question about what is playing, the queue, the volume or the settings, answered from the state below. Give "text": what to say, one or two short sentences, in the language they spoke. The bot does not listen after it.
+- ${REQUEST_INPUT}: Ask them something aloud and listen for their answer, which they give without saying the name: when what they want is unclear, or a command needs something they did not say. Give "text": the question, one short sentence, in the language they spoke.
 ${state}
-Anything else — chatter, only the name, a request the bot cannot do, or something too unclear even to ask about — is none.
+Anything else — chatter, only the name, a request the bot cannot do, or something too unclear even to ask about — is no action. So is a reply that only ends the conversation, such as "ok", "thank you", "thanks", "never mind", "that's all" or "no": the bot says nothing back and stops listening.
 
-The transcript may be in English, Japanese, Korean or Chinese. Answer with one line of JSON and nothing else: the command under "command", its subcommand under "subcommand" for a command that has them, and each option they gave under its name. Leave out options they did not give. When they ask for several things at once, answer with a list of them in the order to do them, at most ${MAX_ACTIONS}, with any speak last. When in doubt, answer {"command": "none"}.
+The transcript may be in English, Japanese, Korean or Chinese. Answer with one line of JSON and nothing else: the command under "command", its subcommand under "subcommand" for a command that has them, and each option they gave under its name. Leave out options they did not give. When they ask for several things at once, answer with a list of them in the order to do them, at most ${MAX_ACTIONS}, with any ${SPEAK} or ${REQUEST_INPUT} last. For no action, answer with an empty list: []. When in doubt, answer [].
 
 Examples:
 "Amra, next one please." -> {"command": "skip"}
@@ -225,10 +238,16 @@ Examples:
 "play bad guy next and put it on repeat" -> [{"command": "play", "search": "bad guy", "next": true}, {"command": "loop", "enabled": true}]
 "pause and tell me what's playing" -> [{"command": "pause"}, {"command": "${SPEAK}", "text": "That was Hello by Adele."}]
 "how many songs are left" -> {"command": "${SPEAK}", "text": "Three more after this one."}
-"play that one again" -> {"command": "${SPEAK}", "text": "Which song do you want to hear again?"}
-"Ehra." -> {"command": "none"}
-"what's for dinner" -> {"command": "none"}
-"I'll play football later" -> {"command": "none"}
+"play that one again" -> {"command": "${REQUEST_INPUT}", "text": "Which song do you want to hear again?"}
+"put something on" -> {"command": "${REQUEST_INPUT}", "text": "What would you like to hear?"}
+"Ok." -> []
+"thank you" -> []
+"cool, thanks" -> []
+"never mind" -> []
+"ありがとう" -> []
+"Ehra." -> []
+"what's for dinner" -> []
+"I'll play football later" -> []
 "次へ" -> {"command": "skip"}
 "一時停止" -> {"command": "pause"} /no_think`;
 }
@@ -364,9 +383,9 @@ function actionFrom(json: unknown, language: Language, lookup: Lookup): Action |
 	if (!json || typeof json !== "object" || Array.isArray(json)) return null;
 	const raw = json as Record<string, unknown>;
 	const name = typeof raw.command === "string" ? raw.command.trim().toLowerCase() : "";
-	if (name === SPEAK) {
+	if (name === SPEAK || name === REQUEST_INPUT) {
 		const text = typeof raw.text === "string" ? raw.text.trim() : "";
-		return text ? { command: SPEAK, text: [...text].slice(0, MAX_SPOKEN).join(""), language } : null;
+		return text ? { command: name, text: [...text].slice(0, MAX_SPOKEN).join(""), language } : null;
 	}
 	const command = MUSIC_COMMANDS.find((known) => known === name);
 	if (!command || !lookup(command)) return null;

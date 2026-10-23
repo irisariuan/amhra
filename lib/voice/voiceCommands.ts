@@ -14,7 +14,7 @@ import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { userSetting } from "../userSetting";
 import { announcement, foundAnnouncement, prepared, spokenReply } from "./announce";
-import { readIntent, SPEAK, type SpokenReply, type Turn } from "./intentModel";
+import { isSpoken, readIntent, REQUEST_INPUT, type SpokenReply, type Turn } from "./intentModel";
 import { startIntentServer } from "./intentServer";
 import { getNativeConnection } from "./native";
 import { type SidecarEvent, sidecar } from "./sidecar";
@@ -279,15 +279,15 @@ async function handleUtterance(
 	// acts on what the earlier ones did.
 	for (const [index, intent] of intents.entries()) {
 		const last = index === intents.length - 1;
-		if (intent.command === SPEAK) {
-			// Only an answer at the end is listened back to: the bot has more
+		if (isSpoken(intent)) {
+			// Only a question at the end is listened back to: the bot has more
 			// to do after one in the middle.
 			const spoken = await speakBack(guildId, userId, intent, {
 				channel,
 				waiting: message,
 				transcript,
 				lang,
-				listen: last,
+				listen: last && intent.command === REQUEST_INPUT,
 				turns: [...history, { role: "user", content: text }, { role: "assistant", content: answer ?? "" }],
 			});
 			answered ||= spoken;

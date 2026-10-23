@@ -703,12 +703,12 @@ starts:
   disconnect, join, loop, queue, nowplaying, remove, volume, lyrics,
   relocate, and mix with its subcommands ("mix in some rain at 30
   percent", "stop the second mixed in song") — with its options, or none,
-  or `speak` (below). One request may ask for several ("skip this and turn
+  or `speak` or `request_input` (below). One request may ask for several ("skip this and turn
   it down to 40"): the model answers with a list, at most five, and each is
   run in turn, finished before the next starts, as if typed one after
   another. One that is not a command is left out and the rest still run; one
   that fails stops the rest, since they may have counted on it. Only a
-  `speak` at the end listens for a reply. It is told each command's options
+  `request_input` at the end listens for a reply. No action at all is `[]`. It is told each command's options
   from the slash command itself, and what it gives back is held to them:
   an option of the wrong type or out of range is left out, a command missing
   a required one is not run. Set the URL to `http://127.0.0.1:8085/v1` and
@@ -751,16 +751,18 @@ starts:
   the crossfade and what is mixed in. A queued song's title and channel are
   given when already looked up, or when looking it up takes under 400ms;
   otherwise its link.
-- **Answering aloud, and listening for the reply.** The model's own command,
-  `speak`, is something to say: an answer from the state ("Three more after
-  this one.") or a question back ("Which song?"). It is said whatever the
-  member chose with `/voicefeedback`, since they asked, and written in the
-  chat. Once it has been said the sidecar listens to the same member again
-  without the name (`speak` with `listen`, then `Engine::follow_up`): the
-  start chime, five seconds to begin, and their reply is read with what was
-  said before. The conversation is kept only while the bot is going to
-  listen: a command, nothing heard, or an answer that could not be said ends
-  it.
+- **Answering aloud, and listening for the reply.** The model has two
+  commands of its own, each something to say: `speak`, an answer from the
+  state ("Three more after this one."), and `request_input`, a question back
+  ("Which song?"). Either is said whatever the member chose with
+  `/voicefeedback`, since they asked, and written in the chat. After a
+  `request_input` the sidecar listens to the same member again without the
+  name (`speak` with `listen`, then `Engine::follow_up`): the start chime,
+  five seconds to begin, and their reply is read with what was said before.
+  The conversation is kept only while the bot is going to listen: a
+  command, a `speak`, nothing heard, or a question that could not be said
+  ends it. So does a reply that only closes it ("ok", "thank you", "never
+  mind"), which the model answers with `[]`.
 - **Answering the name.** The moment the spotter hears it, the guild's audio
   thread mixes in a half-second chime (two rising sine notes, synthesised in
   `wake_feedback.rs`), over the music or alone if nothing is playing, and
