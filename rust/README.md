@@ -711,7 +711,7 @@ starts:
   disconnect, join, loop, queue, nowplaying, remove, volume, lyrics,
   relocate, and mix with its subcommands ("mix in some rain at 30
   percent", "stop the second mixed in song") — with its options, or none,
-  or `speak` or `request_input` (below). One request may ask for several ("skip this and turn
+  or `speak`, `request_input` or `search` (below). One request may ask for several ("skip this and turn
   it down to 40"): the model answers with a list, at most five, and each is
   run in turn, finished before the next starts, as if typed one after
   another. One that is not a command is left out and the rest still run; one
@@ -745,6 +745,21 @@ starts:
   "live this song" and 下一首歌是什么 ("what is the next song") for commands,
   and read "play the song" as a search for a song called that. Qwen3 1.7B got
   47, and a 27B model 69 at 343ms and 15GB.
+- **Looking songs up** (`search`). For a particular version ("the live
+  version of hotel california", "a cover of creep"), a song described
+  rather than named, or a question about a song that is not playing ("who
+  sings bad guy"), the model searches YouTube first. The bot sends it the
+  top five results, numbered, with channel, length and link, and asks
+  again: it plays one by its number (`"result": 2`, turned into that
+  result's link), answers from them with `speak`, or asks which with
+  `request_input`. The results stay in the conversation, so "the second
+  one" said back picks from them. A link it gives that was not among the
+  results is not played: it made it up. At most two searches a request. A
+  search adds about 1.5s; a plain "play shape of you" is played without
+  one. Measured by hand on 13 requests, it searched for each version,
+  description and question, picked the fitting result, and answered "who
+  sings bad guy" from them; given the results as links to copy, it once
+  played a link that was not there, so it picks by number.
 - **When there is no model** (`lib/voice/intent.ts`): no URL set, or no
   answer within 3s. A command's own slash command name, in any of the bot's
   languages ("skip", "スキップ", "일시정지", "暫停"), said first, after at most

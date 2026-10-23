@@ -239,7 +239,7 @@ async function handleUtterance(
 	const showTranscript = userSetting(userId).showTranscript === true;
 
 	const context = describePlayback(await playbackState(client, guildId));
-	const { intents, by, answer } = await readIntent(text, lang, lookup, readSetting(), { context, history });
+	const { intents, by, turns } = await readIntent(text, lang, lookup, readSetting(), { context, history });
 	// What was said stays out of the log, as it does in the sidecar's, unless
 	// the owner is tuning the matching and asked for it.
 	const heard = readSetting().VOICE_LOG_TRANSCRIPTS
@@ -288,7 +288,7 @@ async function handleUtterance(
 				transcript,
 				lang,
 				listen: last && intent.command === REQUEST_INPUT,
-				turns: [...history, { role: "user", content: text }, { role: "assistant", content: answer ?? "" }],
+				turns: [...history, { role: "user", content: text }, ...(turns ?? [])],
 			});
 			answered ||= spoken;
 			message = null;

@@ -14,6 +14,7 @@ import {
 	type VoiceIntent,
 	type VoiceOptions,
 } from "./intent";
+import type { YouTubeVideo } from "../youtube";
 import { defaultIntentModel, intentRuntime, intentServer } from "./intentServer";
 
 /**
@@ -35,6 +36,10 @@ import { defaultIntentModel, intentRuntime, intentServer } from "./intentServer"
  * bot listens to the same person again without the name and reads their
  * reply with what was said before. A reply that only closes the conversation
  * ("ok", "thank you") is no action at all.
+ *
+ * It may also `search` YouTube before it decides: the results are sent back
+ * to it, and it answers again: playing one by its number, which the bot
+ * turns into its link, saying something about them, or asking which.
  *
  * One request may ask for several things ("skip this and turn it down to
  * 40"): the model answers with a list of actions, done in turn, each as a
@@ -59,6 +64,10 @@ const MAX_TOKENS = 300;
 export const MAX_ACTIONS = 5;
 /** The longest spoken answer, in characters: past this it is cut. */
 export const MAX_SPOKEN = 300;
+/** Searches for one request; past this the model has to decide. */
+export const MAX_SEARCHES = 2;
+/** Search results the model is shown. */
+export const SEARCH_RESULTS = 5;
 
 /** The model's own command: answer them aloud, and that is all. */
 export const SPEAK = "speak";
@@ -80,6 +89,13 @@ export function isSpoken(action: Action): action is SpokenReply {
 /** One thing to do for a request: a command, or an answer said aloud. */
 export type Action = VoiceIntent | SpokenReply;
 
+/** The model's third command: look a song up before deciding. */
+export const SEARCH = "search";
+type SearchRequest = { command: typeof SEARCH; query: string };
+
+/** Songs found for a search, best first. */
+export type Search = (query: string) => Promise<YouTubeVideo[]>;
+
 /** A turn of a conversation, as the model is sent it. */
 export type Turn = { role: "user" | "assistant"; content: string };
 
@@ -89,6 +105,8 @@ export interface Conversation {
 	context?: string;
 	/** What was said before, when the bot is answering a reply to itself. */
 	history?: Turn[];
+	/** How the model's searches are made; YouTube unless told otherwise. */
+	search?: Search;
 }
 
 type Lookup = (name: string) => Command<SlashCommandBuilder> | undefined;
@@ -213,6 +231,8 @@ Decide which of these commands they meant, and its options:
 ${catalogue(lookup)}
 - ${SPEAK}: Answer them aloud instead of running a command: a question about what is playing, the queue, the volume or the settings, answered from the state below. Give "text": what to say, one or two short sentences, in the language they spoke. The bot does not listen after it.
 - ${REQUEST_INPUT}: Ask them something aloud and listen for their answer, which they give without saying the name: when what they want is unclear, or a command needs something they did not say. Give "text": the question, one short sentence, in the language they spoke.
+- ${SEARCH}: Look songs up on YouTube before deciding, when a plain play would not do: they want a particular version (live, acoustic, a cover, by someone), describe a song without naming it, or ask about a song that is not playing (who sings it, how long it is). Never answer about such a song from memory: search. Give "search": what to look up. Answer with it alone, not in a list. A plain "play" with a song's name needs no search.
+The results come back as the next message, numbered, each with its title, channel, length and link. Then answer what they asked: a question with ${SPEAK}, from the results; a song to play with play and "result": the number of the one they meant, in place of "search"; and when several fit and you cannot tell which they meant, ${REQUEST_INPUT}, naming two or three of them briefly. Their reply can then pick one by its number or its name: play it by its number.
 ${state}
 Anything else — chatter, only the name, a request the bot cannot do, or something too unclear even to ask about — is no action. So is a reply that only ends the conversation, such as "ok", "thank you", "thanks", "never mind", "that's all" or "no": the bot says nothing back and stops listening.
 
@@ -249,7 +269,28 @@ Examples:
 "what's for dinner" -> []
 "I'll play football later" -> []
 "次へ" -> {"command": "skip"}
-"一時停止" -> {"command": "pause"} /no_think`;
+"一時停止" -> {"command": "pause"}
+
+Searching, with what comes back:
+"play the live version of hotel california" -> {"command": "${SEARCH}", "search": "hotel california live"}
+  Search results for "hotel california live":
+  1. Eagles - Hotel California (Live 1977) - Eagles (7:12) https://www.youtube.com/watch?v=AAAAAAAAAA1
+  2. Hotel California - Eagles (6:31) https://www.youtube.com/watch?v=AAAAAAAAAA2
+  -> {"command": "play", "result": 1}
+"who sings bad guy" -> {"command": "${SEARCH}", "search": "bad guy"}
+  Search results for "bad guy":
+  1. Billie Eilish - bad guy - Billie Eilish (3:26) https://www.youtube.com/watch?v=BBBBBBBBBB1
+  -> {"command": "${SPEAK}", "text": "Bad Guy is by Billie Eilish."}
+"how long is someone like you" -> {"command": "${SEARCH}", "search": "someone like you"}
+  Search results for "someone like you":
+  1. Adele - Someone Like You (Official Music Video) - Adele (4:45) https://www.youtube.com/watch?v=CCCCCCCCCC1
+  -> {"command": "${SPEAK}", "text": "Someone Like You is about four and three quarter minutes long."}
+"play a cover of yellow" -> {"command": "${SEARCH}", "search": "yellow cover"}
+  Search results for "yellow cover":
+  1. Yellow - Coldplay (Acoustic Cover) - Jane Doe (4:10) https://www.youtube.com/watch?v=DDDDDDDDDD1
+  2. Yellow (Rock Cover) - The Covers Band (4:30) https://www.youtube.com/watch?v=DDDDDDDDDD2
+  -> {"command": "${REQUEST_INPUT}", "text": "I found an acoustic cover by Jane Doe and a rock one by The Covers Band. Which one?"}
+  "the rock one" -> {"command": "play", "result": 2} /no_think`;
 }
 
 export type IntentReading = {
@@ -257,9 +298,80 @@ export type IntentReading = {
 	intents: Action[];
 	/** Who decided: the model, or the fallback. */
 	by: "model" | "fallback";
-	/** The model's answer as it gave it, to carry a conversation on with. */
+	/** The model's answer as it gave it. */
 	answer?: string;
+	/**
+	 * Everything after their words, to carry a conversation on with: each
+	 * search the model asked for and its results, then its answer.
+	 */
+	turns?: Turn[];
 };
+
+/** Find songs on YouTube, loaded only when the model first searches. */
+const searchYouTube: Search = (query) => import("../youtube.js").then((youtube) => youtube.searchYouTube(query));
+
+/** `seconds` as M:SS, or H:MM:SS. */
+function duration(seconds: number) {
+	const whole = Math.max(0, Math.floor(seconds));
+	const parts = [Math.floor(whole / 3600), Math.floor((whole % 3600) / 60), whole % 60];
+	if (!parts[0]) parts.shift();
+	return parts.map((part, index) => (index ? String(part).padStart(2, "0") : String(part))).join(":");
+}
+
+/** Search results as the model is shown them. */
+export function searchResults(query: string, videos: YouTubeVideo[]) {
+	const found = videos.slice(0, SEARCH_RESULTS);
+	if (!found.length) return `Search results for "${query}": nothing found.`;
+	return [
+		`Search results for "${query}":`,
+		...found.map(
+			(video, index) =>
+				`${index + 1}. ${video.title} - ${video.channel.name} (${duration(video.durationInSec)}) ${video.url}`,
+		),
+	].join("\n");
+}
+
+/** The search results the model has been shown, as their links. */
+type Listed = {
+	/** The latest search's, in order, for a result named by its number. */
+	latest: string[];
+	/** Every one shown in the conversation, for a link it gives back. */
+	all: Set<string>;
+};
+
+const RESULT_LINE = /^\d+\. .* \(\d+(?::\d{2})+\) (\S+)$/;
+
+/**
+ * The results in the conversation so far, read back from the messages they
+ * were shown in: a reply after a question back picks from the results sent
+ * before it, which are only in the history by then.
+ */
+export function listedIn(turns: Turn[]): Listed {
+	const listed: Listed = { latest: [], all: new Set() };
+	for (const turn of turns) {
+		if (turn.role !== "user" || !turn.content.startsWith("Search results for ")) continue;
+		listed.latest = turn.content
+			.split("\n")
+			.map((line) => RESULT_LINE.exec(line)?.[1])
+			.filter((link): link is string => link !== undefined);
+		for (const link of listed.latest) listed.all.add(link);
+	}
+	return listed;
+}
+
+/**
+ * What a play the model gave plays: a search result by its number, a link
+ * to one, or else what it said. Null for a link it was never shown, which it
+ * made up rather than found, and for a number past the results.
+ */
+function played(raw: Record<string, unknown>, search: string, listed: Listed): string | null {
+	if (!search) return typeof raw.result === "number" ? (listed.latest[raw.result - 1] ?? null) : "";
+	if (!listed.all.size) return search;
+	// A result by its link, or by its video id alone.
+	const link = [...listed.all].find((shown) => shown === search || shown.endsWith(`=${search}`));
+	if (link) return link;
+	return /youtu\.?be/.test(search) ? null : search;
+}
 
 /** What someone asked for, read by the model when there is one. */
 export async function readIntent(
@@ -267,7 +379,7 @@ export async function readIntent(
 	lang: string | null,
 	lookup: Lookup,
 	setting: Setting = readSetting(),
-	{ context, history = [] }: Conversation = {},
+	{ context, history = [], search = searchYouTube }: Conversation = {},
 ): Promise<IntentReading> {
 	const url = setting.VOICE_INTENT_MODEL_URL;
 	const server = intentServer();
@@ -275,15 +387,26 @@ export async function readIntent(
 	if (url && server?.ready !== false) {
 		const model =
 			setting.VOICE_INTENT_MODEL ?? defaultIntentModel(process.platform, process.arch, intentRuntime(setting));
-		const messages = [
-			{ role: "system", content: intentPrompt(lookup, context) },
-			...history,
-			{ role: "user", content: text },
-		];
-		const answer = await askModel(url, model, messages);
-		if (answer !== undefined) {
-			const language = recogniserLanguage(lang) ?? Language.English;
-			return { intents: intentsFrom(answer, language, lookup), by: "model", answer };
+		const language = recogniserLanguage(lang) ?? Language.English;
+		const turns: Turn[] = [];
+		for (let searches = 0; ; searches++) {
+			const messages = [
+				{ role: "system", content: intentPrompt(lookup, context) },
+				...history,
+				{ role: "user", content: text },
+				...turns,
+			];
+			const answer = await askModel(url, model, messages);
+			if (answer === undefined) break;
+			turns.push({ role: "assistant", content: answer });
+			const actions = parsedActions(answer, language, lookup, listedIn([...history, ...turns]));
+			const asked = actions.find((action): action is SearchRequest => action.command === SEARCH);
+			// Searched enough: what it does with what it has found is its answer.
+			if (!asked || searches >= MAX_SEARCHES) {
+				const intents = actions.filter((action): action is Action => action.command !== SEARCH);
+				return { intents: intents.slice(0, MAX_ACTIONS), by: "model", answer, turns };
+			}
+			turns.push({ role: "user", content: searchResults(asked.query, await search(asked.query)) });
 		}
 		server?.notAnswering();
 	}
@@ -362,12 +485,18 @@ function jsonIn(answer: string): unknown {
  * {@link MAX_ACTIONS}, the rest are left.
  */
 export function intentsFrom(answer: string, language: Language, lookup: Lookup): Action[] {
+	return parsedActions(answer, language, lookup)
+		.filter((action): action is Action => action.command !== SEARCH)
+		.slice(0, MAX_ACTIONS);
+}
+
+/** Every action in an answer, searches included, in its order. */
+function parsedActions(answer: string, language: Language, lookup: Lookup, listed = listedIn([])) {
 	const json = jsonIn(answer);
 	const items = Array.isArray(json) ? json : [json];
 	return items
-		.map((item) => actionFrom(item, language, lookup))
-		.filter((action): action is Action => action !== null)
-		.slice(0, MAX_ACTIONS);
+		.map((item) => actionFrom(item, language, lookup, listed))
+		.filter((action): action is Action | SearchRequest => action !== null);
 }
 
 /**
@@ -377,13 +506,18 @@ export function intentsFrom(answer: string, language: Language, lookup: Lookup):
  * not a JSON object, is no command. A spoken answer needs something to say.
  */
 export function intentFrom(answer: string, language: Language, lookup: Lookup): Action | null {
-	return actionFrom(jsonIn(answer), language, lookup);
+	const action = actionFrom(jsonIn(answer), language, lookup, listedIn([]));
+	return action?.command === SEARCH ? null : (action as Action | null);
 }
 
-function actionFrom(json: unknown, language: Language, lookup: Lookup): Action | null {
+function actionFrom(json: unknown, language: Language, lookup: Lookup, listed: Listed): Action | SearchRequest | null {
 	if (!json || typeof json !== "object" || Array.isArray(json)) return null;
 	const raw = json as Record<string, unknown>;
 	const name = typeof raw.command === "string" ? raw.command.trim().toLowerCase() : "";
+	if (name === SEARCH) {
+		const query = typeof raw.search === "string" ? raw.search.trim() : "";
+		return query ? { command: SEARCH, query } : null;
+	}
 	if (name === SPEAK || name === REQUEST_INPUT) {
 		const text = typeof raw.text === "string" ? raw.text.trim() : "";
 		return text ? { command: name, text: [...text].slice(0, MAX_SPOKEN).join(""), language } : null;
@@ -407,7 +541,8 @@ function actionFrom(json: unknown, language: Language, lookup: Lookup): Action |
 		else if (spec.required && !(command === "play" && spec.name === "search")) return null;
 	}
 	if (command === "play") {
-		const query = typeof options.search === "string" ? options.search : "";
+		const query = played(raw, typeof options.search === "string" ? options.search : "", listed);
+		if (query === null) return null;
 		delete options.search;
 		return query
 			? { command, query, language, ...given(options) }

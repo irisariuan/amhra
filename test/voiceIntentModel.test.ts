@@ -8,9 +8,12 @@ import {
 	intentPrompt,
 	intentsFrom,
 	MAX_ACTIONS,
+	MAX_SEARCHES,
 	MAX_SPOKEN,
 	readIntent,
+	searchResults,
 } from "../lib/voice/intentModel";
+import type { YouTubeVideo } from "../lib/youtube";
 
 /**
  * A local model deciding what a voice command asks for, held to the bot's
@@ -297,6 +300,112 @@ describe("what the model's answer is taken to mean", () => {
 	});
 });
 
+/** A server that gives `answers` in turn, keeping what it was asked. */
+function answeringInTurn(...answers: string[]) {
+	const asked: { role: string; content: string }[][] = [];
+	globalThis.fetch = (async (_url: string, init: RequestInit) => {
+		asked.push(JSON.parse(String(init.body)).messages);
+		const content = answers[Math.min(asked.length - 1, answers.length - 1)];
+		return Response.json({ choices: [{ message: { content } }] });
+	}) as unknown as typeof fetch;
+	return asked;
+}
+
+function video(id: string, title: string, channel: string, durationInSec: number): YouTubeVideo {
+	return { id, url: `https://www.youtube.com/watch?v=${id}`, title, durationInSec, channel: { name: channel, url: "" }, thumbnails: [] };
+}
+
+describe("searching before deciding", () => {
+	const found = [
+		video("live1977xxx", "Hotel California (Live 1977)", "Eagles", 432),
+		video("studioxxxxx", "Hotel California", "Eagles", 391),
+	];
+
+	test("the model is offered search", () => {
+		expect(intentPrompt(lookup)).toContain("- search: Look songs up on YouTube");
+	});
+
+	test("results are numbered, with who, how long and the link", () => {
+		expect(searchResults("hotel california live", found)).toBe(
+			'Search results for "hotel california live":\n' +
+				"1. Hotel California (Live 1977) - Eagles (7:12) https://www.youtube.com/watch?v=live1977xxx\n" +
+				"2. Hotel California - Eagles (6:31) https://www.youtube.com/watch?v=studioxxxxx",
+		);
+		expect(searchResults("nothing", [])).toBe('Search results for "nothing": nothing found.');
+		expect(searchResults("long", [video("x", "Mix", "DJ", 3725)])).toContain("(1:02:05)");
+	});
+
+	test("it is sent the results, and plays the one it picks", async () => {
+		const searched: string[] = [];
+		const asked = answeringInTurn(
+			'{"command": "search", "search": "hotel california live"}',
+			'{"command": "play", "result": 1}',
+		);
+		const reading = await readIntent("play the live hotel california", "en", lookup, MODEL, {
+			search: async (query) => {
+				searched.push(query);
+				return found;
+			},
+		});
+		expect(searched).toEqual(["hotel california live"]);
+		expect(reading.intents).toEqual([
+			{ command: "play", query: "https://www.youtube.com/watch?v=live1977xxx", language: Language.English },
+		]);
+		expect(asked[1].slice(-2)).toEqual([
+			{ role: "assistant", content: '{"command": "search", "search": "hotel california live"}' },
+			{ role: "user", content: searchResults("hotel california live", found) },
+		]);
+		// The search and its results are kept, for a reply to pick from.
+		expect(reading.turns?.map((turn) => turn.role)).toEqual(["assistant", "user", "assistant"]);
+	});
+
+	test("a result is played by its link, whether named by number, link or id", async () => {
+		for (const named of ['"result": 1', '"search": "https://www.youtube.com/watch?v=live1977xxx"', '"search": "live1977xxx"']) {
+			answeringInTurn('{"command": "search", "search": "hotel california"}', `{"command": "play", ${named}}`);
+			const reading = await readIntent("play the live one", "en", lookup, MODEL, { search: async () => found });
+			expect(reading.intents).toEqual([
+				{ command: "play", query: "https://www.youtube.com/watch?v=live1977xxx", language: Language.English },
+			]);
+		}
+	});
+
+	test("a link it was not shown, or a number past the results, is not played", async () => {
+		for (const named of ['"result": 3', '"search": "https://www.youtube.com/watch?v=madeupxxxxx"']) {
+			answeringInTurn('{"command": "search", "search": "hotel california"}', `[{"command": "play", ${named}}, {"command": "pause"}]`);
+			const reading = await readIntent("play the live one", "en", lookup, MODEL, { search: async () => found });
+			expect(reading.intents).toEqual([{ command: "pause", language: Language.English }]);
+		}
+	});
+
+	test("a reply picks from the results shown before it", async () => {
+		answeringInTurn('{"command": "play", "result": 2}');
+		const history = [
+			{ role: "user" as const, content: "play hotel california" },
+			{ role: "assistant" as const, content: '{"command": "search", "search": "hotel california"}' },
+			{ role: "user" as const, content: searchResults("hotel california", found) },
+			{ role: "assistant" as const, content: '{"command": "request_input", "text": "Live or studio?"}' },
+		];
+		const reading = await readIntent("the studio one", "en", lookup, MODEL, { history });
+		expect(reading.intents).toEqual([
+			{ command: "play", query: "https://www.youtube.com/watch?v=studioxxxxx", language: Language.English },
+		]);
+	});
+
+	test("it searches no more than so many times, then has to decide", async () => {
+		const asked = answeringInTurn('[{"command": "skip"}, {"command": "search", "search": "again"}]');
+		const reading = await readIntent("find it", "en", lookup, MODEL, { search: async () => [] });
+		expect(asked).toHaveLength(MAX_SEARCHES + 1);
+		expect(reading.intents).toEqual([{ command: "skip", language: Language.English }]);
+	});
+
+	test("a search is never a command run on its own", () => {
+		expect(read('{"command": "search", "search": "bad guy"}')).toBeNull();
+		expect(intentsFrom('[{"command": "search", "search": "x"}, {"command": "pause"}]', Language.English, lookup)).toEqual([
+			{ command: "pause", language: Language.English },
+		]);
+	});
+});
+
 describe("who reads the command", () => {
 	test("the model, when there is one", async () => {
 		const asked = answering('{"command": "play", "search": "expectations by Olivia Rodrigo"}');
@@ -321,7 +430,7 @@ describe("who reads the command", () => {
 	test("the model's no is final, even where the fallback would match", async () => {
 		answering('{"command": "none"}');
 		const reading = await readIntent("stop talking about it, skip school", "en", lookup, MODEL);
-		expect(reading).toEqual({ intents: [], by: "model", answer: '{"command": "none"}' });
+		expect(reading).toMatchObject({ intents: [], by: "model", answer: '{"command": "none"}' });
 	});
 
 	test("it answers in the language that was heard", async () => {
