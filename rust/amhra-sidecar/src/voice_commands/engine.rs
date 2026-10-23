@@ -91,13 +91,22 @@ struct Job {
 /// Voice commands for the whole process.
 pub struct Engine {
 	models: Arc<dyn Models>,
-	config: GateConfig,
+	/// What new gates start with; see [`Engine::set_config`].
+	config: Mutex<GateConfig>,
 	jobs: SyncSender<Job>,
 	report: Report,
-	/// Each listening guild's gate thread, for [`Engine::follow_up`]. A guild
-	/// whose call ended keeps its entry until it is replaced: sending to it
-	/// fails, harmlessly.
-	follow_ups: Mutex<HashMap<String, Sender<u64>>>,
+	/// Each listening guild's gate thread, for [`Engine::follow_up`] and
+	/// [`Engine::set_config`]. A guild whose call ended keeps its entry until
+	/// it is replaced: sending to it fails, harmlessly.
+	controls: Mutex<HashMap<String, Sender<Control>>>,
+}
+
+/// What a gate thread is told besides the audio.
+enum Control {
+	/// Listen to this member again without the name.
+	FollowUp(u64),
+	/// New timings for everyone in the guild.
+	Config(GateConfig),
 }
 
 impl Engine {
@@ -115,18 +124,18 @@ impl Engine {
 			.name("recogniser".to_owned())
 			.stack_size(STACK_SIZE)
 			.spawn(move || recognise(queue, transcriber, thread_report))?;
-		Ok(Self { models, config, jobs, report, follow_ups: Mutex::default() })
+		Ok(Self { models, config: Mutex::new(config), jobs, report, controls: Mutex::default() })
 	}
 
 	/// Start gating one guild's voice. Hand the returned sink to the receive
 	/// thread; when it is dropped, the gate thread ends.
 	pub fn listen(&self, guild_id: &str) -> std::io::Result<VoiceSink> {
 		let (frames, inbox) = std::sync::mpsc::sync_channel(FRAME_QUEUE);
-		let (follow_up, follow_ups) = std::sync::mpsc::channel();
+		let (control, controls) = std::sync::mpsc::channel();
 		let dropped = Arc::new(AtomicU64::new(0));
 		let gate = GateThread {
 			guild_id: guild_id.to_owned(),
-			speakers: Speakers::new(Arc::clone(&self.models), self.config),
+			speakers: Speakers::new(Arc::clone(&self.models), self.config()),
 			jobs: self.jobs.clone(),
 			report: Arc::clone(&self.report),
 			dropped: Arc::clone(&dropped),
@@ -134,9 +143,9 @@ impl Engine {
 		std::thread::Builder::new()
 			.name(format!("gate-{guild_id}"))
 			.stack_size(STACK_SIZE)
-			.spawn(move || gate.run(inbox, follow_ups))?;
-		if let Ok(mut map) = self.follow_ups.lock() {
-			map.insert(guild_id.to_owned(), follow_up);
+			.spawn(move || gate.run(inbox, controls))?;
+		if let Ok(mut map) = self.controls.lock() {
+			map.insert(guild_id.to_owned(), control);
 		}
 
 		Ok(Box::new(move |heard| {
@@ -150,8 +159,26 @@ impl Engine {
 	/// the bot has answered them and they may answer back. Never blocks, so
 	/// the audio thread may call it.
 	pub fn follow_up(&self, guild_id: &str, user_id: u64) {
-		if let Some(gate) = self.follow_ups.lock().ok().and_then(|map| map.get(guild_id).cloned()) {
-			let _ = gate.send(user_id);
+		if let Some(gate) = self.controls.lock().ok().and_then(|map| map.get(guild_id).cloned()) {
+			let _ = gate.send(Control::FollowUp(user_id));
+		}
+	}
+
+	/// The timings gates start with now.
+	pub fn config(&self) -> GateConfig {
+		self.config.lock().map(|config| *config).unwrap_or_default()
+	}
+
+	/// Change the timings: for every guild listening now, commands already
+	/// open included (see [`super::gate::Gate::set_config`]), and every one
+	/// that starts listening later.
+	pub fn set_config(&self, config: GateConfig) {
+		if let Ok(mut current) = self.config.lock() {
+			*current = config;
+		}
+		if let Ok(mut map) = self.controls.lock() {
+			// A call that ended has no thread to tell, nor any need of it.
+			map.retain(|_, gate| gate.send(Control::Config(config)).is_ok());
 		}
 	}
 }
@@ -166,7 +193,7 @@ struct GateThread {
 }
 
 impl GateThread {
-	fn run(mut self, inbox: Receiver<Heard>, follow_ups: Receiver<u64>) {
+	fn run(mut self, inbox: Receiver<Heard>, controls: Receiver<Control>) {
 		let mut reported_drops = 0;
 		let mut last_drop_report = Instant::now();
 		let mut model_failed = false;
@@ -195,9 +222,14 @@ impl GateThread {
 				Some(Heard::Left { user_id }) => speakers.left(user_id),
 				None => {}
 			}
-			while let Ok(user_id) = follow_ups.try_recv() {
-				if let Err(error) = speakers.follow_up(user_id, FOLLOW_UP, now, &mut handle) {
-					report(Notice::Failed { guild_id: guild_id.clone(), message: error.to_string() });
+			while let Ok(control) = controls.try_recv() {
+				match control {
+					Control::FollowUp(user_id) => {
+						if let Err(error) = speakers.follow_up(user_id, FOLLOW_UP, now, &mut handle) {
+							report(Notice::Failed { guild_id: guild_id.clone(), message: error.to_string() });
+						}
+					}
+					Control::Config(config) => speakers.set_config(config),
 				}
 			}
 			speakers.tick(now, &mut handle);
@@ -397,6 +429,36 @@ mod tests {
 		wait_for(&notices, |notice| matches!(notice, Notice::Utterance { keyword, .. } if keyword == FOLLOW_UP));
 		// A guild nobody is listening in is not an error.
 		engine.follow_up("8", 42);
+	}
+
+	#[test]
+	fn new_timings_reach_a_guild_already_listening() {
+		let notices = Arc::new(Mutex::new(Vec::new()));
+		let sink_notices = Arc::clone(&notices);
+		let engine = Engine::start(
+			Arc::new(FakeModels),
+			Box::new(FakeTranscriber),
+			GateConfig::default(),
+			Arc::new(move |notice| sink_notices.lock().unwrap().push(notice)),
+		)
+		.unwrap();
+		let mut sink = engine.listen("7").unwrap();
+		let patient = GateConfig { end_silence_ms: 1500, ..engine.config() };
+		engine.set_config(patient);
+		assert_eq!(engine.config(), patient);
+
+		sink(voice(42, &keyword_frame()));
+		for _ in 0..10 {
+			sink(voice(42, &[LOUD; FRAME_SAMPLES]));
+		}
+		wait_for(&notices, |notice| matches!(notice, Notice::Utterance { .. }));
+		let latency = notices.lock().unwrap().iter().find_map(|notice| match notice {
+			Notice::Utterance { latency_ms, .. } => Some(*latency_ms),
+			_ => None,
+		});
+		// The command waited out the new silence, not the half second it
+		// started with.
+		assert!(latency.unwrap() >= 1450, "{latency:?}");
 	}
 
 	#[test]

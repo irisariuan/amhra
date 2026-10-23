@@ -60,6 +60,14 @@ impl Speakers {
 		}
 	}
 
+	/// Take new timings, for everyone here and everyone who arrives.
+	pub fn set_config(&mut self, config: GateConfig) {
+		self.config = config;
+		for speaker in self.speakers.values_mut() {
+			speaker.gate.set_config(config);
+		}
+	}
+
 	/// How many speakers have a gate.
 	pub fn len(&self) -> usize {
 		self.speakers.len()

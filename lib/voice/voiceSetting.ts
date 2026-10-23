@@ -74,13 +74,29 @@ export function voiceCommandArgs(setting: Setting = readSetting()): string[] {
 			args.push("--speech-threads", String(threads));
 		}
 	}
+	const { waitForSpeechMs, endSilenceMs, maxCaptureMs } = voiceTimings(setting);
 	const timings = [
-		["--wait-for-speech-ms", setting.VOICE_WAIT_FOR_COMMAND_MS],
-		["--end-silence-ms", setting.VOICE_END_SILENCE_MS],
-		["--max-capture-ms", setting.VOICE_MAX_COMMAND_MS],
+		["--wait-for-speech-ms", waitForSpeechMs],
+		["--end-silence-ms", endSilenceMs],
+		["--max-capture-ms", maxCaptureMs],
 	] as const;
 	for (const [flag, ms] of timings) {
-		if (ms !== undefined && Number.isInteger(ms) && ms > 0) args.push(flag, String(ms));
+		if (ms !== null) args.push(flag, String(ms));
 	}
 	return args;
+}
+
+/**
+ * How long voice commands wait, in ms, as the sidecar's `setTimings` takes
+ * them: after the name for a command, the silence that ends one, and the
+ * longest one. Null where unset, for the sidecar's default.
+ */
+export function voiceTimings(setting: Setting = readSetting()) {
+	const ms = (value: number | undefined) =>
+		value !== undefined && Number.isInteger(value) && value > 0 ? value : null;
+	return {
+		waitForSpeechMs: ms(setting.VOICE_WAIT_FOR_COMMAND_MS),
+		endSilenceMs: ms(setting.VOICE_END_SILENCE_MS),
+		maxCaptureMs: ms(setting.VOICE_MAX_COMMAND_MS),
+	};
 }

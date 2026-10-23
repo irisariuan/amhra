@@ -133,6 +133,19 @@ pub enum Command {
 		#[serde(default)]
 		listen: bool,
 	},
+	/// How long voice commands wait, from now on, in every guild and for
+	/// commands already being taken down: after the name for a command to
+	/// start, the silence that ends one, and the longest one, in ms. Unset or
+	/// zero is the default. Ignored by a sidecar without `--voice-commands`.
+	#[serde(rename_all = "camelCase")]
+	SetTimings {
+		#[serde(default)]
+		wait_for_speech_ms: Option<u32>,
+		#[serde(default)]
+		end_silence_ms: Option<u32>,
+		#[serde(default)]
+		max_capture_ms: Option<u32>,
+	},
 	/// The bot is done with what a member said, and has nothing to say about
 	/// it: stop the waiting sound for them. Harmless if it already stopped.
 	#[serde(rename_all = "camelCase")]
@@ -291,7 +304,7 @@ impl Command {
 			| Self::SetListen { guild_id, .. }
 			| Self::Speak { guild_id, .. }
 			| Self::Settle { guild_id, .. } => Some(guild_id),
-			Self::PrepareSpeech { .. } | Self::ListSessions | Self::Shutdown => None,
+			Self::SetTimings { .. } | Self::PrepareSpeech { .. } | Self::ListSessions | Self::Shutdown => None,
 		}
 	}
 }
@@ -299,6 +312,15 @@ impl Command {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn timings_left_out_are_the_defaults() {
+		let command: Command = serde_json::from_str(r#"{"type":"setTimings","endSilenceMs":1200}"#).unwrap();
+		let Command::SetTimings { wait_for_speech_ms, end_silence_ms, max_capture_ms } = command else {
+			panic!("parsed as {command:?}")
+		};
+		assert_eq!((wait_for_speech_ms, end_silence_ms, max_capture_ms), (None, Some(1200), None));
+	}
 
 	#[test]
 	fn commands_round_trip_as_tagged_json() {

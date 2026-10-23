@@ -39,7 +39,7 @@ userId: string | null,
  * for the name: the start chime, then whatever they say back is an
  * `Utterance` like any other. Only with `user_id`.
  */
-listen: boolean, } | { "type": "settle", guildId: string, userId: string, } | { "type": "prepareSpeech", phrases: Array<Phrase>, } | { "type": "listSessions" } | { "type": "shutdown" };
+listen: boolean, } | { "type": "setTimings", waitForSpeechMs: number | null, endSilenceMs: number | null, maxCaptureMs: number | null, } | { "type": "settle", guildId: string, userId: string, } | { "type": "prepareSpeech", phrases: Array<Phrase>, } | { "type": "listSessions" } | { "type": "shutdown" };
 
 /**
  * What this process reports back.

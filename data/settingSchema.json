@@ -235,21 +235,21 @@
    "minimum": 500,
    "maximum": 10000,
    "default": 2500,
-   "description": "How long after the name to wait for a command to start, in milliseconds. A pause before the command, waiting for the chime, does not end it within this time. Restart to apply"
+   "description": "How long after the name to wait for a command to start, in milliseconds. A pause before the command, waiting for the chime, does not end it within this time. Applies at once, from the next time the name is heard"
   },
   "VOICE_END_SILENCE_MS": {
    "type": "integer",
    "minimum": 200,
    "maximum": 3000,
    "default": 500,
-   "description": "Silence that ends a command, in milliseconds. Longer forgives pauses mid-command; every millisecond is added to the wait for an answer. Restart to apply"
+   "description": "Silence that ends a command, in milliseconds. Longer forgives pauses mid-command; every millisecond is added to the wait for an answer. Applies at once, to commands already being heard too"
   },
   "VOICE_MAX_COMMAND_MS": {
    "type": "integer",
    "minimum": 2000,
    "maximum": 20000,
    "default": 8000,
-   "description": "The longest command, in milliseconds, from just before the name ended. Restart to apply"
+   "description": "The longest command, in milliseconds, from just before the name ended. Applies at once, to commands already being heard too"
   },
   "VOICE_INTENT_MODEL_URL": {
    "type": "string",

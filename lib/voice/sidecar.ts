@@ -7,7 +7,12 @@ import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { fadesFrom } from "./fades";
 import { nativeBinary } from "./nativeBinary";
-import { guildListens, voiceCommandArgs } from "./voiceSetting";
+import {
+	guildListens,
+	voiceCommandArgs,
+	voiceCommandsAllowed,
+	voiceTimings,
+} from "./voiceSetting";
 import type {
 	Command as WireCommand,
 	Event as WireEvent,
@@ -159,8 +164,12 @@ export class Sidecar extends EventEmitter {
 	/** Guilds the sidecar is connected to, so a restart can be reported. */
 	readonly guilds = new Set<string>();
 
-	/** `extraArgs` are passed to the binary after the cache directory. */
-	constructor(private readonly extraArgs: string[] = []) {
+	/**
+	 * `extraArgs` are passed to the binary after the cache directory; as a
+	 * function, they are asked for again each time it starts, so a restart
+	 * after a crash starts from the settings as they are then.
+	 */
+	constructor(private readonly extraArgs: string[] | (() => string[]) = []) {
 		super();
 	}
 
@@ -170,7 +179,8 @@ export class Sidecar extends EventEmitter {
 
 		const binary = sidecarBin.path();
 		dcb.log(`Starting voice sidecar: ${binary}`);
-		const args = ["--cache-dir", `${process.cwd()}/cache`, ...this.extraArgs];
+		const extra = typeof this.extraArgs === "function" ? this.extraArgs() : this.extraArgs;
+		const args = ["--cache-dir", `${process.cwd()}/cache`, ...extra];
 		// Streaming with caching off, the sidecar walks the same client ladder
 		// the fetcher does, so it is handed the same operator override.
 		const clients = `${process.cwd()}/data/youtube-clients.json`;
@@ -338,10 +348,20 @@ let shared: Sidecar | null = null;
  */
 export function sidecar() {
 	if (!shared) {
-		shared = new Sidecar(voiceCommandArgs());
+		shared = new Sidecar(() => voiceCommandArgs());
 		shared.start();
 	}
 	return shared;
+}
+
+/**
+ * Hand the voice command timings in the settings to the running sidecar, so a
+ * change applies without a restart. Does nothing when it is not running, or
+ * not listening for voice commands: it starts with them as they are.
+ */
+export function syncVoiceTimings(setting = readSetting()) {
+	if (!shared?.running || !voiceCommandsAllowed(setting)) return;
+	shared.send({ type: "setTimings", ...voiceTimings(setting) });
 }
 
 export function stopSidecar() {

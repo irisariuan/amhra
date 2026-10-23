@@ -204,6 +204,13 @@ impl Gate {
 		}
 	}
 
+	/// Take new timings. A command already open keeps the wait for speech it
+	/// began with; the silence that ends it and its longest length change at
+	/// once.
+	pub fn set_config(&mut self, config: GateConfig) {
+		self.limits = Limits::from(config);
+	}
+
 	/// Not in the middle of anything: no name heard, no command open.
 	pub fn is_listening(&self) -> bool {
 		matches!(self.state, State::Listening)

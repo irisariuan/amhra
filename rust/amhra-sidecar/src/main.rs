@@ -510,6 +510,26 @@ async fn dispatch(
 				(None, None) => {}
 			}
 		}
+		Command::SetTimings { wait_for_speech_ms, end_silence_ms, max_capture_ms } => {
+			if let Some(engine) = voice {
+				use amhra_sidecar::voice_commands::gate::GateConfig;
+				let defaults = GateConfig::default();
+				let ms = |ms: Option<u32>, default| ms.filter(|ms| *ms > 0).unwrap_or(default);
+				let config = GateConfig {
+					wait_for_speech_ms: ms(wait_for_speech_ms, defaults.wait_for_speech_ms),
+					end_silence_ms: ms(end_silence_ms, defaults.end_silence_ms),
+					max_capture_ms: ms(max_capture_ms, defaults.max_capture_ms),
+					..engine.config()
+				};
+				if config != engine.config() {
+					eprintln!(
+						"voice commands: now waiting {}ms for a command, ending one after {}ms of silence, {}ms at most",
+						config.wait_for_speech_ms, config.end_silence_ms, config.max_capture_ms
+					);
+					engine.set_config(config);
+				}
+			}
+		}
 		Command::Settle { guild_id, user_id } => {
 			if let Ok(user_id) = user_id.parse() {
 				settle(guilds, &guild_id, user_id);

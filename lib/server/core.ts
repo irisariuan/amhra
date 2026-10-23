@@ -62,6 +62,7 @@ import {
 	requestSchedule,
 	respondToSchedule,
 } from "../voice/schedule";
+import { syncVoiceTimings } from "../voice/sidecar";
 
 const setting = readSetting(`${process.cwd()}/data/setting.json`);
 /**
@@ -478,6 +479,8 @@ export async function initServer(client: CustomClient) {
 				for (const player of client.player.values()) {
 					player.syncFadesWithSetting();
 				}
+				// So are voice commands' timings, which apply at once.
+				syncVoiceTimings();
 				return res.json(publicGlobalSettings(nextResult.data));
 			} catch (error) {
 				exp.error(`Failed to save global settings: ${error}`);
@@ -510,6 +513,7 @@ export async function initServer(client: CustomClient) {
 				case ActionType.ReloadSetting:
 					globalApp.important(formatter("Reloading settings..."));
 					reloadSetting();
+					syncVoiceTimings();
 					return res.sendStatus(200);
 				default:
 					exp.log(`Action not recognized (${req.body.action})`);

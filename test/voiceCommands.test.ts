@@ -14,6 +14,7 @@ import { voiceInteraction } from "../lib/voice/voiceInteraction";
 import {
 	collectsWakeClips,
 	voiceCommandArgs,
+	voiceTimings,
 	WAKE_CLIPS_DIR,
 } from "../lib/voice/voiceSetting";
 
@@ -314,6 +315,23 @@ describe("sidecar flags", () => {
 		expect(args).not.toContain("--wake-model");
 		expect(args).not.toContain("--wake-keywords");
 		expect(args).toContain("--wake-clips");
+	});
+
+	test("timings, for the flags and for the running sidecar alike", () => {
+		const allowed = { ...base, VOICE_COMMANDS: true };
+		expect(voiceTimings(allowed)).toEqual({
+			waitForSpeechMs: null,
+			endSilenceMs: null,
+			maxCaptureMs: null,
+		});
+		const patient = { ...allowed, VOICE_END_SILENCE_MS: 1200, VOICE_MAX_COMMAND_MS: 0 };
+		expect(voiceTimings(patient)).toEqual({
+			waitForSpeechMs: null,
+			endSilenceMs: 1200,
+			maxCaptureMs: null,
+		});
+		expect(voiceCommandArgs(patient).join(" ")).toContain("--end-silence-ms 1200");
+		expect(voiceCommandArgs(patient)).not.toContain("--max-capture-ms");
 	});
 
 	test("speech, only when asked for", () => {
