@@ -4,6 +4,7 @@ biome.json
 
 test/*
 !test/**/**.test.*
+!test/preload.ts
 
 package-lock.json
 bun.lock*

@@ -67,11 +67,6 @@ jobs:
       # No bun lockfile is committed (see .gitignore), so this resolves fresh.
       - name: Install
         run: bun install
-      # data/setting.json is written by the setup tool and gitignored, but
-      # readSetting() throws without it and the tests reach it through
-      # lib/voice/nativeBinary.ts. Defaults are all the tests need.
-      - name: Seed settings
-        run: echo '{}' > data/setting.json
       # Nothing connects to a database here; generate only parses the URL.
       - name: Generate the Prisma client
         run: bunx prisma generate
