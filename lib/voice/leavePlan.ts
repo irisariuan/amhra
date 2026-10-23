@@ -18,9 +18,8 @@
  * up with no timer at all — the two timestamps below are carried between
  * sweeps, and a state that stops being idle simply drops them.
  *
- * Kept free of `CustomAudioPlayer` so it can be tested directly: that class
- * reaches @distube/ytdl-core through its imports, which does not load under
- * Bun.
+ * Kept free of `CustomAudioPlayer` so it can be tested directly: that module
+ * reads `data/setting.json` as it is imported, which a test has not got.
  */
 
 export interface LeaveState {

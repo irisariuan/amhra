@@ -14,9 +14,9 @@ import { segmentAt, upcomingSegments } from "../lib/voice/segmentTiming";
 /**
  * A SponsorBlock segment, built here rather than imported.
  *
- * `lib/voice/segment.ts` reaches @distube/ytdl-core through its imports, which
- * cannot be loaded under Bun at all — and this is pure arithmetic over two
- * numbers, so it should not need a YouTube client to test.
+ * `lib/voice/segment.ts` reads the bot's settings as it is imported, through
+ * the player — and this is pure arithmetic over two numbers, so it should not
+ * need either to test.
  */
 function segment(startSec: number, endSec: number): Segment {
 	return {

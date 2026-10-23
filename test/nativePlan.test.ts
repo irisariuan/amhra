@@ -11,8 +11,8 @@ import {
  * The rules the sidecar playback path runs on.
  *
  * These are exercised here rather than through `CustomAudioPlayer` because
- * that class reaches @distube/ytdl-core through its imports, which cannot load
- * under Bun at all. What is left is the part with the failure modes: arming
+ * that module reads `data/setting.json` as it is imported, which a test has
+ * not got. What is left is the part with the failure modes: arming
  * the wrong track, restarting one that is already playing, and reporting a
  * position that keeps climbing while paused.
  */

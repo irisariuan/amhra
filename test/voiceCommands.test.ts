@@ -17,9 +17,9 @@ import {
 	WAKE_CLIPS_DIR,
 } from "../lib/voice/voiceSetting";
 
-// The player can't be loaded here (ytdl-core's agent does not construct under
-// Bun's undici), and the handlers below only ask it whether anything is
-// playing. Nothing is.
+// The player can't be loaded here (it reads data/setting.json as it is
+// imported), and the handlers below only ask it whether anything is playing.
+// Nothing is.
 mock.module("../lib/voice/core", () => ({
 	getAudioPlayer: () => null,
 	getBotVoiceChannel: () => undefined,

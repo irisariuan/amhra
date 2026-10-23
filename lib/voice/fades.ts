@@ -1,8 +1,8 @@
 /**
  * The rules for a guild's fade lengths.
  *
- * Apart from the player that holds them, because that class reaches
- * @distube/ytdl-core through its imports and cannot load under Bun, and
+ * Apart from the player that holds them, because that module reads
+ * `data/setting.json` as it is imported, which a test has not got, and
  * because both rules below have a way of being quietly wrong: a partial
  * adjustment that resets the half nobody touched, and a settings save that
  * undoes every live adjustment.

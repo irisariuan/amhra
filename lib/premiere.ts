@@ -1,12 +1,14 @@
 //! Upcoming premieres and scheduled livestreams, and when they start.
 //!
-//! ytdl-core cannot answer this: its `getBasicInfo` throws on any video whose
-//! playability is `LIVE_STREAM_OFFLINE`, which is exactly the state a premiere
-//! sits in until it begins. InnerTube's `player` endpoint answers anyway, with
-//! the start time on the offline slate.
+//! ytdl-core's `getInfo` refuses any video whose playability is
+//! `LIVE_STREAM_OFFLINE`, which is exactly the state a premiere sits in until
+//! it begins. InnerTube's `player` endpoint answers anyway, with the start
+//! time on the offline slate. (Since 5.0 ytdl-core's refusal carries that
+//! start time too, as `NOT_STARTED`; this lookup predates it and is tested.)
 //!
-//! Kept apart from `youtube.ts` for the same reason as the playlist module: no
-//! ytdl-core at import time, so this can be tested under Bun.
+//! Kept apart from `youtube.ts` for the same reason as the playlist module:
+//! nothing here reads the bot's settings at import time, so this can be
+//! tested on its own.
 
 import { innertube, WEB_CLIENT } from "./youtubePlaylist";
 

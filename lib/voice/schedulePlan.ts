@@ -2,8 +2,8 @@
  * When a scheduled play warns, when it cuts in, and how a typed time is read.
  *
  * Kept free of `CustomAudioPlayer` for the same reason as `leavePlan.ts`: that
- * class reaches @distube/ytdl-core through its imports, which does not load
- * under Bun, and these are the parts worth testing directly.
+ * module reads `data/setting.json` as it is imported, and these are the parts
+ * worth testing directly.
  */
 
 /** How long before a cut-in the channel is asked whether to let it happen. */

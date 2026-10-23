@@ -52,6 +52,8 @@ If you find any bugs or want to contribute, please open an issue!
 
 ## Start
 ### Node
+Node 22.22.2 or later in 22, 24.15.0 or later in 24, or 26 and up: what `@distube/ytdl-core` 5 needs. The build is CommonJS and loads it, an ES module, through Node's `require`.
+
 `node dist/main.js`
 ### Bun
 `bun dist/main.js`

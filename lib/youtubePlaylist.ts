@@ -7,9 +7,9 @@
 //! the same call the site makes, it pages 100 entries at a time, and the
 //! response shape is the one the Rust fetcher already talks to.
 //!
-//! Kept apart from `youtube.ts` because that module pulls in ytdl-core at import
-//! time; nothing here needs it, and the separation keeps this unit testable on
-//! its own.
+//! Kept apart from `youtube.ts`, which holds the ytdl-core session and its
+//! cookies from the bot's settings; nothing here needs either, and the
+//! separation keeps this unit testable on its own.
 
 import { globalApp } from "./misc";
 
