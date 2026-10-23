@@ -2,10 +2,10 @@
 //!
 //! ```text
 //! listen-<guild> ──try_send──▶ gate-<guild> ──try_send──▶ recogniser ──▶ report
-//!   (receive)       ≤ 500        (spotter, VAD)   ≤ 4      (SenseVoice)
+//!   (receive)       ≤ 500        (spotter, VAD)   ≤ 4      (Qwen3-ASR)
 //! ```
 //!
-//! The recogniser is shared because its model is a quarter of a gigabyte and a
+//! The recogniser is shared because its model is up to a gigabyte and a
 //! command takes it a fraction of a second; one copy serves every guild.
 //! The spotter is shared the same way, but its per-speaker state is not, and
 //! that state lives on the gate thread of the guild the speaker is in.

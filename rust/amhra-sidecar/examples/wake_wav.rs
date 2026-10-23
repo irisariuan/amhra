@@ -15,7 +15,8 @@
 //! `--preroll-ms` moves the start of the window, `--wait-for-speech-ms`,
 //! `--end-silence-ms` and `--max-capture-ms` its other timings, and `--recogniser-threads` sets
 //! how many threads speech recognition gets, `--provider cpu|coreml` where it
-//! runs (coreml needs `--features shared-onnxruntime`), `--language <lang>`
+//! runs (coreml needs `--features shared-onnxruntime`), `--recogniser
+//! qwen3|sensevoice` which model it is, `--language <lang>`
 //! pins what it listens for. `--wake-model <dir>` tries a
 //! fine-tuned spotter from `training/wake/export.sh`, and `--wake-classifier
 //! <dir>` the wake word classifier from `training/wake/classifier/export.py`
@@ -49,6 +50,7 @@ struct Args {
 	boost: Option<f32>,
 	threads: Option<i32>,
 	provider: Option<String>,
+	recogniser: Option<String>,
 	language: Option<String>,
 	spotter: Option<PathBuf>,
 	classifier: Option<PathBuf>,
@@ -69,6 +71,7 @@ fn args() -> Args {
 		boost: None,
 		threads: None,
 		provider: None,
+		recogniser: None,
 		language: None,
 		spotter: None,
 		classifier: None,
@@ -92,6 +95,7 @@ fn args() -> Args {
 			"--wake-model" => args.spotter = Some(value().into()),
 			"--wake-classifier" => args.classifier = Some(value().into()),
 			"--provider" => args.provider = Some(value()),
+			"--recogniser" => args.recogniser = Some(value()),
 			"--language" => args.language = Some(value()),
 			"--tail-ms" => args.tail_ms = value().parse().expect("--tail-ms takes a number"),
 			"--verbose" => args.verbose = true,
@@ -177,6 +181,9 @@ fn main() {
 		assert!(provider.available(), "{name} is not in this build; add --features shared-onnxruntime");
 		config.recogniser_provider = provider;
 	}
+	if let Some(name) = &args.recogniser {
+		config.recogniser = sherpa::Recogniser::parse(name).unwrap_or_else(|| panic!("unknown recogniser {name}"));
+	}
 	if let Some(language) = &args.language {
 		config.recogniser_language = language.clone();
 	}
@@ -224,8 +231,14 @@ fn main() {
 		samples.extend(std::iter::repeat_n(0.0, voice_commands::samples(args.tail_ms)));
 		println!("{} ({:.1}s)", file.display(), at(wave.samples().len()));
 		if args.whole {
+			let started = Instant::now();
 			match recogniser.transcribe(wave.samples()) {
-				Ok(transcript) => println!("  whole file: [{}] {:?}", transcript.lang.as_deref().unwrap_or("?"), transcript.text),
+				Ok(transcript) => println!(
+					"  whole file: [{}] {:?} in {}ms",
+					transcript.lang.as_deref().unwrap_or("?"),
+					transcript.text,
+					started.elapsed().as_millis()
+				),
 				Err(error) => println!("  whole file: {error}"),
 			}
 		}

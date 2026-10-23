@@ -3,14 +3,16 @@
 //! - **Wake word:** a 3.3M-parameter streaming zipformer keyword spotter
 //!   (GigaSpeech). One spotter for the process, one stream per speaker.
 //! - **End of speech:** Silero VAD, one small instance per speaker.
-//! - **Speech to text:** SenseVoice-Small (FunASR), int8, with the language
-//!   detected per window.
+//! - **Speech to text:** Qwen3-ASR 0.6B, int8, by default; or SenseVoice-Small
+//!   (FunASR), int8, a quarter of its size (see [`Recogniser`]). Either way
+//!   with the language worked out per window.
 //!
 //! The keyword spotter and the VAD go through the `sherpa-onnx` crate's safe
 //! API. The recogniser does not: that wrapper parses the result JSON into a
 //! struct without the detected language, and the language is half of what is
-//! wanted from it. So [`SenseVoice`] calls the C API directly — a recogniser,
-//! a stream per window, and the JSON read here.
+//! wanted from it; nor can it set a stream's options, which is how Qwen3-ASR
+//! is pinned to a language. So [`OfflineRecogniser`] calls the C API directly
+//! — a recogniser, a stream per window, and the JSON read here.
 //!
 //! Lay the models out with `scripts/download-voice-models.sh`; [`ModelPaths`]
 //! names what it fetches.
@@ -36,6 +38,7 @@ use super::{Detection, ModelError, Models, SAMPLE_RATE, Spotter, Transcriber, Tr
 const KWS_DIR: &str = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01";
 const KWS_STEM: &str = "epoch-12-avg-2-chunk-16-left-64.int8.onnx";
 const STT_DIR: &str = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17";
+const QWEN3_DIR: &str = "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25";
 const VAD_FILE: &str = "silero_vad.onnx";
 
 /// Tunables, with the values the defaults were measured at.
@@ -52,6 +55,8 @@ pub struct SherpaConfig {
 	pub keyword_threshold: f32,
 	/// Silero's speech probability threshold.
 	pub vad_threshold: f32,
+	/// Which speech recogniser.
+	pub recogniser: Recogniser,
 	/// Threads for the recogniser. More shortens each command; there is only
 	/// ever one being recognised at a time. Measured on an M5 Pro per command:
 	/// 294ms on one thread, 153ms on two, 83ms on four. Two leaves the cores
@@ -64,14 +69,15 @@ pub struct SherpaConfig {
 	/// CPU is the default. The VAD, for the same reason, is always there, and
 	/// so is the classifier, which tract runs.
 	pub spotter_provider: Provider,
-	/// The language SenseVoice listens for: `auto`, or one of
+	/// The language the recogniser listens for: `auto`, or one of
 	/// [`LANGUAGES`]. Pinned, it stops short windows being taken for another
 	/// language: four of seven live takes of the name, said in English, came
-	/// back as Chinese on `auto` ("什么号啊？"), and as English pinned ("I Har.").
+	/// back as Chinese from SenseVoice on `auto` ("什么号啊？"), and as English
+	/// pinned ("I Har.").
 	///
-	/// It is the recogniser's, not each window's: sherpa-onnx accepts a
-	/// per-stream `language` option and SenseVoice ignores it, so a language
-	/// per guild would take a recogniser per language.
+	/// It is the recogniser's, not each window's. Qwen3-ASR takes it per
+	/// stream, so it could be per guild; SenseVoice ignores the per-stream
+	/// option, so for it that would take a recogniser per language.
 	pub recogniser_language: String,
 	/// A fine-tuned keyword spotter to use instead of the stock one: a
 	/// directory laid out by `training/wake/export.sh`.
@@ -90,6 +96,7 @@ impl SherpaConfig {
 			keyword_boost: 1.5,
 			keyword_threshold: 0.25,
 			vad_threshold: 0.5,
+			recogniser: Recogniser::default(),
 			recogniser_threads: 2,
 			recogniser_provider: Provider::Cpu,
 			spotter_provider: Provider::Cpu,
@@ -100,8 +107,40 @@ impl SherpaConfig {
 	}
 }
 
-/// The languages SenseVoice can be pinned to.
+/// The languages the recogniser can be pinned to.
 pub const LANGUAGES: [&str; 5] = ["en", "zh", "ja", "ko", "yue"];
+
+/// The speech-to-text model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Recogniser {
+	/// Qwen3-ASR 0.6B (Alibaba's Qwen team), int8: an audio encoder and a
+	/// small language model that writes out what it heard. Thirty languages
+	/// and many Chinese dialects, but about 1GB, and as an autoregressive
+	/// decoder it takes longer the more was said.
+	#[default]
+	Qwen3,
+	/// SenseVoice-Small (FunASR), int8: a non-autoregressive model of about
+	/// 230MB in five languages, for machines Qwen3-ASR is too big for.
+	SenseVoice,
+}
+
+impl Recogniser {
+	pub fn parse(name: &str) -> Option<Self> {
+		match name.to_ascii_lowercase().as_str() {
+			"qwen3" | "qwen3-asr" => Some(Self::Qwen3),
+			"sensevoice" | "sense-voice" => Some(Self::SenseVoice),
+			_ => None,
+		}
+	}
+
+	/// As the settings and flags name it.
+	pub fn name(self) -> &'static str {
+		match self {
+			Self::Qwen3 => "qwen3",
+			Self::SenseVoice => "sensevoice",
+		}
+	}
+}
 
 /// Where onnxruntime runs a model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -182,12 +221,18 @@ pub struct ModelPaths {
 	pub vad: PathBuf,
 	pub stt_model: PathBuf,
 	pub stt_tokens: PathBuf,
+	pub qwen3_conv_frontend: PathBuf,
+	pub qwen3_encoder: PathBuf,
+	pub qwen3_decoder: PathBuf,
+	/// A directory: `vocab.json`, `merges.txt` and `tokenizer_config.json`.
+	pub qwen3_tokenizer: PathBuf,
 }
 
 impl ModelPaths {
 	pub fn under(dir: &Path) -> Self {
 		let kws = dir.join(KWS_DIR);
 		let stt = dir.join(STT_DIR);
+		let qwen3 = dir.join(QWEN3_DIR);
 		Self {
 			kws_encoder: kws.join(format!("encoder-{KWS_STEM}")),
 			kws_decoder: kws.join(format!("decoder-{KWS_STEM}")),
@@ -197,6 +242,10 @@ impl ModelPaths {
 			vad: dir.join(VAD_FILE),
 			stt_model: stt.join("model.int8.onnx"),
 			stt_tokens: stt.join("tokens.txt"),
+			qwen3_conv_frontend: qwen3.join("conv_frontend.onnx"),
+			qwen3_encoder: qwen3.join("encoder.int8.onnx"),
+			qwen3_decoder: qwen3.join("decoder.int8.onnx"),
+			qwen3_tokenizer: qwen3.join("tokenizer"),
 		}
 	}
 
@@ -220,14 +269,28 @@ impl ModelPaths {
 		}
 	}
 
+	/// The recogniser's files.
+	fn recogniser_files(&self, recogniser: Recogniser) -> Vec<PathBuf> {
+		match recogniser {
+			Recogniser::SenseVoice => vec![self.stt_model.clone(), self.stt_tokens.clone()],
+			Recogniser::Qwen3 => {
+				let mut files = vec![self.qwen3_conv_frontend.clone(), self.qwen3_encoder.clone(), self.qwen3_decoder.clone()];
+				files.extend(
+					["vocab.json", "merges.txt", "tokenizer_config.json"].map(|name| self.qwen3_tokenizer.join(name)),
+				);
+				files
+			}
+		}
+	}
+
 	/// Every file, so a missing one is named before anything loads. The
-	/// spotter's only if it is to be used.
-	fn check(&self, spotter: bool) -> Result<(), ModelError> {
+	/// spotter's only if it is to be used, and only the recogniser's that is.
+	fn check(&self, spotter: bool, recogniser: Recogniser) -> Result<(), ModelError> {
 		let spotter_files = [&self.kws_encoder, &self.kws_decoder, &self.kws_joiner, &self.kws_tokens, &self.kws_bpe];
-		let others = [&self.vad, &self.stt_model, &self.stt_tokens];
-		for path in spotter_files.into_iter().filter(|_| spotter).chain(others) {
+		let others = std::iter::once(self.vad.clone()).chain(self.recogniser_files(recogniser));
+		for path in spotter_files.into_iter().filter(|_| spotter).cloned().chain(others) {
 			if !path.is_file() {
-				return Err(ModelError::Missing(path.clone()));
+				return Err(ModelError::Missing(path));
 			}
 		}
 		Ok(())
@@ -246,12 +309,13 @@ fn read(path: &Path) -> Result<Vec<u8>, ModelError> {
 }
 
 /// Load everything: the per-speaker model factory and the recogniser.
-pub fn load(config: &SherpaConfig) -> Result<(Arc<SherpaModels>, SenseVoice), ModelError> {
+pub fn load(config: &SherpaConfig) -> Result<(Arc<SherpaModels>, OfflineRecogniser), ModelError> {
 	let paths = ModelPaths::of(config);
-	paths.check(config.classifier.is_none())?;
+	paths.check(config.classifier.is_none(), config.recogniser)?;
 	let models = SherpaModels::load(&paths, config)?;
-	let recogniser = SenseVoice::load(
+	let recogniser = OfflineRecogniser::load(
 		&paths,
+		config.recogniser,
 		config.recogniser_threads,
 		config.recogniser_provider,
 		&config.recogniser_language,
@@ -427,9 +491,14 @@ impl Vad for SherpaVad {
 	}
 }
 
-/// SenseVoice-Small through the C API, for the language it reports.
-pub struct SenseVoice {
+/// The speech recogniser through the C API, for the language it reports and,
+/// for Qwen3-ASR, the language it is pinned to.
+pub struct OfflineRecogniser {
 	recogniser: *const sys::OfflineRecognizer,
+	model: Recogniser,
+	/// For Qwen3-ASR: the pinned language, as its code and as the name the
+	/// model's prompt takes ("English").
+	pinned: Option<(&'static str, CString)>,
 	/// The window with silence around it.
 	padded: Vec<f32>,
 }
@@ -444,36 +513,73 @@ pub struct SenseVoice {
 /// 30ms more recognition time.
 const PADDING_MS: u32 = 300;
 
+/// Qwen3-ASR's name for each of [`LANGUAGES`], as its prompt spells it.
+fn qwen3_language(code: &str) -> Option<&'static str> {
+	Some(match code {
+		"en" => "English",
+		"zh" => "Chinese",
+		"ja" => "Japanese",
+		"ko" => "Korean",
+		"yue" => "Cantonese",
+		_ => return None,
+	})
+}
+
+/// The most words a command is expected to come to, in Qwen3-ASR's tokens.
+/// Its windows are at most 8s, a few dozen tokens even spoken fast; the cap
+/// only stops a decoder that has started repeating itself.
+const QWEN3_MAX_NEW_TOKENS: i32 = 96;
+
 // SAFETY: the recogniser is only ever used from one thread at a time (it is
 // owned by the recogniser thread), and sherpa-onnx does not tie it to the
 // thread that made it.
-unsafe impl Send for SenseVoice {}
+unsafe impl Send for OfflineRecogniser {}
 
-impl SenseVoice {
+impl OfflineRecogniser {
 	pub fn load(
 		paths: &ModelPaths,
+		model: Recogniser,
 		threads: i32,
 		provider: Provider,
 		language: &str,
 	) -> Result<Self, ModelError> {
-		let cstring = |text: String| {
-			CString::new(text).map_err(|_| ModelError::Load {
-				what: "SenseVoice",
-				reason: "a path contains a NUL byte".to_owned(),
-			})
+		let what = match model {
+			Recogniser::Qwen3 => "Qwen3-ASR",
+			Recogniser::SenseVoice => "SenseVoice",
 		};
-		let model = cstring(path_string(&paths.stt_model))?;
-		let tokens = cstring(path_string(&paths.stt_tokens))?;
-		let language = if language == "auto" || LANGUAGES.contains(&language) {
-			cstring(language.to_owned())?
-		} else {
+		let cstring = |text: String| {
+			CString::new(text).map_err(|_| ModelError::Load { what, reason: "a path contains a NUL byte".to_owned() })
+		};
+		let path = |path: &Path| cstring(path_string(path));
+		if language != "auto" && !LANGUAGES.contains(&language) {
 			return Err(ModelError::Load {
-				what: "SenseVoice",
+				what,
 				reason: format!("unknown language {language:?}; use auto, {}", LANGUAGES.join(", ")),
 			});
-		};
+		}
 		let provider = cstring(provider.onnx().to_owned())?;
 		let decoding = cstring("greedy_search".to_owned())?;
+		// Every string the config points at, kept alive until it is made.
+		let mut strings = Vec::new();
+		let mut pinned = None;
+		match model {
+			Recogniser::SenseVoice => {
+				strings.extend([path(&paths.stt_model)?, path(&paths.stt_tokens)?, cstring(language.to_owned())?]);
+			}
+			Recogniser::Qwen3 => {
+				strings.extend([
+					path(&paths.qwen3_conv_frontend)?,
+					path(&paths.qwen3_encoder)?,
+					path(&paths.qwen3_decoder)?,
+					path(&paths.qwen3_tokenizer)?,
+				]);
+				if let (Some(code), Some(name)) =
+					(LANGUAGES.iter().find(|code| **code == language), qwen3_language(language))
+				{
+					pinned = Some((*code, cstring(name.to_owned())?));
+				}
+			}
+		}
 
 		// SAFETY: the config is plain C data — pointers, integers and floats —
 		// for which all-zero is the documented "unset" value, as the C API's
@@ -482,33 +588,55 @@ impl SenseVoice {
 		let recogniser = unsafe {
 			let mut config: sys::OfflineRecognizerConfig = std::mem::zeroed();
 			config.feat_config.sample_rate = SAMPLE_RATE as i32;
-			config.feat_config.feature_dim = 80;
-			config.model_config.sense_voice.model = model.as_ptr();
-			config.model_config.sense_voice.language = language.as_ptr();
-			// Inverse text normalisation: "track three" comes back "track 3",
-			// with punctuation.
-			config.model_config.sense_voice.use_itn = 1;
-			config.model_config.tokens = tokens.as_ptr();
+			match model {
+				Recogniser::SenseVoice => {
+					config.feat_config.feature_dim = 80;
+					config.model_config.sense_voice.model = strings[0].as_ptr();
+					config.model_config.tokens = strings[1].as_ptr();
+					config.model_config.sense_voice.language = strings[2].as_ptr();
+					// Inverse text normalisation: "track three" comes back
+					// "track 3", with punctuation.
+					config.model_config.sense_voice.use_itn = 1;
+				}
+				Recogniser::Qwen3 => {
+					// Qwen3-ASR makes its own 128-bin features and ignores
+					// these, and needs no tokens file beside its tokenizer.
+					config.feat_config.feature_dim = 128;
+					let qwen3 = &mut config.model_config.qwen3_asr;
+					qwen3.conv_frontend = strings[0].as_ptr();
+					qwen3.encoder = strings[1].as_ptr();
+					qwen3.decoder = strings[2].as_ptr();
+					qwen3.tokenizer = strings[3].as_ptr();
+					// The rest at sherpa-onnx's defaults, which are greedy:
+					// 512 tokens of context in all, which 8s of audio fits
+					// in with room to spare.
+					qwen3.max_total_len = 512;
+					qwen3.max_new_tokens = QWEN3_MAX_NEW_TOKENS;
+					qwen3.temperature = 1e-6;
+					qwen3.top_p = 0.8;
+					qwen3.seed = 42;
+				}
+			}
 			config.model_config.num_threads = threads;
 			config.model_config.provider = provider.as_ptr();
 			config.decoding_method = decoding.as_ptr();
 			sys::SherpaOnnxCreateOfflineRecognizer(&config)
 		};
 		if recogniser.is_null() {
-			return Err(ModelError::Load { what: "SenseVoice", reason: "sherpa-onnx refused it".to_owned() });
+			return Err(ModelError::Load { what, reason: "sherpa-onnx refused it".to_owned() });
 		}
-		Ok(Self { recogniser, padded: Vec::new() })
+		Ok(Self { recogniser, model, pinned, padded: Vec::new() })
 	}
 }
 
-impl Drop for SenseVoice {
+impl Drop for OfflineRecogniser {
 	fn drop(&mut self) {
 		// SAFETY: made by SherpaOnnxCreateOfflineRecognizer, destroyed once.
 		unsafe { sys::SherpaOnnxDestroyOfflineRecognizer(self.recogniser) }
 	}
 }
 
-impl Transcriber for SenseVoice {
+impl Transcriber for OfflineRecogniser {
 	fn transcribe(&mut self, window: &[f32]) -> Result<Transcript, ModelError> {
 		let padding = super::samples(PADDING_MS);
 		self.padded.clear();
@@ -519,12 +647,16 @@ impl Transcriber for SenseVoice {
 		let length = i32::try_from(samples.len())
 			.map_err(|_| ModelError::Recognition("window too long".to_owned()))?;
 		// SAFETY: the stream is made, used and destroyed here, on the
-		// recogniser it belongs to; the samples outlive the accept call, which
-		// copies them; the JSON is copied out before it is freed.
+		// recogniser it belongs to; the option strings and the samples outlive
+		// the calls, which copy them; the JSON is copied out before it is
+		// freed.
 		let json = unsafe {
 			let stream = sys::SherpaOnnxCreateOfflineStream(self.recogniser);
 			if stream.is_null() {
 				return Err(ModelError::Recognition("could not make a stream".to_owned()));
+			}
+			if let Some((_, name)) = &self.pinned {
+				sys::SherpaOnnxOfflineStreamSetOption(stream, c"language".as_ptr(), name.as_ptr());
 			}
 			sys::SherpaOnnxAcceptWaveformOffline(stream, SAMPLE_RATE as i32, samples.as_ptr(), length);
 			sys::SherpaOnnxDecodeOfflineStream(self.recogniser, stream);
@@ -537,7 +669,44 @@ impl Transcriber for SenseVoice {
 			json
 		};
 		let json = json.ok_or_else(|| ModelError::Recognition("no result".to_owned()))?;
-		parse_result(&json)
+		let mut transcript = parse_result(&json)?;
+		if self.model == Recogniser::Qwen3 {
+			transcript.text = transcript.text.trim().to_owned();
+			// sherpa-onnx strips the "language English" Qwen3-ASR writes
+			// before the text and keeps nothing of it, so the language is
+			// the pinned one, or read off the writing.
+			transcript.lang = match &self.pinned {
+				Some((code, _)) if !transcript.text.is_empty() => Some((*code).to_owned()),
+				Some(_) => None,
+				None => script_language(&transcript.text).map(str::to_owned),
+			};
+		}
+		Ok(transcript)
+	}
+}
+
+/// The language a transcript is written in, by its script: any kana is
+/// Japanese, any Hangul Korean, otherwise Han is Chinese and Latin letters
+/// English. Japanese written in kanji alone reads as Chinese, and Cantonese
+/// as Chinese too; both are rare in a command, and the bot answers Chinese
+/// and Cantonese in the same language.
+fn script_language(text: &str) -> Option<&'static str> {
+	let (mut han, mut latin) = (false, false);
+	for c in text.chars() {
+		match c {
+			'\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}' | '\u{ff66}'..='\u{ff9d}' => return Some("ja"),
+			'\u{1100}'..='\u{11ff}' | '\u{3130}'..='\u{318f}' | '\u{ac00}'..='\u{d7af}' => return Some("ko"),
+			'\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}' | '\u{f900}'..='\u{faff}' => han = true,
+			c if c.is_ascii_alphabetic() => latin = true,
+			_ => {}
+		}
+	}
+	if han {
+		Some("zh")
+	} else if latin {
+		Some("en")
+	} else {
+		None
 	}
 }
 
@@ -571,6 +740,17 @@ mod tests {
 		assert_eq!(transcript, Transcript { text: "スキップ。".to_owned(), lang: Some("ja".to_owned()) });
 		let silent = parse_result(r#"{"lang":"<|nospeech|>","text":""}"#).unwrap();
 		assert_eq!(silent.lang, None);
+	}
+
+	#[test]
+	fn the_language_is_read_off_the_writing() {
+		assert_eq!(script_language("Skip this song."), Some("en"));
+		assert_eq!(script_language("跳過這首歌"), Some("zh"));
+		// Kanji with kana is Japanese, not Chinese.
+		assert_eq!(script_language("次の曲を再生して"), Some("ja"));
+		assert_eq!(script_language("다음 곡 틀어줘"), Some("ko"));
+		assert_eq!(script_language("播放 BTS 的歌"), Some("zh"));
+		assert_eq!(script_language("..."), None);
 	}
 
 	/// The spotter ships its own keywords spelled by SentencePiece. Spelling

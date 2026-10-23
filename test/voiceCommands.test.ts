@@ -317,6 +317,14 @@ describe("sidecar flags", () => {
 		expect(args).toContain("--wake-clips");
 	});
 
+	test("the recogniser is the sidecar's default unless set", () => {
+		const allowed = { ...base, VOICE_COMMANDS: true };
+		expect(voiceCommandArgs(allowed)).not.toContain("--recogniser");
+		expect(voiceCommandArgs({ ...allowed, VOICE_RECOGNISER: "sensevoice" }).join(" ")).toContain(
+			"--recogniser sensevoice",
+		);
+	});
+
 	test("timings, for the flags and for the running sidecar alike", () => {
 		const allowed = { ...base, VOICE_COMMANDS: true };
 		expect(voiceTimings(allowed)).toEqual({

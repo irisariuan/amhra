@@ -338,6 +338,7 @@ export const GlobalSettingSchema = z
 		VOICE_SPEECH_THREADS: z.number().int().min(1).max(8).optional(),
 		VOICE_WAKE_CHIME: z.boolean().optional(),
 		VOICE_DUCK_VOLUME: z.number().min(0).max(1).optional(),
+		VOICE_RECOGNISER: z.enum(["qwen3", "sensevoice"]).optional(),
 		VOICE_RECOGNISER_PROVIDER: z.enum(["cpu", "gpu", "coreml"]).optional(),
 		VOICE_WAKE_PROVIDER: z.enum(["cpu", "gpu", "coreml"]).optional(),
 		VOICE_SPEECH_PROVIDER: z.enum(["cpu", "gpu", "coreml"]).optional(),
