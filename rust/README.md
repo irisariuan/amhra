@@ -689,6 +689,7 @@ starts:
 | `VOICE_WAIT_FOR_COMMAND_MS` | `2500` | how long after the name to wait for the command; a pause for the chime does not end it within this |
 | `VOICE_END_SILENCE_MS` | `500` | silence that ends a command; all of it is added to the wait for an answer |
 | `VOICE_MAX_COMMAND_MS` | `8000` | the longest command |
+| `VOICE_MEMORY_MS` | `60000` | how long what each member said is remembered for the next request; 15000 to 600000, applies at once |
 | `VOICE_INTENT_MODEL_URL` | empty | an OpenAI-compatible server whose model reads every command; empty, only command names said first are understood |
 | `VOICE_INTENT_MODEL` | Qwen3 4B | the model that server uses: `mlx-community/Qwen3-4B-4bit` on Apple silicon, `Qwen/Qwen3-4B-GGUF:Q4_K_M` elsewhere |
 | `VOICE_INTENT_MODEL_SERVE` | `true` | with the URL on this machine and nothing answering there, the bot starts the server itself |
@@ -782,10 +783,24 @@ starts:
   `request_input` the sidecar listens to the same member again without the
   name (`speak` with `listen`, then `Engine::follow_up`): the start chime,
   five seconds to begin, and their reply is read with what was said before.
-  The conversation is kept only while the bot is going to listen: a
-  command, a `speak`, nothing heard, or a question that could not be said
-  ends it. So does a reply that only closes it ("ok", "thank you", "never
-  mind"), which the model answers with `[]`.
+  A reply that only closes it ("ok", "thank you", "never mind") is
+  answered with `[]`: nothing said, nothing listened for.
+- **Remembering the last minute** (`lib/voice/voiceMemory.ts`). Every
+  request the model reads is kept with what it answered, searches and
+  their results included, per member in each guild, for `VOICE_MEMORY_MS`
+  (a minute unless set). The next request from them is sent it, whether
+  it is the reply to a question or a new "Amhra, …", so it can follow on:
+  "a bit louder", "play it" after "who sings bad guy", "no, the other one"
+  after a search. Kept by whole exchanges, the latest twelve turns or so.
+  The model is told these are done and to act only on the latest; on 8
+  pairs of requests ten seconds apart it never redid an earlier one, but
+  read "a bit more" after "turn it down to 40" as 50. Someone else's
+  requests are not shared.
+
+  Adding the search examples after the others once broke requests for
+  several things: following their one object a line, Qwen3 4B put "skip
+  this and turn it down to 40" into one object with two `command`s, of
+  which only the volume was kept. They come first now.
 - **Answering the name.** The moment the spotter hears it, the guild's audio
   thread mixes in a half-second chime (two rising sine notes, synthesised in
   `wake_feedback.rs`), over the music or alone if nothing is playing, and

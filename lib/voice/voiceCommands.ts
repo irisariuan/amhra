@@ -14,12 +14,13 @@ import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { userSetting } from "../userSetting";
 import { announcement, foundAnnouncement, prepared, spokenReply } from "./announce";
-import { isSpoken, readIntent, REQUEST_INPUT, type SpokenReply, type Turn } from "./intentModel";
+import { isSpoken, readIntent, REQUEST_INPUT, type SpokenReply } from "./intentModel";
 import { startIntentServer } from "./intentServer";
 import { getNativeConnection } from "./native";
 import { type SidecarEvent, sidecar } from "./sidecar";
 import { describePlayback, playbackState } from "./voiceContext";
 import { voiceInteraction } from "./voiceInteraction";
+import { REMEMBER_FOR_MS, VoiceMemory } from "./voiceMemory";
 import { collectsWakeClips, guildListens, speaksAnswers } from "./voiceSetting";
 
 /**
@@ -41,15 +42,6 @@ const NEWCOMER_BATCH_MS = 3_000;
 const NEWCOMER_EVERY_MS = 5 * 60 * 1000;
 /** A "didn't catch that" is cleared away after this. */
 const NOTHING_HEARD_FOR_MS = 15_000;
-/**
- * A conversation the bot is listening to the reply to, and has not heard
- * back on, is forgotten after this. The reply is normally heard, or given up
- * on, within seconds of the answer being said; this covers an answer that
- * could not be said, after which nothing is listened for.
- */
-const CONVERSATION_FOR_MS = 60_000;
-/** Turns of a conversation the model is sent, latest last. */
-const CONVERSATION_TURNS = 12;
 
 type Lookup = (name: string) => Command<SlashCommandBuilder> | undefined;
 
@@ -156,29 +148,8 @@ function takeListening(guildId: string, userId: string) {
 	return post ?? Promise.resolve(null);
 }
 
-/**
- * What was said between the bot and someone it answered aloud and is
- * listening to again. Kept only while it is listening: whatever ends that —
- * a command, nothing heard, an answer that will not be listened to — ends
- * the conversation.
- */
-const conversations = new Map<string, { turns: Turn[]; at: number }>();
-
-/** The conversation with them that the bot is still listening in on. */
-function conversation(guildId: string, userId: string): Turn[] {
-	const key = listeningKey(guildId, userId);
-	const found = conversations.get(key);
-	if (!found) return [];
-	if (Date.now() - found.at > CONVERSATION_FOR_MS) {
-		conversations.delete(key);
-		return [];
-	}
-	return found.turns;
-}
-
-function endConversation(guildId: string, userId: string) {
-	conversations.delete(listeningKey(guildId, userId));
-}
+/** What each member said to the bot lately, and its answers. */
+const memory = new VoiceMemory(() => readSetting().VOICE_MEMORY_MS ?? REMEMBER_FOR_MS);
 
 /** Stop the waiting sound for them: the bot has done what it will. */
 function settle(guildId: string, userId: string) {
@@ -189,8 +160,6 @@ async function onNothingHeard(
 	client: CustomClient,
 	{ guildId, userId }: Extract<SidecarEvent, { type: "nothingHeard" }>,
 ) {
-	// Not listened to any further, so there is nothing to carry on.
-	endConversation(guildId, userId);
 	const message = await takeListening(guildId, userId);
 	if (!message) return;
 	const guild = client.guilds.cache.get(guildId);
@@ -229,10 +198,8 @@ async function handleUtterance(
 	{ guildId, userId, text, lang }: Pick<Extract<SidecarEvent, { type: "utterance" }>, "guildId" | "userId" | "text" | "lang">,
 ): Promise<boolean> {
 	const waiting = await takeListening(guildId, userId);
-	const history = conversation(guildId, userId);
-	// Whatever comes of this, the conversation goes on only if the bot speaks
-	// and listens again, which sets it anew.
-	endConversation(guildId, userId);
+	const key = listeningKey(guildId, userId);
+	const history = memory.recall(key);
 	const found = await speaker(client, guildId, userId);
 	if (!found) return false;
 	const { guild, member } = found;
@@ -240,6 +207,8 @@ async function handleUtterance(
 
 	const context = describePlayback(await playbackState(client, guildId));
 	const { intents, by, turns } = await readIntent(text, lang, lookup, readSetting(), { context, history });
+	// Only what the model read: the fallback has no answer to carry on from.
+	if (by === "model") memory.remember(key, [{ role: "user", content: text }, ...(turns ?? [])]);
 	// What was said stays out of the log, as it does in the sidecar's, unless
 	// the owner is tuning the matching and asked for it.
 	const heard = readSetting().VOICE_LOG_TRANSCRIPTS
@@ -288,7 +257,6 @@ async function handleUtterance(
 				transcript,
 				lang,
 				listen: last && intent.command === REQUEST_INPUT,
-				turns: [...history, { role: "user", content: text }, ...(turns ?? [])],
 			});
 			answered ||= spoken;
 			message = null;
@@ -331,7 +299,7 @@ async function handleUtterance(
  * Answer them aloud with what the model said, whatever they chose about
  * hearing what their commands do: they asked a question. It is also written
  * where the bot answers. Then, if it could be said and `listen` asks, listen
- * to them again, with the conversation kept for their reply.
+ * to them again; their reply is read with what was said before it.
  */
 async function speakBack(
 	guildId: string,
@@ -343,15 +311,13 @@ async function speakBack(
 		transcript,
 		lang,
 		listen,
-		turns,
 	}: {
 		channel: SendableChannels | null;
 		waiting: Message | null;
 		transcript?: string;
 		lang: string | null;
-		/** Listen to them again after it, with `turns` kept for their reply. */
+		/** Listen to them again after it. */
 		listen: boolean;
-		turns: Turn[];
 	},
 ): Promise<boolean> {
 	const content = transcript
@@ -370,12 +336,6 @@ async function speakBack(
 
 	// Without speech nothing is said, so nothing is listened for after it.
 	if (!speaksAnswers()) return false;
-	if (listen) {
-		conversations.set(listeningKey(guildId, userId), {
-			turns: turns.slice(-CONVERSATION_TURNS),
-			at: Date.now(),
-		});
-	}
 	sidecar().send({
 		type: "speak",
 		guildId,

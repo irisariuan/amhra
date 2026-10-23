@@ -272,6 +272,13 @@
    "default": 8000,
    "description": "The longest command, in milliseconds, from just before the name ended. Applies at once, to commands already being heard too"
   },
+  "VOICE_MEMORY_MS": {
+   "type": "integer",
+   "minimum": 15000,
+   "maximum": 600000,
+   "default": 60000,
+   "description": "How long the voice command model remembers what each member said to it, in milliseconds, so a request can follow on from the last (\"a bit louder\", \"the other one\", the reply to a question it asked). At least 15 seconds, so a reply to its question is read with the question. Longer gives it more to go on and more to mistake. Applies at once"
+  },
   "VOICE_INTENT_MODEL_URL": {
    "type": "string",
    "default": "",

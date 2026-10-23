@@ -222,6 +222,10 @@ export function catalogue(lookup: Lookup): string {
 /**
  * The examples are not taken from the transcripts the model was measured on,
  * so the measurement says how it does on what it has not seen.
+ *
+ * The search examples come before the rest. Last, Qwen3 4B followed their one
+ * object a line and answered "skip this and turn it down to 40" with one
+ * object holding both commands, of which only the last was kept.
  */
 export function intentPrompt(lookup: Lookup, context?: string): string {
 	const state = context ? `\nThe bot right now:\n${context}\n` : "";
@@ -232,13 +236,37 @@ ${catalogue(lookup)}
 - ${SPEAK}: Answer them aloud instead of running a command: a question about what is playing, the queue, the volume or the settings, answered from the state below. Give "text": what to say, one or two short sentences, in the language they spoke. The bot does not listen after it.
 - ${REQUEST_INPUT}: Ask them something aloud and listen for their answer, which they give without saying the name: when what they want is unclear, or a command needs something they did not say. Give "text": the question, one short sentence, in the language they spoke.
 - ${SEARCH}: Look songs up on YouTube before deciding, when a plain play would not do: they want a particular version (live, acoustic, a cover, by someone), describe a song without naming it, or ask about a song that is not playing (who sings it, how long it is). Never answer about such a song from memory: search. Give "search": what to look up. Answer with it alone, not in a list. A plain "play" with a song's name needs no search.
-The results come back as the next message, numbered, each with its title, channel, length and link. Then answer what they asked: a question with ${SPEAK}, from the results; a song to play with play and "result": the number of the one they meant, in place of "search"; and when several fit and you cannot tell which they meant, ${REQUEST_INPUT}, naming two or three of them briefly. Their reply can then pick one by its number or its name: play it by its number.
+The results come back as the next message, numbered, each with its title, channel, length and link. Then answer what they asked: a question with ${SPEAK}, from the results; a song to play with play and "result": the number of the one they meant, in place of "search". Play the best fit, usually the first that matches: the official one for a song they named, the first live or acoustic one when they asked for that. Only when they asked to choose, or the results are different songs and nothing says which, ask with ${REQUEST_INPUT}, naming two or three briefly. When they answer such a question, or say "the other one", play from the results already shown by "result", never by "search".
 ${state}
+Messages before the last one are what they said to the bot in the last minute, and how it answered: they are done. Use them only to understand the last one ("a bit louder", "play it again", "no, the other one", "a bit more" after turning it down, which means down again, the answer to a question you asked), and answer only what the last one asks: never do again what an earlier one asked.
+
 Anything else — chatter, only the name, a request the bot cannot do, or something too unclear even to ask about — is no action. So is a reply that only ends the conversation, such as "ok", "thank you", "thanks", "never mind", "that's all" or "no": the bot says nothing back and stops listening.
 
 The transcript may be in English, Japanese, Korean or Chinese. Answer with one line of JSON and nothing else: the command under "command", its subcommand under "subcommand" for a command that has them, and each option they gave under its name. Leave out options they did not give. When they ask for several things at once, answer with a list of them in the order to do them, at most ${MAX_ACTIONS}, with any ${SPEAK} or ${REQUEST_INPUT} last. For no action, answer with an empty list: []. When in doubt, answer [].
 
-Examples:
+Examples of searching, with what comes back:
+"play the live version of hotel california" -> {"command": "${SEARCH}", "search": "hotel california live"}
+  Search results for "hotel california live":
+  1. Eagles - Hotel California (Live 1977) - Eagles (7:12) https://www.youtube.com/watch?v=AAAAAAAAAA1
+  2. Hotel California - Eagles (6:31) https://www.youtube.com/watch?v=AAAAAAAAAA2
+  -> {"command": "play", "result": 1}
+"who sings bad guy" -> {"command": "${SEARCH}", "search": "bad guy"}
+  Search results for "bad guy":
+  1. Billie Eilish - bad guy - Billie Eilish (3:26) https://www.youtube.com/watch?v=BBBBBBBBBB1
+  -> {"command": "${SPEAK}", "text": "Bad Guy is by Billie Eilish."}
+"how long is someone like you" -> {"command": "${SEARCH}", "search": "someone like you"}
+  Search results for "someone like you":
+  1. Adele - Someone Like You (Official Music Video) - Adele (4:45) https://www.youtube.com/watch?v=CCCCCCCCCC1
+  -> {"command": "${SPEAK}", "text": "Someone Like You is about four and three quarter minutes long."}
+"play a cover of yellow, let me pick" -> {"command": "${SEARCH}", "search": "yellow cover"}
+  Search results for "yellow cover":
+  1. Yellow - Coldplay (Acoustic Cover) - Jane Doe (4:10) https://www.youtube.com/watch?v=DDDDDDDDDD1
+  2. Yellow (Rock Cover) - The Covers Band (4:30) https://www.youtube.com/watch?v=DDDDDDDDDD2
+  -> {"command": "${REQUEST_INPUT}", "text": "I found an acoustic cover by Jane Doe and a rock one by The Covers Band. Which one?"}
+  "the rock one" -> {"command": "play", "result": 2}
+  "the second one" -> {"command": "play", "result": 2}
+
+Other examples:
 "Amra, next one please." -> {"command": "skip"}
 "skip two songs" -> {"command": "skip", "amount": 2}
 "I'm, play shape of you" -> {"command": "play", "search": "shape of you"}
@@ -269,28 +297,7 @@ Examples:
 "what's for dinner" -> []
 "I'll play football later" -> []
 "次へ" -> {"command": "skip"}
-"一時停止" -> {"command": "pause"}
-
-Searching, with what comes back:
-"play the live version of hotel california" -> {"command": "${SEARCH}", "search": "hotel california live"}
-  Search results for "hotel california live":
-  1. Eagles - Hotel California (Live 1977) - Eagles (7:12) https://www.youtube.com/watch?v=AAAAAAAAAA1
-  2. Hotel California - Eagles (6:31) https://www.youtube.com/watch?v=AAAAAAAAAA2
-  -> {"command": "play", "result": 1}
-"who sings bad guy" -> {"command": "${SEARCH}", "search": "bad guy"}
-  Search results for "bad guy":
-  1. Billie Eilish - bad guy - Billie Eilish (3:26) https://www.youtube.com/watch?v=BBBBBBBBBB1
-  -> {"command": "${SPEAK}", "text": "Bad Guy is by Billie Eilish."}
-"how long is someone like you" -> {"command": "${SEARCH}", "search": "someone like you"}
-  Search results for "someone like you":
-  1. Adele - Someone Like You (Official Music Video) - Adele (4:45) https://www.youtube.com/watch?v=CCCCCCCCCC1
-  -> {"command": "${SPEAK}", "text": "Someone Like You is about four and three quarter minutes long."}
-"play a cover of yellow" -> {"command": "${SEARCH}", "search": "yellow cover"}
-  Search results for "yellow cover":
-  1. Yellow - Coldplay (Acoustic Cover) - Jane Doe (4:10) https://www.youtube.com/watch?v=DDDDDDDDDD1
-  2. Yellow (Rock Cover) - The Covers Band (4:30) https://www.youtube.com/watch?v=DDDDDDDDDD2
-  -> {"command": "${REQUEST_INPUT}", "text": "I found an acoustic cover by Jane Doe and a rock one by The Covers Band. Which one?"}
-  "the rock one" -> {"command": "play", "result": 2} /no_think`;
+"一時停止" -> {"command": "pause"} /no_think`;
 }
 
 export type IntentReading = {

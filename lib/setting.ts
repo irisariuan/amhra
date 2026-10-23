@@ -196,6 +196,12 @@ export interface Setting {
 	/** The longest command, in ms. Defaults to 8000. */
 	VOICE_MAX_COMMAND_MS?: number;
 	/**
+	 * How long what each member says to the bot is remembered, in ms, for
+	 * the next request to lean on ("a bit louder", "the other one", the
+	 * reply to a question back). Defaults to 60000.
+	 */
+	VOICE_MEMORY_MS?: number;
+	/**
 	 * An OpenAI-compatible server on this machine, as `http://host:port/v1`,
 	 * whose model decides what every voice command asks for. Unset, or when
 	 * the server does not answer, only command names said first are understood.
