@@ -30,6 +30,7 @@ import { getSuggestions } from "../voice/suggest";
 import {
 	delayLyrics,
 	lyricsDelayMs,
+	setLyricsDelayMs,
 	lyricsForQuery,
 	lyricsForTrack,
 } from "../lyrics";
@@ -638,8 +639,8 @@ export async function initServer(client: CustomClient) {
 	// Lyrics for a guild's current track. `link` says which track they belong
 	// to, so a dashboard polling across a song change can tell a stale answer
 	// from a fresh one. `?q=` replaces the automatic match with a search, for
-	// when the title was read wrong. Synced times already include the global
-	// LYRICS_DELAY_MS, which is echoed as `delayMs` for display.
+	// when the title was read wrong. Synced times already include the playing
+	// song's lyrics delay, which is echoed as `delayMs` for display.
 	app.get("/api/lyrics/:guildId", auth(Permission.User), async (req, res) => {
 		const guildId = req.params.guildId as string;
 		const account = getRequestAccount(res);
@@ -662,7 +663,8 @@ export async function initServer(client: CustomClient) {
 						channel: track!.channel.name,
 						durationInSec: track!.details.durationInSec,
 					});
-			const delayMs = lyricsDelayMs();
+			// A search is still timed against the playing video
+			const delayMs = lyricsDelayMs(track?.url);
 			return res.json({
 				link: track?.url ?? null,
 				content: content && delayLyrics(content, delayMs),
@@ -672,6 +674,41 @@ export async function initServer(client: CustomClient) {
 			return res.sendStatus(502);
 		}
 	});
+
+	// Sets the playing song's lyrics delay for everyone who plays it; a null
+	// `delayMs` returns it to LYRICS_DELAY_MS. `link` must name the playing
+	// track, so a nudge sent just as the song changed lands on nothing rather
+	// than on the next song.
+	app.post(
+		"/api/lyrics/:guildId/delay",
+		jsonParser,
+		auth(Permission.User),
+		basicCheckBuilder(["link", "delayMs"]),
+		async (req, res) => {
+			const guildId = req.params.guildId as string;
+			const account = getRequestAccount(res);
+			if (
+				!account ||
+				!(await accountCanAccessGuild(client, account, guildId))
+			) {
+				return res.sendStatus(403);
+			}
+			const { link, delayMs } = req.body;
+			if (
+				delayMs !== null &&
+				(typeof delayMs !== "number" || !Number.isFinite(delayMs))
+			) {
+				return res.sendStatus(400);
+			}
+			const player = client.player.get(guildId);
+			const track = player?.isPlaying ? player.nowPlaying : null;
+			if (!track || track.url !== link) return res.sendStatus(409);
+			return res.json({
+				link: track.url,
+				delayMs: setLyricsDelayMs(track.url, delayMs),
+			});
+		},
+	);
 
 	app.post(
 		"/api/live",

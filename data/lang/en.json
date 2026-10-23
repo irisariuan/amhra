@@ -85,6 +85,7 @@
 	"LYRICS_FOLLOW": "Follow along",
 	"LYRICS_FULL": "Full lyrics",
 	"LYRICS_SONG_CHANGED": "The song changed, run /lyrics again for the new one",
+	"LYRICS_DELAY_SET": "Lyrics delay for this song: {ms} ms",
 	"commands": {
 		"schedule": {
 			"description": "Schedule a video to cut in at a set time",
@@ -223,6 +224,9 @@
 			"options": {
 				"search": {
 					"description": "Search for lyrics instead of using the song playing"
+				},
+				"delay": {
+					"description": "Show this song's lyrics this many milliseconds later (negative for sooner), for everyone"
 				}
 			}
 		},

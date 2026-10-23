@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	cleanChannel,
 	delayLyrics,
@@ -6,11 +9,14 @@ import {
 	forgetLyrics,
 	guessTitle,
 	lineIndexAt,
+	lyricsDelayMs,
 	lyricsForTrack,
 	parseLrc,
 	scoreRecord,
 	searchLyrics,
+	setLyricsDelayMs,
 } from "../lib/lyrics";
+import { provideSetting, readSetting } from "../lib/setting";
 
 /**
  * Lyrics lookup over LRCLIB.
@@ -111,6 +117,38 @@ describe("delayLyrics", () => {
 		delayLyrics(lyrics, 500);
 		expect(lyrics.synced.map((l) => l.time)).toEqual([1000, 3000]);
 		expect(delayLyrics(lyrics, 0)).toBe(lyrics);
+	});
+});
+
+describe("lyricsDelayMs", () => {
+	const file = () => join(mkdtempSync(join(tmpdir(), "lyrics-delay-")), "delay.json");
+	const lemon = "https://www.youtube.com/watch?v=SX_ViT4Ra7k";
+
+	test("falls back to LYRICS_DELAY_MS for a song without its own", () => {
+		const setting = readSetting();
+		provideSetting({ ...setting, LYRICS_DELAY_MS: 300 });
+		try {
+			const at = file();
+			expect(lyricsDelayMs(lemon, at)).toBe(300);
+			expect(setLyricsDelayMs(lemon, -200, at)).toBe(-200);
+			expect(setLyricsDelayMs(lemon, null, at)).toBe(300);
+		} finally {
+			provideSetting(setting);
+		}
+	});
+
+	test("is one delay per video, whichever link it was played from", () => {
+		const at = file();
+		setLyricsDelayMs(lemon, 750, at);
+		expect(lyricsDelayMs("https://youtu.be/SX_ViT4Ra7k", at)).toBe(750);
+		expect(lyricsDelayMs(`${lemon}&list=PL123`, at)).toBe(750);
+		expect(lyricsDelayMs("https://www.youtube.com/watch?v=dQw4w9WgXcQ", at)).not.toBe(750);
+	});
+
+	test("keeps a delay within bounds", () => {
+		const at = file();
+		expect(setLyricsDelayMs(lemon, 99_999, at)).toBe(10_000);
+		expect(setLyricsDelayMs(lemon, -12.6, at)).toBe(-13);
 	});
 });
 
