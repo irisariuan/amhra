@@ -14,6 +14,10 @@
 //!
 //! Lay the models out with `scripts/download-voice-models.sh`; [`ModelPaths`]
 //! names what it fetches.
+//!
+//! With [`SherpaConfig::classifier`], the wake word classifier in
+//! `classifier.rs` hears the name instead of the keyword spotter, which is
+//! then not loaded at all.
 
 use std::ffi::{CStr, CString, c_char};
 use std::path::{Path, PathBuf};
@@ -25,6 +29,7 @@ use sherpa_onnx::{
 };
 use sherpa_onnx_sys as sys;
 
+use super::classifier::Classifier;
 use super::keywords::{self, Vocabulary};
 use super::{Detection, ModelError, Models, SAMPLE_RATE, Spotter, Transcriber, Transcript, Vad};
 
@@ -68,6 +73,10 @@ pub struct SherpaConfig {
 	/// A fine-tuned keyword spotter to use instead of the stock one: a
 	/// directory laid out by `training/wake/export.sh`.
 	pub spotter: Option<PathBuf>,
+	/// A wake word classifier to hear the name with instead of any keyword
+	/// spotter: a directory laid out by `training/wake/classifier/export.py`.
+	/// The keywords, their boost and threshold, and `spotter` are then unused.
+	pub classifier: Option<PathBuf>,
 }
 
 impl SherpaConfig {
@@ -82,6 +91,7 @@ impl SherpaConfig {
 			recogniser_provider: Provider::Cpu,
 			recogniser_language: "auto".to_owned(),
 			spotter: None,
+			classifier: None,
 		}
 	}
 }
@@ -178,18 +188,12 @@ impl ModelPaths {
 		}
 	}
 
-	/// Every file, so a missing one is named before anything loads.
-	fn check(&self) -> Result<(), ModelError> {
-		for path in [
-			&self.kws_encoder,
-			&self.kws_decoder,
-			&self.kws_joiner,
-			&self.kws_tokens,
-			&self.kws_bpe,
-			&self.vad,
-			&self.stt_model,
-			&self.stt_tokens,
-		] {
+	/// Every file, so a missing one is named before anything loads. The
+	/// spotter's only if it is to be used.
+	fn check(&self, spotter: bool) -> Result<(), ModelError> {
+		let spotter_files = [&self.kws_encoder, &self.kws_decoder, &self.kws_joiner, &self.kws_tokens, &self.kws_bpe];
+		let others = [&self.vad, &self.stt_model, &self.stt_tokens];
+		for path in spotter_files.into_iter().filter(|_| spotter).chain(others) {
 			if !path.is_file() {
 				return Err(ModelError::Missing(path.clone()));
 			}
@@ -212,7 +216,7 @@ fn read(path: &Path) -> Result<Vec<u8>, ModelError> {
 /// Load everything: the per-speaker model factory and the recogniser.
 pub fn load(config: &SherpaConfig) -> Result<(Arc<SherpaModels>, SenseVoice), ModelError> {
 	let paths = ModelPaths::of(config);
-	paths.check()?;
+	paths.check(config.classifier.is_none())?;
 	let models = SherpaModels::load(&paths, config)?;
 	let recogniser = SenseVoice::load(
 		&paths,
@@ -223,41 +227,24 @@ pub fn load(config: &SherpaConfig) -> Result<(Arc<SherpaModels>, SenseVoice), Mo
 	Ok((Arc::new(models), recogniser))
 }
 
-/// The spotter, shared, and what each speaker's VAD is made from.
+/// The wake word model, shared, and what each speaker's VAD is made from.
 pub struct SherpaModels {
-	spotter: Arc<KeywordSpotter>,
+	wake: Wake,
 	vad: VadModelConfig,
+}
+
+/// What hears the name.
+enum Wake {
+	Spotter(Arc<KeywordSpotter>),
+	Classifier(Arc<Classifier>),
 }
 
 impl SherpaModels {
 	fn load(paths: &ModelPaths, config: &SherpaConfig) -> Result<Self, ModelError> {
-		// Spelled and checked here, because a bad line inside sherpa-onnx
-		// exits the process.
-		let vocabulary = Vocabulary::from_sentencepiece(&read(&paths.kws_bpe)?)?;
-		let tokens = keywords::token_set(&String::from_utf8_lossy(&read(&paths.kws_tokens)?));
-		let lines = keywords::spotter_lines(
-			&keywords::parse(&config.keywords)?,
-			&vocabulary,
-			&tokens,
-			config.keyword_boost,
-			config.keyword_threshold,
-		)?;
-
-		let mut spotter = KeywordSpotterConfig::default();
-		spotter.model_config.transducer.encoder = Some(path_string(&paths.kws_encoder));
-		spotter.model_config.transducer.decoder = Some(path_string(&paths.kws_decoder));
-		spotter.model_config.transducer.joiner = Some(path_string(&paths.kws_joiner));
-		spotter.model_config.tokens = Some(path_string(&paths.kws_tokens));
-		spotter.model_config.num_threads = 1;
-		spotter.model_config.provider = Some("cpu".to_owned());
-		spotter.keywords_buf = Some(lines);
-		// The decoder needs a moment of nothing after a keyword before it
-		// commits to it; one blank frame keeps that moment short.
-		spotter.num_trailing_blanks = 1;
-		spotter.keywords_score = config.keyword_boost;
-		spotter.keywords_threshold = config.keyword_threshold;
-		let spotter = KeywordSpotter::create(&spotter)
-			.ok_or(ModelError::Load { what: "the keyword spotter", reason: "sherpa-onnx refused it".to_owned() })?;
+		let wake = match &config.classifier {
+			Some(dir) => Wake::Classifier(Classifier::load(dir)?),
+			None => Wake::Spotter(Arc::new(load_spotter(paths, config)?)),
+		};
 
 		let vad = VadModelConfig {
 			silero_vad: SileroVadModelConfig {
@@ -282,8 +269,39 @@ impl SherpaModels {
 		VoiceActivityDetector::create(&vad, VAD_BUFFER_SECONDS)
 			.ok_or(ModelError::Load { what: "the VAD", reason: "sherpa-onnx refused it".to_owned() })?;
 
-		Ok(Self { spotter: Arc::new(spotter), vad })
+		Ok(Self { wake, vad })
 	}
+}
+
+/// The keyword spotter, with the keywords spelled for it.
+fn load_spotter(paths: &ModelPaths, config: &SherpaConfig) -> Result<KeywordSpotter, ModelError> {
+	// Spelled and checked here, because a bad line inside sherpa-onnx exits
+	// the process.
+	let vocabulary = Vocabulary::from_sentencepiece(&read(&paths.kws_bpe)?)?;
+	let tokens = keywords::token_set(&String::from_utf8_lossy(&read(&paths.kws_tokens)?));
+	let lines = keywords::spotter_lines(
+		&keywords::parse(&config.keywords)?,
+		&vocabulary,
+		&tokens,
+		config.keyword_boost,
+		config.keyword_threshold,
+	)?;
+
+	let mut spotter = KeywordSpotterConfig::default();
+	spotter.model_config.transducer.encoder = Some(path_string(&paths.kws_encoder));
+	spotter.model_config.transducer.decoder = Some(path_string(&paths.kws_decoder));
+	spotter.model_config.transducer.joiner = Some(path_string(&paths.kws_joiner));
+	spotter.model_config.tokens = Some(path_string(&paths.kws_tokens));
+	spotter.model_config.num_threads = 1;
+	spotter.model_config.provider = Some("cpu".to_owned());
+	spotter.keywords_buf = Some(lines);
+	// The decoder needs a moment of nothing after a keyword before it
+	// commits to it; one blank frame keeps that moment short.
+	spotter.num_trailing_blanks = 1;
+	spotter.keywords_score = config.keyword_boost;
+	spotter.keywords_threshold = config.keyword_threshold;
+	KeywordSpotter::create(&spotter)
+		.ok_or(ModelError::Load { what: "the keyword spotter", reason: "sherpa-onnx refused it".to_owned() })
 }
 
 /// Audio the VAD holds on to. Its segments are thrown away as they come (the
@@ -292,11 +310,12 @@ const VAD_BUFFER_SECONDS: f32 = 10.0;
 
 impl Models for SherpaModels {
 	fn spotter(&self) -> Result<Box<dyn Spotter>, ModelError> {
-		Ok(Box::new(SherpaSpotter {
-			stream: self.spotter.create_stream(),
-			spotter: Arc::clone(&self.spotter),
-			fed: 0,
-		}))
+		Ok(match &self.wake {
+			Wake::Spotter(spotter) => {
+				Box::new(SherpaSpotter { stream: spotter.create_stream(), spotter: Arc::clone(spotter), fed: 0 })
+			}
+			Wake::Classifier(classifier) => Box::new(classifier.spotter()),
+		})
 	}
 
 	fn vad(&self) -> Result<Box<dyn Vad>, ModelError> {

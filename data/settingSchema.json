@@ -164,6 +164,10 @@
    "type": "string",
    "description": "Wake phrases for that model; defaults to training/wake/keywords.txt. Restart to apply"
   },
+  "VOICE_WAKE_CLASSIFIER": {
+   "type": "string",
+   "description": "Directory of the wake word classifier from training/wake/classifier/export.py (e.g. models/voice/wake-classifier), to hear the bot's name with instead of the wake model; VOICE_WAKE_MODEL and VOICE_WAKE_KEYWORDS are then unused. Unset by default (experimental). Restart to apply"
+  },
   "VOICE_COLLECT_WAKE_CLIPS": {
    "type": "boolean",
    "default": true,

@@ -4,13 +4,13 @@ The sidecar hears the name with a keyword spotter: a small streaming speech
 recogniser that fires when the word pieces it hears spell `EMHARA`. This is
 the other way to do it: a classifier that looks at the last 1.5 seconds of
 sound and gives one score, "the name has just been said". It is an
-experiment, scored on the same audio as the spotter; nothing in the sidecar
-uses it yet.
+experiment, scored on the same audio as the spotter, and the sidecar can use
+it in the spotter's place (see [Using it](#using-it)).
 
 ```text
 align.py ─▶ screen.py ─▶ train.py ─▶ score.py ─▶ export.py
-(where the   (which clips   (12k steps,   (same audio as    (one ONNX file,
- name ends)   are the name)  ~20 min MPS)  evaluate.py)      features included)
+(where the   (which clips   (12k steps,   (same audio as    (the network, and
+ name ends)   are the name)  ~20 min MPS)  evaluate.py)      how its frames are made)
 ```
 
 Everything is read from and written to `training/wake/work/` (gitignored), the
@@ -118,17 +118,38 @@ hour of the evaluation negatives (one is 1.9).
   tilts that column against it.
 - Room false wakes are 2 against 1 in 32 minutes: one event, too few to call.
 
-**Cost.** The network alone takes 0.24ms a score on one M-series core, 0.8%
-of a core per speaker at a score every 30ms, against the spotter and VAD's
-0.6%. The exported model recomputes the features of the whole window each
-time (1.5% of a core); an integration would keep the mel frames and add the
-three new ones each hop.
+**Cost.** In the sidecar, which keeps each speaker's mel frames and adds the
+three new ones each hop, the classifier and the VAD together take 0.32% of one
+M5 Pro core per speaker, against the spotter and VAD's 0.59%.
 
 **What it means.** On the one voice it has heard plenty of, and on the
 conversation the spotter wakes on, the classifier is clearly better. On
 voices it has not heard, four clips from two people say nothing either way.
 More members recording the name, and the screened labels checked by ear with
-`review.py`, would make this a real comparison. Nothing in the sidecar uses
-the classifier: `export.py` writes `models/voice/wake-classifier/` (an ONNX
-model, 1.5s of 16kHz samples in, the score out, and `threshold.txt`), which
-stays out of git like every model.
+`review.py`, would make this a real comparison.
+
+## Using it
+
+`export.py` writes `models/voice/wake-classifier/`, which stays out of git
+like every model:
+
+- `net.onnx`: the network alone, 40 log-mel bands by 148 frames in, the logit
+  out;
+- `features.json`: how those frames are made, which the sidecar checks against
+  its own before loading;
+- `threshold.txt`: the score it wakes at, chosen on validation;
+- `check.json`: a test signal's frames and logits, which the sidecar's tests
+  compare with (`cargo test -p amhra-sidecar --features voice-commands
+  classifier`; skipped where there is no export).
+
+Set `VOICE_WAKE_CLASSIFIER` to `models/voice/wake-classifier` and restart the
+bot: the sidecar starts with `--wake-classifier` in place of `--wake-model` and
+`--wake-keywords`, and hears the name with the classifier
+(`rust/amhra-sidecar/src/voice_commands/classifier.rs`, the network through
+tract, the frames made as audio arrives). Unset it to go back to the spotter.
+Wake clips are still saved, so the classifier's own false wakes can be
+screened and trained on.
+
+`wake_wav --wake-classifier models/voice/wake-classifier` runs the sidecar's
+gate with it over WAV files. Over the same audio as `score.py` it gives the
+same results as the v3 row above, waking about 100ms after the name ends.

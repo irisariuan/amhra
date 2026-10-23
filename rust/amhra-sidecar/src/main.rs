@@ -41,6 +41,10 @@
 //!   default cpu; coreml needs a build with the `shared-onnxruntime` feature;
 //! - `--wake-model <dir>`: a fine-tuned keyword spotter from
 //!   `training/wake/export.sh`, instead of the stock one;
+//! - `--wake-classifier <dir>`: the wake word classifier from
+//!   `training/wake/classifier/export.py`, instead of any keyword spotter
+//!   (see `voice_commands::classifier`); `--wake-keywords` and
+//!   `--wake-model` are then unused;
 //! - `--wake-clips <dir>`: save the second or so of audio each wake was heard
 //!   in, for retraining the spotter (see `voice_commands::clips`), at most
 //!   `--wake-clips-max <n>` of them, default 2000;
@@ -911,9 +915,14 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 
 	let models = option("--voice-models").unwrap_or_else(|| "models/voice".to_owned());
 	let keywords = option("--wake-keywords").unwrap_or_else(|| "data/wake-keywords.txt".to_owned());
+	let classifier = option("--wake-classifier");
 	let started = std::time::Instant::now();
-	let loaded = std::fs::read_to_string(&keywords)
-		.map_err(|error| format!("cannot read {keywords}: {error}"))
+	// The classifier hears only the name it was trained on.
+	let keywords = match classifier {
+		Some(_) => Ok(String::new()),
+		None => std::fs::read_to_string(&keywords).map_err(|error| format!("cannot read {keywords}: {error}")),
+	};
+	let loaded = keywords
 		.and_then(|keywords| {
 			let mut config = SherpaConfig::new(models.into(), keywords);
 			if let Some(threads) =
@@ -922,6 +931,7 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 				config.recogniser_threads = threads;
 			}
 			config.spotter = option("--wake-model").map(Into::into);
+			config.classifier = classifier.clone().map(Into::into);
 			config.recogniser_provider = recogniser_provider(events);
 			if let Some(language) = option("--recogniser-language") {
 				config.recogniser_language = language;
@@ -1030,7 +1040,10 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 	});
 	match Engine::start(models, Box::new(recogniser), gate, report) {
 		Ok(engine) => {
-			eprintln!("voice commands: models loaded in {:?}", started.elapsed());
+			match &classifier {
+				Some(dir) => eprintln!("voice commands: models loaded in {:?}, the wake classifier from {dir}", started.elapsed()),
+				None => eprintln!("voice commands: models loaded in {:?}", started.elapsed()),
+			}
 			Some(Arc::new(engine))
 		}
 		Err(error) => {

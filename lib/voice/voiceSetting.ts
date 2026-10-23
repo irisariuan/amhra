@@ -42,13 +42,17 @@ export function guildListens(guildId: string, setting: Setting = readSetting()) 
  */
 export function voiceCommandArgs(setting: Setting = readSetting()): string[] {
 	if (!voiceCommandsAllowed(setting)) return [];
-	const args = [
-		"--voice-commands",
-		"--wake-model",
-		setting.VOICE_WAKE_MODEL ?? "models/voice/kws-emhara",
-		"--wake-keywords",
-		setting.VOICE_WAKE_KEYWORDS ?? "training/wake/keywords.txt",
-	];
+	const args = ["--voice-commands"];
+	if (setting.VOICE_WAKE_CLASSIFIER) {
+		args.push("--wake-classifier", setting.VOICE_WAKE_CLASSIFIER);
+	} else {
+		args.push(
+			"--wake-model",
+			setting.VOICE_WAKE_MODEL ?? "models/voice/kws-emhara",
+			"--wake-keywords",
+			setting.VOICE_WAKE_KEYWORDS ?? "training/wake/keywords.txt",
+		);
+	}
 	if (collectsWakeClips(setting)) args.push("--wake-clips", WAKE_CLIPS_DIR);
 	if (setting.VOICE_WAKE_CHIME !== false) args.push("--wake-chime");
 	const duck = setting.VOICE_DUCK_VOLUME ?? DEFAULT_DUCK_VOLUME;

@@ -12,6 +12,14 @@ export function readSetting(
 	return setting ?? JSON.parse(readFileSync(file, "utf8"));
 }
 
+/**
+ * Use these settings rather than data/setting.json, which the setup tool
+ * writes and git ignores. For tests on a checkout without one.
+ */
+export function provideSetting(next: Setting) {
+	setting = next;
+}
+
 export function reloadSetting(
 	reloadLanguage = true,
 	file = `${process.cwd()}/data/setting.json`,
@@ -118,6 +126,13 @@ export interface Setting {
 	VOICE_WAKE_MODEL?: string;
 	/** Its wake phrases; defaults to training/wake/keywords.txt */
 	VOICE_WAKE_KEYWORDS?: string;
+	/**
+	 * The wake word classifier from training/wake/classifier/export.py, e.g.
+	 * models/voice/wake-classifier, to hear the name with instead of the wake
+	 * model; VOICE_WAKE_MODEL and VOICE_WAKE_KEYWORDS are then unused. Unset
+	 * by default: it is an experiment.
+	 */
+	VOICE_WAKE_CLASSIFIER?: string;
 	/**
 	 * Keep the audio around each wake, from guilds with voice commands on, for
 	 * retraining the wake model. On unless set to false; members are told.

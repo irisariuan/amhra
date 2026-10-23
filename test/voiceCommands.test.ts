@@ -299,6 +299,23 @@ describe("sidecar flags", () => {
 		expect(quiet).not.toContain("--wake-duck");
 	});
 
+	test("the wake classifier instead of the wake model, when set", () => {
+		const allowed = { ...base, VOICE_COMMANDS: true };
+		const args = voiceCommandArgs({
+			...allowed,
+			VOICE_WAKE_CLASSIFIER: "models/voice/wake-classifier",
+			VOICE_WAKE_MODEL: "models/voice/other",
+		});
+		expect(args.slice(0, 3)).toEqual([
+			"--voice-commands",
+			"--wake-classifier",
+			"models/voice/wake-classifier",
+		]);
+		expect(args).not.toContain("--wake-model");
+		expect(args).not.toContain("--wake-keywords");
+		expect(args).toContain("--wake-clips");
+	});
+
 	test("speech, only when asked for", () => {
 		const allowed = { ...base, VOICE_COMMANDS: true };
 		expect(voiceCommandArgs(allowed)).not.toContain("--speech");

@@ -27,6 +27,12 @@ sherpa-onnx = { version = "1.13.8", optional = true, default-features = false }
 sherpa-onnx-sys = { version = "1.13.8", optional = true, default-features = false }
 # The Cantonese voice's lexicon has simplified characters only.
 fast2s = { version = "0.3", optional = true }
+# The wake word classifier (`--wake-classifier`), an ONNX model run in pure
+# Rust: a second onnxruntime beside the one sherpa-onnx links would bring two
+# copies of the same symbols.
+tract-onnx = { version = "0.23", optional = true, default-features = false }
+# Its mel frames, made as audio arrives.
+rustfft = { version = "6.4", optional = true }
 
 [dev-dependencies]
 # The wake_live example joins a channel the way amhra-voice's examples do.
@@ -37,7 +43,7 @@ tokio-tungstenite = { version = "0.30", default-features = false, features = [
 ] }
 
 [features]
-voice-commands = ["dep:sherpa-onnx", "dep:sherpa-onnx-sys", "dep:fast2s"]
+voice-commands = ["dep:sherpa-onnx", "dep:sherpa-onnx-sys", "dep:fast2s", "dep:tract-onnx", "dep:rustfft"]
 # Link sherpa-onnx's shared build instead. Its onnxruntime recognised a
 # command 3.4x faster on the CPU here (41ms against 141ms on two threads), and
 # has Core ML on macOS for `--recogniser-provider coreml`. The libraries are

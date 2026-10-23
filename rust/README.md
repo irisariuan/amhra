@@ -337,6 +337,7 @@ starts:
 | `--recogniser-provider <p>` | `cpu` | `cpu`, or `coreml` with `shared-onnxruntime` on macOS |
 | `--recogniser-language <l>` | `auto` | pin SenseVoice to one language |
 | `--wake-model <dir>` | the stock spotter | a fine-tuned one from `training/wake` |
+| `--wake-classifier <dir>` | off | the wake word classifier from `training/wake/classifier`, instead of any spotter (`VOICE_WAKE_CLASSIFIER`) |
 | `--wake-clips <dir>` | off | save the audio each wake was heard in (below) |
 | `--wake-clips-max <n>` | `2000` | stop saving after this many clips (about 75MB) |
 | `--wake-chime` | off | chime in the call when the name is heard, chime again when the command has been taken down, and sound softly every 2s until it is answered |
@@ -528,6 +529,18 @@ Ten training takes from one speaker is very little, and training longer
 overfits: later epochs heard every take but woke 25–80 times an hour on
 sentences they had not seen. Recordings from more members are what would
 improve it; `training/wake/README.md` has the steps and every number.
+
+**A wake word classifier.** `training/wake/classifier/` trains a small
+network on the name alone, from the collected wake clips screened for
+conversation, and `--wake-classifier models/voice/wake-classifier` (the
+`VOICE_WAKE_CLASSIFIER` setting) hears the name with it instead of any
+spotter. Run through the sidecar's own gate (`wake_wav --wake-classifier`), it
+scores exactly as in training: every held-out take, through simulated rooms
+too, none of the call chatter the spotter woke on, and 0 false wakes in the 32
+minutes of negatives (2 through rooms). It wakes about 100ms after the name
+where the spotter takes about 450ms, and with the VAD it needs 0.32% of a core
+per speaker against the spotter's 0.59%. On voices it has not heard there are
+too few clips to say; that README has the numbers.
 
 ### CPU or Core ML
 

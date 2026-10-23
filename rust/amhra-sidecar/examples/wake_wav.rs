@@ -17,7 +17,9 @@
 //! how many threads speech recognition gets, `--provider cpu|coreml` where it
 //! runs (coreml needs `--features shared-onnxruntime`), `--language <lang>`
 //! pins what it listens for. `--wake-model <dir>` tries a
-//! fine-tuned spotter from `training/wake/export.sh`.
+//! fine-tuned spotter from `training/wake/export.sh`, and `--wake-classifier
+//! <dir>` the wake word classifier from `training/wake/classifier/export.py`
+//! in place of any spotter.
 //! `--spell` prints the keywords as the spotter will read them, word pieces and
 //! all, and exits.
 //! `--whole` also transcribes each file entire, ungated, for comparison.
@@ -49,6 +51,7 @@ struct Args {
 	provider: Option<String>,
 	language: Option<String>,
 	spotter: Option<PathBuf>,
+	classifier: Option<PathBuf>,
 	tail_ms: u32,
 	verbose: bool,
 	spell: bool,
@@ -68,6 +71,7 @@ fn args() -> Args {
 		provider: None,
 		language: None,
 		spotter: None,
+		classifier: None,
 		tail_ms: 1500,
 		verbose: false,
 		spell: false,
@@ -86,6 +90,7 @@ fn args() -> Args {
 			"--boost" => args.boost = Some(value().parse().expect("--boost takes a number")),
 			"--recogniser-threads" => args.threads = Some(value().parse().expect("--recogniser-threads takes a number")),
 			"--wake-model" => args.spotter = Some(value().into()),
+			"--wake-classifier" => args.classifier = Some(value().into()),
 			"--provider" => args.provider = Some(value()),
 			"--language" => args.language = Some(value()),
 			"--tail-ms" => args.tail_ms = value().parse().expect("--tail-ms takes a number"),
@@ -176,6 +181,7 @@ fn main() {
 		config.recogniser_language = language.clone();
 	}
 	config.spotter = args.spotter.clone();
+	config.classifier = args.classifier.clone();
 
 	if args.spell {
 		let kws = sherpa::ModelPaths::of(&config);

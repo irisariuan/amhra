@@ -24,8 +24,12 @@
 //! The models sit behind the [`Spotter`], [`Vad`] and [`Transcriber`] traits,
 //! so the state machine in [`gate`] and the per-speaker bookkeeping in
 //! [`speakers`] are tested with fakes and compile without any model runtime.
-//! The real ones, in `sherpa.rs`, are behind the `voice-commands` feature.
+//! The real ones, in `sherpa.rs`, are behind the `voice-commands` feature, as
+//! is the wake word classifier in `classifier.rs` that can stand in for the
+//! keyword spotter.
 
+#[cfg(feature = "voice-commands")]
+pub mod classifier;
 pub mod clips;
 pub mod engine;
 pub mod gate;
