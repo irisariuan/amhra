@@ -15,6 +15,7 @@ import { readSetting } from "../setting";
 import { userSetting } from "../userSetting";
 import { announcement, foundAnnouncement, prepared, spokenReply } from "./announce";
 import { readIntent, SPEAK, type SpokenReply, type Turn } from "./intentModel";
+import { startIntentServer } from "./intentServer";
 import { getNativeConnection } from "./native";
 import { type SidecarEvent, sidecar } from "./sidecar";
 import { describePlayback, playbackState } from "./voiceContext";
@@ -62,6 +63,7 @@ export function bindVoiceCommands(client: CustomClient, lookup: Lookup) {
 	if (bound === client) return;
 	bound = client;
 	const bus = sidecar();
+	startIntentServer();
 
 	bus.on("utterance", (payload: Extract<SidecarEvent, { type: "utterance" }>) => {
 		onUtterance(client, lookup, payload).catch((error) =>

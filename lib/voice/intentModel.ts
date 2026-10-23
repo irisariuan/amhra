@@ -14,6 +14,7 @@ import {
 	type VoiceIntent,
 	type VoiceOptions,
 } from "./intent";
+import { defaultIntentModel, intentServer } from "./intentServer";
 
 /**
  * Reading a command with a language model running on the bot's own machine.
@@ -39,10 +40,12 @@ import {
  * command typed on its own would be.
  *
  * Unset, or when the server does not answer in time, the plain fallback in
- * `intent.ts` reads the command: a command's own name, said first.
+ * `intent.ts` reads the command: a command's own name, said first. A server
+ * on this machine is started by the bot itself (see `intentServer.ts`), and
+ * until it is ready the fallback reads every command.
  */
 
-export const DEFAULT_INTENT_MODEL = "mlx-community/Qwen3-4B-4bit";
+export const DEFAULT_INTENT_MODEL = defaultIntentModel();
 
 /**
  * Longer than this and the fallback answers instead. Room for a spoken answer
@@ -248,7 +251,9 @@ export async function readIntent(
 	{ context, history = [] }: Conversation = {},
 ): Promise<IntentReading> {
 	const url = setting.VOICE_INTENT_MODEL_URL;
-	if (url) {
+	const server = intentServer();
+	// Still starting: nothing is gained by asking it, or by saying so each time.
+	if (url && server?.ready !== false) {
 		const model = setting.VOICE_INTENT_MODEL ?? DEFAULT_INTENT_MODEL;
 		const messages = [
 			{ role: "system", content: intentPrompt(lookup, context) },
@@ -260,6 +265,7 @@ export async function readIntent(
 			const language = recogniserLanguage(lang) ?? Language.English;
 			return { intents: intentsFrom(answer, language, lookup), by: "model", answer };
 		}
+		server?.notAnswering();
 	}
 	const intent = parseVoiceCommand(text, lang);
 	return { intents: intent ? [intent] : [], by: "fallback" };
@@ -291,7 +297,9 @@ async function askModel(
 		if (typeof content !== "string") throw new Error("no answer in the reply");
 		return content;
 	} catch (error) {
-		globalApp.warn(`Voice command model at ${url} did not answer, falling back to command names: ${error}`);
+		// "fetch failed" alone does not say whether anything was listening.
+		const cause = error instanceof Error && error.cause ? ` (${error.cause})` : "";
+		globalApp.warn(`Voice command model at ${url} did not answer, falling back to command names: ${error}${cause}`);
 		return undefined;
 	}
 }

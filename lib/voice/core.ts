@@ -10,7 +10,7 @@ import {
     type DiscordGatewayAdapterCreator,
     type VoiceConnection,
 } from "@discordjs/voice";
-import ytdl from "@distube/ytdl-core";
+import { Quality } from "@distube/ytdl-core";
 import {
     Guild,
     type APIInteractionGuildMember,
@@ -23,11 +23,11 @@ import {
 } from "discord.js";
 import "dotenv/config";
 import NodeCache from "node-cache";
-import fs from "node:fs";
 import type { Readable } from "node:stream";
 import {
 	getYouTubeVideoId,
 	getYouTubeVideoInfo,
+	getYtdl,
 	isYouTubePlaylist,
 	isYouTubeVideo,
 	type YouTubeVideoInfo,
@@ -65,20 +65,6 @@ import { updateLastUsed } from "./cache";
 
 const videoInfoCache = new NodeCache();
 const setting = readSetting();
-let agent: ytdl.Agent | undefined = undefined;
-
-try {
-	// The file has always lived in data/; reading it from the working directory
-	// meant the try never succeeded and USE_COOKIES never did anything.
-	const cookies = JSON.parse(
-		fs.readFileSync(`${process.cwd()}/data/cookies.json`, "utf8"),
-	);
-	if (cookies && setting.USE_COOKIES) {
-		agent = ytdl.createAgent(cookies);
-	}
-} catch {
-	globalApp.warn("No cookies found");
-}
 
 /**
  * Either backend's handle on a voice channel.
@@ -235,12 +221,15 @@ export async function createStream(
 		// const stream = ytdl(url, { filter: 'audioonly', quality: 'highestaudio', begin: seek, agent })
 		return { stream, type: StreamType.Arbitrary };
 	}
-	const source = ytdl(url, {
-		filter: "audioonly",
-		quality: "highestaudio",
-		...(seek && seek > 0 ? { begin: seek } : {}),
-		agent,
+	const source = getYtdl().download(url, {
+		filter: { hasAudio: true, hasVideo: false },
+		quality: Quality.HighestAudio,
 	});
+	// v5 only seeks SABR formats (startTimeMs throws on any format with a
+	// URL), so seek through ffmpeg as the yt-dlp path does
+	if (seek && seek > 0) {
+		return { stream: clipAudio(source, seek).copied, type: StreamType.Arbitrary };
+	}
 	return { stream: source, type: StreamType.Arbitrary };
 }
 
@@ -253,7 +242,7 @@ export async function getVideoInfo(
 	if (videoInfoCache.get(id)) {
 		return videoInfoCache.get(id) as YouTubeVideoInfo;
 	}
-	const videoInfo = await getYouTubeVideoInfo(url, agent);
+	const videoInfo = await getYouTubeVideoInfo(url);
 	videoInfoCache.set(id, videoInfo);
 	return videoInfo;
 }
