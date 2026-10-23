@@ -82,7 +82,7 @@ def main():
 		)
 		+ "\n"
 	)
-	(args.out / "threshold.txt").write_text(f"{saved['threshold']:.2f}\n")
+	(args.out / "threshold.txt").write_text(f"{saved['threshold']:g}\n")
 
 	# A known signal's frames and logits, for the Rust side's tests. Indexes
 	# count frames of the signal with a window of silence before it, as a
@@ -104,7 +104,7 @@ def main():
 		)
 		+ "\n"
 	)
-	print(f"wrote {args.out}: net.onnx ({path.stat().st_size // 1024} KB), threshold {saved['threshold']:.2f}")
+	print(f"wrote {args.out}: net.onnx ({path.stat().st_size // 1024} KB), threshold {saved['threshold']:g}")
 
 	try:
 		import onnxruntime

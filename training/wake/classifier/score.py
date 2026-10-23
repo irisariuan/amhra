@@ -43,7 +43,7 @@ def main():
 	net.load_state_dict(saved["net"])
 	detector = Detector(net).to(device()).eval()
 	chosen = saved["threshold"]
-	print(f"model from step {saved['step']}, threshold {chosen:.2f} (chosen on validation)")
+	print(f"model from step {saved['step']}, threshold {chosen:g} (chosen on validation)")
 
 	tests = {"takes": "real", "members": "members-name", "chatter": "members-chatter"}
 	sets = {}
@@ -69,7 +69,7 @@ def main():
 			)
 		return "  ".join(cells)
 
-	print(f"\nat {chosen:.2f}: {row(chosen)}")
+	print(f"\nat {chosen:g}: {row(chosen)}")
 	print("\nsweep (for reading only):")
 	for threshold in np.arange(0.5, 1.0, 0.05):
 		print(f"  {threshold:.2f}  {row(threshold)}")

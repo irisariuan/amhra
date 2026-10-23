@@ -118,6 +118,34 @@ hour of the evaluation negatives (one is 1.9).
   tilts that column against it.
 - Room false wakes are 2 against 1 in 32 minutes: one event, too few to call.
 
+### v4: the clips checked by ear
+
+A second batch of 82 clips (73 yours, 9 from the second member), and every
+one of the 239 labelled by ear with `review.py`: 184 the name, 49 chatter, 6
+can't tell. The other members now have 9 names (4 and 5) and 16 chatter
+clips. v4 trains on 175 of your clips that are the name, where v3 had 85
+screened by text, with the same recipe and seed.
+
+It is surer of itself than v3, and its scores crowd up against one: 0.99, the
+highest threshold training used to try, let more than two false wakes an
+hour through on validation at all but one checkpoint. Thresholds are now
+tried to 0.9999; v4 is the last checkpoint (step 12,000) at 0.999.
+
+All three on the new test sets, scored as above:
+
+| model | your takes | members' names | chatter | false wakes / h | your takes, room | members, room | chatter, room | false wakes / h, room |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `kws-emhara` | 8/11 | **8/9** | 4/16 | 5.6 | 5/11 | **5/9** | 0/16 | 1.9 |
+| v3 | 11/11 | 4/9 | 0/16 | 0.0 | 11/11 | 4/9 | 0/16 | 3.7 |
+| **v4** | **11/11** | 5/9 | **0/16** | **0.0** | **11/11** | **5/9** | **0/16** | **0.0** |
+
+- The members' names split by member: the first's 4 are heard by both
+  classifiers; of the second's 5, v3 heard none and v4 one (the others scored
+  0.00, 0.01, 0.22 and 0.56); the spotter hears 8 of the 9. The classifier
+  has never trained on another voice like the second's, and 5 clips are not
+  enough to train on and still test.
+- Through rooms, v4 made no false wakes in the 32 minutes, where v3 made 2.
+
 **Cost.** In the sidecar, which keeps each speaker's mel frames and adds the
 three new ones each hop, the classifier and the VAD together take 0.32% of one
 M5 Pro core per speaker, against the spotter and VAD's 0.59%.

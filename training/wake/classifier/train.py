@@ -311,14 +311,19 @@ def validate(detector, positives, streams):
 	return np.array(best), negatives
 
 
+#: Thresholds tried, finer towards one: a confident model's scores crowd up
+#: against it, and 0.99 can be far from the threshold it needs.
+THRESHOLDS = np.round(np.concatenate([np.arange(0.30, 0.99, 0.01), np.arange(0.990, 0.999, 0.001), np.arange(0.9990, 0.99995, 0.0001)]), 4)
+
+
 def operating_point(best, negatives, seconds, per_hour):
 	"""The lowest threshold with no more than `per_hour` false wakes, and the
 	recall there; with none, the highest tried and nan for the rate."""
-	for threshold in np.arange(0.30, 0.995, 0.01):
+	for threshold in THRESHOLDS:
 		false = sum(len(wakes(scores, ends, threshold)) for scores, ends in negatives)
 		if false / seconds * 3600 <= per_hour:
 			return float(threshold), float((best >= threshold).mean()), false / seconds * 3600
-	return 0.995, float((best >= 0.995).mean()), float("nan")
+	return float(THRESHOLDS[-1]), float((best >= THRESHOLDS[-1]).mean()), float("nan")
 
 
 def main():
@@ -374,7 +379,7 @@ def main():
 			threshold, recall, per_hour = operating_point(best, scored, valid_seconds, args.per_hour)
 			history.append({"step": step, "loss": float(loss), "threshold": threshold, "recall": recall, "per_hour": per_hour})
 			print(
-				f"step {step}: loss {float(loss):.4f}, valid recall {recall:.2f} at threshold {threshold:.2f} "
+				f"step {step}: loss {float(loss):.4f}, valid recall {recall:.2f} at threshold {threshold:g} "
 				f"({per_hour:.1f} false wakes/h), {time.time() - started:.0f}s"
 			)
 			saved = {"net": detector.net.state_dict(), "threshold": threshold, "step": step}
