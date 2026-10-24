@@ -3,15 +3,15 @@ import type { CustomAudioPlayer, QueueItem } from "../custom";
 import { getYouTubeVideoId } from "../youtube";
 import { closeQueue, createQueue, createResource, getVideoInfo, isVideo } from "./core";
 import { clampGap, clampLeadIn, MAX_QUEUE_LENGTH, MAX_QUEUES } from "./queuePlan";
-import { extraQueues } from "./queues";
+import { extraQueues, findQueue } from "./queues";
 
 /**
  * The mix: a guild's queues past the first, as `/mix` and the dashboard's
  * lanes have always shown them. Each is a full player (lib/custom.ts), so
  * these are only the moves the mix offers on top of what any queue can do.
  *
- * `/mix` numbers them by place in the list, 1 for queue 2; the dashboard by
- * their queue number.
+ * `/mix`, every command's `queue` option and the dashboard all go by the
+ * queue's number, 2 and up.
  */
 
 /** The guild's mix tracks, in order. */
@@ -19,20 +19,14 @@ export function mixTracks(guildId: string) {
 	return extraQueues(guildId);
 }
 
-/** The track at a 1-based place in `/mix list`. */
-export function trackAt(guildId: string, position: number): CustomAudioPlayer | undefined {
-	if (!Number.isInteger(position) || position < 1) return undefined;
-	return mixTracks(guildId)[position - 1];
+/** The track that is queue `n`. */
+export function trackAt(guildId: string, n: number): CustomAudioPlayer | undefined {
+	return findQueue(guildId, n);
 }
 
 /** A track by its queue number, as the dashboard names it. */
 export function trackById(guildId: string, id: string): CustomAudioPlayer | undefined {
 	return mixTracks(guildId).find((track) => track.sidecarQueue === id);
-}
-
-/** 1-based, as `/mix list` numbers it. Zero when it is not listed. */
-export function positionOf(track: CustomAudioPlayer) {
-	return mixTracks(track.guildId).indexOf(track) + 1;
 }
 
 /** Percent, as the user typed it. */
@@ -68,12 +62,22 @@ export interface TrackOptions {
 	loop?: boolean;
 }
 
-/** A new, empty track. Null when the guild already has every queue it may. */
-export function addTrack(guildId: string, channel: Channel | null, options: TrackOptions = {}) {
-	return createQueue(guildId, channel, {
-		...options,
-		volume: options.volume === undefined ? undefined : options.volume / 100,
-	});
+/**
+ * A new, empty track, as queue `number` or the lowest free one. Null when
+ * that number is taken, or the guild already has every queue it may.
+ */
+export function addTrack(
+	guildId: string,
+	channel: Channel | null,
+	options: TrackOptions = {},
+	number?: number,
+) {
+	return createQueue(
+		guildId,
+		channel,
+		{ ...options, volume: options.volume === undefined ? undefined : options.volume / 100 },
+		number,
+	);
 }
 
 export type QueueOnTrackResult =
@@ -96,6 +100,7 @@ export async function queueOnTrack(
 		startMs,
 		gapBeforeMs,
 		channel = null,
+		number,
 		...options
 	}: TrackOptions & {
 		track?: CustomAudioPlayer;
@@ -105,6 +110,8 @@ export async function queueOnTrack(
 		gapBeforeMs?: number;
 		/** Where a new track sends its messages */
 		channel?: Channel | null;
+		/** The queue number for a new track; the lowest free one if left out */
+		number?: number;
 	} = {},
 ): Promise<QueueOnTrackResult> {
 	// Checked before the lookup as well as after, so a full mix does not cost
@@ -119,7 +126,7 @@ export async function queueOnTrack(
 		// Removed while the lookup ran
 		if (target.closed) return { error: "not_found" };
 	} else {
-		const added = addTrack(guildId, channel, options);
+		const added = addTrack(guildId, channel, options, number);
 		if (!added) return { error: "full" };
 		target = added;
 		created = true;

@@ -6,6 +6,7 @@ import {
 	getAudioPlayer,
 } from "../../lib/voice/core";
 import { languageText } from "../../lib/language";
+import { queueOf, queueOption, respondQueues } from "../../lib/voice/queueOption";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -18,7 +19,11 @@ export default {
 				.setName("enabled")
 				.setDescription("Enable or disable the loop mode")
 				.setRequired(false),
-		),
+		)
+		.addIntegerOption(queueOption()),
+	async autocomplete({ interaction, client, language }) {
+		return respondQueues(interaction, client, language);
+	},
 	async execute({ interaction, client, language }) {
 		const setSkip = interaction.options.getBoolean("enabled");
 		if (!interaction.guild)
@@ -49,7 +54,7 @@ export default {
 			interaction.guild.id,
 			interaction.channel,
 			language,
-			{ createPlayer: false },
+			{ createPlayer: false, queue: queueOf(interaction) },
 		);
 		if (!player) {
 			return await interaction.reply({

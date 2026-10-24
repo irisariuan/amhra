@@ -70,16 +70,16 @@ function phrase(intent: VoiceIntent): [string, Record<string, string | number>?]
 				case "remove":
 				case "skip":
 				case "loop":
-					return [`voice_say_mix_${intent.subcommand}`, { track: options.track as number }];
+					return [`voice_say_mix_${intent.subcommand}`, { track: options.queue as number }];
 				case "volume":
 					return [
 						"voice_say_mix_volume",
-						{ track: options.track as number, volume: options.volume as number },
+						{ track: options.queue as number, volume: options.volume as number },
 					];
 				case "gap":
 					return [
 						"voice_say_mix_gap",
-						{ track: options.track as number, seconds: options.seconds as number },
+						{ track: options.queue as number, seconds: options.seconds as number },
 					];
 				case "main":
 					return ["voice_say_mix_main", { volume: options.volume as number }];

@@ -124,6 +124,10 @@
 				"next": {
 					"name": "次に",
 					"description": "次に再生する曲として追加 (すでに何か再生中の場合)"
+				},
+				"queue": {
+					"name": "キュー",
+					"description": "再生するキュー。空欄なら 1、新しい番号なら別のキューを作ります"
 				}
 			}
 		},
@@ -138,6 +142,10 @@
 				"force": {
 					"name": "強制",
 					"description": "確認を待たずに強制的にスキップします"
+				},
+				"queue": {
+					"name": "キュー",
+					"description": "キューの番号。空欄なら 1"
 				}
 			}
 		},
@@ -148,6 +156,10 @@
 				"position": {
 					"name": "位置",
 					"description": "再配置する位置（秒単位または(HH:)MM:SS形式）"
+				},
+				"queue": {
+					"name": "キュー",
+					"description": "キューの番号。空欄なら 1"
 				}
 			}
 		},
@@ -158,6 +170,10 @@
 				"index": {
 					"name": "インデックス",
 					"description": "キュー内の曲のインデックス（1から開始）"
+				},
+				"queue": {
+					"name": "キュー",
+					"description": "キューの番号。空欄なら 1"
 				}
 			}
 		},
@@ -168,20 +184,42 @@
 				"page": {
 					"name": "ページ",
 					"description": "ページ番号"
+				},
+				"queue": {
+					"name": "キュー",
+					"description": "キューの番号。空欄なら 1"
 				}
 			}
 		},
 		"pause": {
 			"name": "一時停止",
-			"description": "現在の曲を一時停止します"
+			"description": "現在の曲を一時停止します",
+			"options": {
+				"queue": {
+					"name": "キュー",
+					"description": "このキューだけ。空欄ならすべてのキュー"
+				}
+			}
 		},
 		"resume": {
 			"name": "再開",
-			"description": "一時停止した曲を再開します"
+			"description": "一時停止した曲を再開します",
+			"options": {
+				"queue": {
+					"name": "キュー",
+					"description": "このキューだけ。空欄ならすべてのキュー"
+				}
+			}
 		},
 		"stop": {
 			"name": "停止",
-			"description": "音楽を停止してキューをクリアします"
+			"description": "音楽を停止してキューをクリアします",
+			"options": {
+				"queue": {
+					"name": "キュー",
+					"description": "このキューだけ。空欄ならすべてのキュー"
+				}
+			}
 		},
 		"volume": {
 			"name": "音量",
@@ -190,6 +228,10 @@
 				"volume": {
 					"name": "音量",
 					"description": "音量レベル（0〜500）"
+				},
+				"queue": {
+					"name": "キュー",
+					"description": "このキュー自身の音量だけ。空欄ならボット全体の音量"
 				}
 			}
 		},
@@ -200,6 +242,10 @@
 				"enabled": {
 					"name": "有効",
 					"description": "ループモードを設定します"
+				},
+				"queue": {
+					"name": "キュー",
+					"description": "キューの番号。空欄なら 1"
 				}
 			}
 		},
@@ -213,7 +259,13 @@
 		},
 		"nowplaying": {
 			"name": "再生中",
-			"description": "現在再生中の曲を表示します"
+			"description": "現在再生中の曲を表示します",
+			"options": {
+				"queue": {
+					"name": "キュー",
+					"description": "キューの番号。空欄なら 1"
+				}
+			}
 		},
 		"version": {
 			"name": "バージョン",
@@ -229,7 +281,13 @@
 		},
 		"skipnonmusic": {
 			"name": "音楽以外をスキップ",
-			"description": "現在の音楽以外の部分をスキップします"
+			"description": "現在の音楽以外の部分をスキップします",
+			"options": {
+				"queue": {
+					"name": "キュー",
+					"description": "キューの番号。空欄なら 1"
+				}
+			}
 		},
 		"join": {
 			"name": "参加",
@@ -254,6 +312,10 @@
 				"enabled": {
 					"name": "有効",
 					"description": "音楽以外のモードの自動スキップを設定"
+				},
+				"queue": {
+					"name": "キュー",
+					"description": "キューの番号。空欄なら 1"
 				}
 			}
 		},
@@ -265,6 +327,10 @@
 				},
 				"delay": {
 					"description": "この曲の歌詞を全員に対してこのミリ秒だけ遅らせて表示（負の値で早める）"
+				},
+				"queue": {
+					"name": "キュー",
+					"description": "キューの番号。空欄なら 1"
 				}
 			}
 		},
@@ -366,9 +432,9 @@
 	"SCHEDULE_NOT_FOUND": "予約再生 #{index} はありません",
 	"SCHEDULE_FROM_DASHBOARD": "ダッシュボードから",
 	"MIX_NATIVE_ONLY": "曲のミックスには Rust 音声バックエンド（`USE_RUST_VOICE`）が必要です",
-	"MIX_MAIN_VOLUME": "キューの曲の音量: {volume}%",
-	"MIX_EMPTY": "ミックス中のトラックはありません",
-	"MIX_TRACK_HEADER": "**トラック {index}** · {volume}% · 曲間 {gap}秒",
+	"MIX_MAIN_VOLUME": "キュー 1 の音量: {volume}%",
+	"MIX_EMPTY": "ミックス中のキューはありません",
+	"MIX_TRACK_HEADER": "**キュー {index}** · {volume}% · 曲間 {gap}秒",
 	"MIX_TRACK_LOOPING": " · ループ中",
 	"MIX_TRACK_PLAYING": "▶ **[{title}]({url})** `{time}`",
 	"MIX_TRACK_LOADING": "**[{title}]({url})** を読み込み中",
@@ -377,23 +443,23 @@
 	"MIX_TRACK_QUEUE_ITEM": "`{index}.` [{title}]({url})",
 	"MIX_TRACK_QUEUE_MORE": "…ほか {count} 曲",
 	"MIX_VIDEO_ONLY": "ミックスできるのは単一の動画のみで、プレイリストはできません",
-	"MIX_FULL": "これ以上トラックを追加できません。既存のトラックに追加するか、トラックを削除してください",
-	"MIX_QUEUE_FULL": "そのトラックのキューはいっぱいです",
+	"MIX_FULL": "これ以上キューを追加できません。既存のキューに追加するか、キューを削除してください",
+	"MIX_QUEUE_FULL": "そのキューはいっぱいです",
 	"MIX_NOT_FOUND": "動画が見つかりませんでした",
-	"MIX_ADDED_TRACK": "**[{title}]({url})** を新しいトラック {track} に {volume}% でミックスしました",
-	"MIX_PLAYING_ON": "トラック {track} で **[{title}]({url})** を再生します",
-	"MIX_QUEUED": "**[{title}]({url})** をトラック {track} の {position} 番目に追加しました",
-	"MIX_MAIN_SET": "ミックス内のキューの曲の音量を {volume}% に設定しました",
-	"MIX_NO_TRACK": "ミックストラック #{index} はありません",
-	"MIX_NO_SONG": "トラック {track} のキューに #{index} の曲はありません",
-	"MIX_TRACK_REMOVED": "ミックストラック {track} を削除しました",
-	"MIX_SONG_REMOVED": "**[{title}]({url})** をトラック {track} から外しました",
-	"MIX_SKIPPED": "トラック {track} を次の曲へ進めました",
-	"MIX_SKIP_NOTHING": "トラック {track} にスキップできる曲はありません",
-	"MIX_VOLUME_SET": "トラック {track} の音量を {volume}% に設定しました",
-	"MIX_GAP_SET": "トラック {track} の曲間を {seconds}秒にしました",
-	"MIX_LOOP_ON": "トラック {track} はキューを繰り返し再生します",
-	"MIX_LOOP_OFF": "トラック {track} のループを止めました",
+	"MIX_ADDED_TRACK": "**[{title}]({url})** を新しいキュー {track} に {volume}% でミックスしました",
+	"MIX_PLAYING_ON": "キュー {track} で **[{title}]({url})** を再生します",
+	"MIX_QUEUED": "**[{title}]({url})** をキュー {track} の {position} 番目に追加しました",
+	"MIX_MAIN_SET": "ミックス内のキュー 1 の音量を {volume}% に設定しました",
+	"MIX_NO_TRACK": "ミックスにキュー {index} はありません",
+	"MIX_NO_SONG": "キュー {track} に #{index} の曲はありません",
+	"MIX_TRACK_REMOVED": "ミックスからキュー {track} を削除しました",
+	"MIX_SONG_REMOVED": "**[{title}]({url})** をキュー {track} から外しました",
+	"MIX_SKIPPED": "キュー {track} を次の曲へ進めました",
+	"MIX_SKIP_NOTHING": "キュー {track} にスキップできる曲はありません",
+	"MIX_VOLUME_SET": "キュー {track} の音量を {volume}% に設定しました",
+	"MIX_GAP_SET": "キュー {track} の曲間を {seconds}秒にしました",
+	"MIX_LOOP_ON": "キュー {track} をループします",
+	"MIX_LOOP_OFF": "キュー {track} のループを止めました",
 	"VOICE_COMMANDS_ON": "音声コマンドをオンにしました。「エムハラ」と呼んでからコマンドを言ってください。例:「エムハラ、スキップ」",
 	"VOICE_COMMANDS_OFF": "音声コマンドをオフにしました。このサーバーでは聞き取りをやめます。",
 	"VOICE_COMMANDS_ALREADY_ON": "音声コマンドはすでにオンです。",
@@ -450,11 +516,16 @@
 	"VOICE_SAY_LYRICS": "歌詞を探します。",
 	"VOICE_SAY_RELOCATE": "{position}に移動します。",
 	"VOICE_SAY_MIX_ADD": "ミックスに追加します。",
-	"VOICE_SAY_MIX_REMOVE": "ミックスのトラック{track}を削除します。",
-	"VOICE_SAY_MIX_SKIP": "ミックスのトラック{track}をスキップします。",
-	"VOICE_SAY_MIX_VOLUME": "ミックスのトラック{track}を{volume}パーセントにします。",
-	"VOICE_SAY_MIX_GAP": "ミックスのトラック{track}の曲間を{seconds}秒にします。",
-	"VOICE_SAY_MIX_LOOP": "ミックスのトラック{track}のループを切り替えます。",
-	"VOICE_SAY_MIX_MAIN": "キューの曲を{volume}パーセントにします。",
-	"VOICE_SAY_MIX_LIST": "ミックスを表示します。"
+	"VOICE_SAY_MIX_REMOVE": "ミックスのキュー{track}を削除します。",
+	"VOICE_SAY_MIX_SKIP": "ミックスのキュー{track}をスキップします。",
+	"VOICE_SAY_MIX_VOLUME": "ミックスのキュー{track}を{volume}パーセントにします。",
+	"VOICE_SAY_MIX_GAP": "ミックスのキュー{track}の曲間を{seconds}秒にします。",
+	"VOICE_SAY_MIX_LOOP": "ミックスのキュー{track}のループを切り替えます。",
+	"VOICE_SAY_MIX_MAIN": "キュー1を{volume}パーセントにします。",
+	"VOICE_SAY_MIX_LIST": "ミックスを表示します。",
+	"QUEUE_CHOICE_PLAYING": "キュー {queue}: {title}（待ち {queued} 曲）",
+	"QUEUE_CHOICE_IDLE": "キュー {queue}: 再生なし（待ち {queued} 曲）",
+	"QUEUE_CHOICE_NEW": "キュー {queue}: 新しいキューを作る",
+	"QUEUE_NATIVE_ONLY": "キュー 2 以降には Rust 音声バックエンド（`USE_RUST_VOICE`）が必要です",
+	"SET_QUEUE_VOLUME": "キュー {queue} の音量を {volume}% に設定しました"
 }

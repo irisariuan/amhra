@@ -1,5 +1,5 @@
 import type { CustomAudioPlayer } from "../custom";
-import { freeQueueNumber } from "./queuePlan";
+import { freeQueueNumber, MAX_QUEUES } from "./queuePlan";
 
 /**
  * A guild's queues past the first, by number.
@@ -28,13 +28,18 @@ export function* allExtraQueues(): Generator<CustomAudioPlayer> {
 }
 
 /**
- * A new queue for the guild, made by `make` under the lowest free number.
- * Null when the guild already has as many as it may.
+ * A new queue for the guild, made by `make` under `number`, or under the
+ * lowest free number when that is left out. Null when the number is taken or
+ * out of range, or the guild already has as many as it may.
  */
-export function addQueue(guildId: string, make: (n: number) => CustomAudioPlayer) {
+export function addQueue(
+	guildId: string,
+	number: number | undefined,
+	make: (n: number) => CustomAudioPlayer,
+) {
 	let queues = extras.get(guildId);
-	const n = freeQueueNumber(queues?.keys() ?? []);
-	if (n === null) return null;
+	const n = number ?? freeQueueNumber(queues?.keys() ?? []);
+	if (n === null || !Number.isInteger(n) || n < 2 || n > MAX_QUEUES || queues?.has(n)) return null;
 	if (!queues) {
 		queues = new Map();
 		extras.set(guildId, queues);

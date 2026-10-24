@@ -54,7 +54,7 @@ import {
 import { WebmOpusDemuxer } from "./webm";
 import { pickRadioTrack } from "./suggest";
 import { clampGap, gapBefore } from "./queuePlan";
-import { addQueue, allExtraQueues, extraQueues, removeQueue } from "./queues";
+import { addQueue, allExtraQueues, extraQueues, findQueue, removeQueue } from "./queues";
 import {
 	getNativeConnection,
 	joinVoiceNative,
@@ -214,9 +214,11 @@ export function createQueue(
 	guildId: string,
 	channel: Channel | null,
 	{ volume, gapMs, loop }: QueueOptions = {},
+	/** The number to give it, when it is free; the lowest free one otherwise. */
+	number?: number,
 ) {
 	if (!nativeVoiceActive()) return null;
-	return addQueue(guildId, (n) => {
+	return addQueue(guildId, number, (n) => {
 		const player = createAudioPlayer(guildId, channel, {}, n);
 		if (gapMs !== undefined) player.gapMs = clampGap(gapMs);
 		if (loop) player.customSetting.looping = true;
@@ -259,6 +261,12 @@ export function guildQueues(client: CustomClient, guildId: string): CustomAudioP
 
 interface GetAudioPlayerOption {
 	createPlayer: boolean;
+	/**
+	 * Which of the guild's queues, as a command's `queue` option names it;
+	 * queue 1 when null or left out. A queue past the first is only made with
+	 * the sidecar, which is the only backend that can play two at once.
+	 */
+	queue?: number | null;
 }
 
 export function getAudioPlayer(
@@ -267,13 +275,18 @@ export function getAudioPlayer(
 	channel: Channel | null,
 	language: Language,
 	option: GetAudioPlayerOption = { createPlayer: true },
-) {
-	const player = client.player.get(guildId) ?? null;
-
+): CustomAudioPlayer | null {
+	const queue = option.queue ?? 1;
+	let player = client.player.get(guildId) ?? null;
 	if (!player && option.createPlayer) {
-		const player = createAudioPlayer(guildId, channel, {});
+		// Made for queue 1 as well when another is asked for: the guild's own
+		// state (its volume, the leave sweep) lives on queue 1.
+		player = createAudioPlayer(guildId, channel, {});
 		client.player.set(guildId, player);
-		return player;
+	}
+	if (queue !== 1) {
+		player = findQueue(guildId, queue) ?? null;
+		if (!player && option.createPlayer) player = createQueue(guildId, channel, {}, queue);
 	}
 	if (channel) player?.setChannel(channel);
 	if (player && player.currentLanguage !== language) {

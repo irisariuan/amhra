@@ -48,3 +48,25 @@ export function indexChoices(labels: readonly string[], typed: string): IndexCho
 	}
 	return choices;
 }
+
+/**
+ * Suggestions for options whose values are numbers of their own rather than
+ * places in a list, such as a queue's number. Matched the same way as
+ * `indexChoices`, by the number's start or the label's text; the label is
+ * shown as it is.
+ */
+export function numberedChoices(
+	entries: readonly { value: number; label: string }[],
+	typed: string,
+): IndexChoice[] {
+	const query = typed.trim().toLowerCase();
+	const byNumber = /^\d+$/.test(query);
+	return entries
+		.filter(
+			({ value, label }) =>
+				!query ||
+				(byNumber ? String(value).startsWith(query) : label.toLowerCase().includes(query)),
+		)
+		.slice(0, MAX_CHOICES)
+		.map(({ value, label }) => ({ value, name: truncate(label, MAX_NAME_LENGTH) }));
+}

@@ -115,10 +115,29 @@ type Lookup = (name: string) => Command<SlashCommandBuilder> | undefined;
  * What the model is told about a command or an option, where the slash
  * command's own description would mislead it or says too little.
  */
+/** The `queue` option most commands share; see lib/voice/queueOption.ts. */
+const QUEUE_ONE = "which queue, by number, only when they name one; leave out for queue 1";
+const QUEUE_ALL = "which queue, by number, only when they name one; leave out to mean every queue";
+const QUEUE_TRACK = "which queue, by its number, 2 and up";
+
 const HINTS: Record<string, string> = {
 	resume: "Resume the paused music; also what a bare \"play\", with no song named, means",
 	"play.search": "the song to play, as they said it",
 	"play.next": "true to play it straight after the current song",
+	"play.queue": "which queue to play it on, by number, only when they name one; a number with no queue yet starts one",
+	"skip.queue": QUEUE_ONE,
+	"remove.queue": QUEUE_ONE,
+	"queue.queue": QUEUE_ONE,
+	"loop.queue": QUEUE_ONE,
+	"nowplaying.queue": QUEUE_ONE,
+	"skipnonmusic.queue": QUEUE_ONE,
+	"autoskipnonmusic.queue": QUEUE_ONE,
+	"relocate.queue": QUEUE_ONE,
+	"lyrics.queue": QUEUE_ONE,
+	"pause.queue": QUEUE_ALL,
+	"resume.queue": QUEUE_ALL,
+	"stop.queue": QUEUE_ALL,
+	"volume.queue": "which queue's own volume, by number, only when they name one; leave out for the whole bot's volume",
 	"skip.force": "true only if they ask to force it, with no vote",
 	"skip.amount": "how many songs to skip, when they say a number",
 	skipnonmusic: "Skip the part of the video playing that is not music, such as an intro or talking",
@@ -131,22 +150,21 @@ const HINTS: Record<string, string> = {
 	"volume.volume": "a percentage, 100 being normal; only a number they said",
 	"lyrics.search": "a song to look up instead of the one playing",
 	"relocate.position": "where in the song to play from, as seconds or M:SS",
-	mix: "Play tracks of songs or sounds on top of the queue's song, each track with its own queue and volume",
+	mix: "Manage the queues mixed in over queue 1 (queues 2 and up), each playing at once with its own songs and volume",
 	"mix.add.search": "the song or sound to mix in, as they said it",
-	"mix.add.track": "which mix track to queue it on, from 1; leave out for a new track",
+	"mix.add.queue": "which queue to put it on, by its number, 2 and up; leave out for a new one",
 	"mix.add.volume": "a percentage, 100 being normal; only a number they said",
-	"mix.add.gap": "seconds between the track's songs; only a number they said",
-	"mix.remove.track": "which mix track, from 1, in the order they were made",
-	"mix.remove.song": "which song in that track's queue, from 1; leave out to remove the whole track",
-	"mix.skip.track": "which mix track, from 1, in the order they were made",
-	"mix.volume.track": "which mix track, from 1, in the order they were made",
+	"mix.add.gap": "seconds between the queue's songs; only a number they said",
+	"mix.remove.queue": QUEUE_TRACK,
+	"mix.remove.song": "which song in that queue, from 1; leave out to remove the whole queue",
+	"mix.skip.queue": QUEUE_TRACK,
+	"mix.volume.queue": QUEUE_TRACK,
 	"mix.volume.volume": "a percentage, 100 being normal; only a number they said",
-	"mix.gap.track": "which mix track, from 1, in the order they were made",
+	"mix.gap.queue": QUEUE_TRACK,
 	"mix.gap.seconds": "seconds of silence between songs; only a number they said",
-	"mix.loop.track": "which mix track, from 1, in the order they were made",
+	"mix.loop.queue": QUEUE_TRACK,
 	"mix.loop.enabled": "true for on, false for off; leave out to toggle",
 	"mix.main.volume": "a percentage, 100 being normal; only a number they said",
-	"mix.swap.track": "which mix track, from 1, in the order they were made",
 };
 
 /** Options the model is not to set: they are for fixing things by hand. */

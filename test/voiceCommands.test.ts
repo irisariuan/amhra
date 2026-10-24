@@ -25,6 +25,7 @@ mock.module("../lib/voice/core", () => ({
 	getAudioPlayer: () => null,
 	getBotVoiceChannel: () => undefined,
 	getConnection: () => undefined,
+	guildQueues: () => [],
 	pauseAll: () => false,
 	unpauseAll: () => false,
 }));

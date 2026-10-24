@@ -17,7 +17,6 @@ import { nativeVoiceActive } from "../../lib/voice/native";
 import {
 	isFull,
 	mixTracks,
-	positionOf,
 	queueOnTrack,
 	removeSong,
 	removeTrack,
@@ -31,19 +30,16 @@ import {
 import { MAX_GAP_MS } from "../../lib/voice/queuePlan";
 import type { CustomAudioPlayer } from "../../lib/custom";
 import { offerTrackAlternatives } from "../../lib/voice/searchPick";
+import { QUEUE_OPTION, queueOf, queueOption, respondQueues } from "../../lib/voice/queueOption";
 
 /** Songs shown under each track by `/mix list`, so a long queue fits a message. */
 const LIST_QUEUE_SHOWN = 5;
 
+/** Which mix track: a queue past the first, by its number. */
 const trackOption = (description: string, required: boolean) => (opt: SlashCommandIntegerOption) =>
-	opt
-		.setName("track")
-		.setDescription(description)
-		.setMinValue(1)
-		.setRequired(required)
-		.setAutocomplete(true);
+	queueOption(description)(opt).setMinValue(2).setRequired(required);
 
-const TRACK = "The track's number, as /mix list shows it";
+const TRACK = "The queue's number, 2 and up, as /mix list shows it";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -60,7 +56,7 @@ export default {
 						.setRequired(true),
 				)
 				.addIntegerOption(
-					trackOption("The track to queue it on; a new track if left empty", false),
+					trackOption("The queue to put it on, 2 and up; a new queue if left empty", false),
 				)
 				.addNumberOption((opt) =>
 					opt
@@ -149,20 +145,18 @@ export default {
 		.addSubcommand((sub) =>
 			sub.setName("list").setDescription("Show the mix's tracks and what each has queued"),
 		),
-	async autocomplete({ interaction }) {
+	async autocomplete({ interaction, client, language }) {
 		const guildId = interaction.guildId;
 		const focused = interaction.options.getFocused(true);
 		if (focused.name === "song") {
-			const track = guildId ? trackAt(guildId, interaction.options.getInteger("track") ?? 0) : undefined;
+			const track = guildId ? trackAt(guildId, queueOf(interaction) ?? 0) : undefined;
 			const labels = (track?.queue ?? []).map((song) => song.title ?? song.url);
 			return interaction.respond(indexChoices(labels, String(focused.value)));
 		}
-		const labels = (guildId ? mixTracks(guildId) : []).map((track) => {
-			const title = track.isPlaying ? track.nowPlaying?.title : (track.queue[0]?.title ?? track.queue[0]?.url);
-			const queued = track.queue.length ? ` +${track.queue.length}` : "";
-			return `${title ?? "—"} (${trackVolume(track)}%)${queued}`;
+		return respondQueues(interaction, client, language, {
+			mixOnly: true,
+			offerNew: interaction.options.getSubcommand(false) === "add",
 		});
-		return interaction.respond(indexChoices(labels, String(focused.value)));
 	},
 	async execute({ interaction, client, language }) {
 		if (!interaction.guild)
@@ -211,10 +205,9 @@ export default {
 			const input = interaction.options.getString("search", true);
 			const volume = interaction.options.getNumber("volume");
 			const gap = interaction.options.getNumber("gap");
-			const position = interaction.options.getInteger("track");
-			const track = position === null ? undefined : trackAt(guildId, position);
-			if (position !== null && !track)
-				return interaction.reply(languageText("mix_no_track", language, { index: position }));
+			// A number that is not a queue yet starts one under it
+			const number = queueOf(interaction) ?? undefined;
+			const track = number === undefined ? undefined : trackAt(guildId, number);
 			if (isPlaylist(input))
 				return interaction.reply(languageText("mix_video_only", language));
 			if (!track && isFull(guildId))
@@ -243,6 +236,7 @@ export default {
 				volume: volume ?? undefined,
 				gapMs: gap === null ? undefined : gap * 1000,
 				channel: interaction.channel,
+				number,
 			});
 			if ("error" in result) {
 				return interaction.editReply(
@@ -258,7 +252,7 @@ export default {
 				if (volume !== null) setTrackVolume(result.track, volume);
 				if (gap !== null) setTrackGap(result.track, gap * 1000);
 			}
-			const trackNumber = positionOf(result.track);
+			const trackNumber = result.track.queueId;
 			const queuedAt = result.track.queue.indexOf(result.song);
 			const playsNow = !result.track.isPlaying && queuedAt === 0;
 			dcb.log(`Queued ${result.song.url} on queue ${result.track.queueId} in ${guildId} from /mix`);
@@ -300,7 +294,7 @@ export default {
 			return interaction.reply(languageText("mix_main_set", language, { volume }));
 		}
 
-		const index = interaction.options.getInteger("track", true);
+		const index = interaction.options.getInteger(QUEUE_OPTION, true);
 		const track = trackAt(guildId, index);
 		if (!track)
 			return interaction.reply(languageText("mix_no_track", language, { index }));
@@ -360,8 +354,8 @@ function listText(guildId: string, mainVolume: number, language: Language) {
 	const tracks = mixTracks(guildId);
 	const lines = [languageText("mix_main_volume", language, { volume: mainVolume })];
 	if (!tracks.length) lines.push(languageText("mix_empty", language));
-	tracks.forEach((track, i) => {
-		lines.push("", trackHeader(track, i + 1, language));
+	tracks.forEach((track) => {
+		lines.push("", trackHeader(track, track.queueId, language));
 		lines.push(trackState(track, language));
 		track.queue.slice(0, LIST_QUEUE_SHOWN).forEach((song, at) =>
 			lines.push(

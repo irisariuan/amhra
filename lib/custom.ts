@@ -461,8 +461,9 @@ export class CustomAudioPlayer extends AudioPlayer {
 		if (send && this.nativePlayback) nativeRemoveQueue(this.guildId, this.sidecarQueue);
 	}
 
-	cleanStop() {
-		if (this.hardStop()) {
+	/** Stop and clear the queue. On queue 1, every other queue goes too, unless `keepMix`. */
+	cleanStop({ keepMix = false } = {}) {
+		if (this.hardStop({ keepMix })) {
 			this.reset();
 			return true;
 		}

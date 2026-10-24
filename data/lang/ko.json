@@ -120,6 +120,9 @@
 				},
 				"next": {
 					"description": "다음에 재생할 곡으로 추가 (이미 재생 중인 곡이 있는 경우)"
+				},
+				"queue": {
+					"description": "재생할 대기열, 비워 두면 1; 새 번호를 쓰면 대기열을 하나 더 만듭니다"
 				}
 			}
 		},
@@ -132,6 +135,9 @@
 				},
 				"force": {
 					"description": "음악이 아닌 부분을 건너뜁니다"
+				},
+				"queue": {
+					"description": "대기열 번호, 비워 두면 1"
 				}
 			}
 		},
@@ -141,6 +147,9 @@
 			"options": {
 				"position": {
 					"description": "변경할 위치 (초 또는 (HH:)MM:SS 형식)"
+				},
+				"queue": {
+					"description": "대기열 번호, 비워 두면 1"
 				}
 			}
 		},
@@ -150,6 +159,9 @@
 			"options": {
 				"index": {
 					"description": "대기열에서 노래의 인덱스 (1부터 시작)"
+				},
+				"queue": {
+					"description": "대기열 번호, 비워 두면 1"
 				}
 			}
 		},
@@ -159,20 +171,38 @@
 			"options": {
 				"page": {
 					"description": "페이지 번호"
+				},
+				"queue": {
+					"description": "대기열 번호, 비워 두면 1"
 				}
 			}
 		},
 		"pause": {
 			"name": "일시정지",
-			"description": "현재 노래를 일시 중지합니다"
+			"description": "현재 노래를 일시 중지합니다",
+			"options": {
+				"queue": {
+					"description": "이 대기열만, 비워 두면 모든 대기열"
+				}
+			}
 		},
 		"resume": {
 			"name": "재개",
-			"description": "일시 중지된 노래를 다시 시작합니다"
+			"description": "일시 중지된 노래를 다시 시작합니다",
+			"options": {
+				"queue": {
+					"description": "이 대기열만, 비워 두면 모든 대기열"
+				}
+			}
 		},
 		"stop": {
 			"name": "중지",
-			"description": "음악을 중지하고 대기열을 비웁니다"
+			"description": "음악을 중지하고 대기열을 비웁니다",
+			"options": {
+				"queue": {
+					"description": "이 대기열만, 비워 두면 모든 대기열"
+				}
+			}
 		},
 		"volume": {
 			"name": "볼륨",
@@ -180,6 +210,9 @@
 			"options": {
 				"volume": {
 					"description": "볼륨 레벨 (0-500)"
+				},
+				"queue": {
+					"description": "이 대기열 자체의 음량만, 비워 두면 봇 전체 음량"
 				}
 			}
 		},
@@ -189,6 +222,9 @@
 			"options": {
 				"enabled": {
 					"description": "반복 모드를 설정합니다"
+				},
+				"queue": {
+					"description": "대기열 번호, 비워 두면 1"
 				}
 			}
 		},
@@ -202,7 +238,12 @@
 		},
 		"nowplaying": {
 			"name": "현재재생중",
-			"description": "현재 재생 중인 노래를 표시합니다"
+			"description": "현재 재생 중인 노래를 표시합니다",
+			"options": {
+				"queue": {
+					"description": "대기열 번호, 비워 두면 1"
+				}
+			}
 		},
 		"version": {
 			"name": "버전",
@@ -218,7 +259,12 @@
 		},
 		"skipnonmusic": {
 			"name": "음악제외건너뛰기",
-			"description": "현재 음악이 아닌 부분을 건너뜁니다"
+			"description": "현재 음악이 아닌 부분을 건너뜁니다",
+			"options": {
+				"queue": {
+					"description": "대기열 번호, 비워 두면 1"
+				}
+			}
 		},
 		"join": {
 			"name": "참여",
@@ -243,6 +289,9 @@
 				"enabled": {
 					"name": "활성화",
 					"description": "음악 외 모드 자동 건너뛰기 설정"
+				},
+				"queue": {
+					"description": "대기열 번호, 비워 두면 1"
 				}
 			}
 		},
@@ -254,6 +303,9 @@
 				},
 				"delay": {
 					"description": "이 곡의 가사를 모두에게 이만큼(밀리초) 늦게 표시합니다 (음수는 빠르게)"
+				},
+				"queue": {
+					"description": "대기열 번호, 비워 두면 1"
 				}
 			}
 		},
@@ -355,9 +407,9 @@
 	"SCHEDULE_NOT_FOUND": "예약 재생 #{index} 이(가) 없습니다",
 	"SCHEDULE_FROM_DASHBOARD": "대시보드에서",
 	"MIX_NATIVE_ONLY": "곡을 믹스하려면 Rust 음성 백엔드(`USE_RUST_VOICE`)가 필요합니다",
-	"MIX_MAIN_VOLUME": "대기열 곡 음량: {volume}%",
-	"MIX_EMPTY": "믹스 중인 트랙이 없습니다",
-	"MIX_TRACK_HEADER": "**트랙 {index}** · {volume}% · 곡 간격 {gap}초",
+	"MIX_MAIN_VOLUME": "대기열 1 음량: {volume}%",
+	"MIX_EMPTY": "믹스 중인 대기열이 없습니다",
+	"MIX_TRACK_HEADER": "**대기열 {index}** · {volume}% · 곡 간격 {gap}초",
 	"MIX_TRACK_LOOPING": " · 반복 중",
 	"MIX_TRACK_PLAYING": "▶ **[{title}]({url})** `{time}`",
 	"MIX_TRACK_LOADING": "**[{title}]({url})** 불러오는 중",
@@ -366,23 +418,23 @@
 	"MIX_TRACK_QUEUE_ITEM": "`{index}.` [{title}]({url})",
 	"MIX_TRACK_QUEUE_MORE": "…외 {count}곡",
 	"MIX_VIDEO_ONLY": "재생목록이 아닌 단일 동영상만 믹스할 수 있습니다",
-	"MIX_FULL": "더 이상 트랙을 추가할 수 없습니다. 기존 트랙에 추가하거나 트랙을 제거하세요",
-	"MIX_QUEUE_FULL": "해당 트랙의 대기열이 가득 찼습니다",
+	"MIX_FULL": "더 이상 대기열을 추가할 수 없습니다. 기존 대기열에 추가하거나 대기열을 제거하세요",
+	"MIX_QUEUE_FULL": "해당 대기열이 가득 찼습니다",
 	"MIX_NOT_FOUND": "해당 동영상을 찾을 수 없습니다",
-	"MIX_ADDED_TRACK": "**[{title}]({url})** 을(를) 새 트랙 {track}에 {volume}% 로 믹스했습니다",
-	"MIX_PLAYING_ON": "트랙 {track}에서 **[{title}]({url})** 을(를) 재생합니다",
-	"MIX_QUEUED": "**[{title}]({url})** 을(를) 트랙 {track}의 {position}번째로 추가했습니다",
-	"MIX_MAIN_SET": "믹스 내 대기열 곡 음량을 {volume}% 로 설정했습니다",
-	"MIX_NO_TRACK": "믹스 트랙 #{index} 이(가) 없습니다",
-	"MIX_NO_SONG": "트랙 {track}의 대기열에 #{index} 곡이 없습니다",
-	"MIX_TRACK_REMOVED": "믹스 트랙 {track}을(를) 제거했습니다",
-	"MIX_SONG_REMOVED": "**[{title}]({url})** 을(를) 트랙 {track}에서 뺐습니다",
-	"MIX_SKIPPED": "트랙 {track}을(를) 다음 곡으로 넘겼습니다",
-	"MIX_SKIP_NOTHING": "트랙 {track}에 건너뛸 곡이 없습니다",
-	"MIX_VOLUME_SET": "트랙 {track} 음량을 {volume}% 로 설정했습니다",
-	"MIX_GAP_SET": "트랙 {track}의 곡 간격을 {seconds}초로 설정했습니다",
-	"MIX_LOOP_ON": "트랙 {track}이(가) 대기열을 반복 재생합니다",
-	"MIX_LOOP_OFF": "트랙 {track} 반복을 껐습니다",
+	"MIX_ADDED_TRACK": "**[{title}]({url})** 을(를) 새 대기열 {track}에 {volume}% 로 믹스했습니다",
+	"MIX_PLAYING_ON": "대기열 {track}에서 **[{title}]({url})** 을(를) 재생합니다",
+	"MIX_QUEUED": "**[{title}]({url})** 을(를) 대기열 {track}의 {position}번째로 추가했습니다",
+	"MIX_MAIN_SET": "믹스 내 대기열 1 음량을 {volume}% 로 설정했습니다",
+	"MIX_NO_TRACK": "믹스에 대기열 {index}이(가) 없습니다",
+	"MIX_NO_SONG": "대기열 {track}에 #{index} 곡이 없습니다",
+	"MIX_TRACK_REMOVED": "믹스에서 대기열 {track}을(를) 제거했습니다",
+	"MIX_SONG_REMOVED": "**[{title}]({url})** 을(를) 대기열 {track}에서 뺐습니다",
+	"MIX_SKIPPED": "대기열 {track}을(를) 다음 곡으로 넘겼습니다",
+	"MIX_SKIP_NOTHING": "대기열 {track}에 건너뛸 곡이 없습니다",
+	"MIX_VOLUME_SET": "대기열 {track} 음량을 {volume}% 로 설정했습니다",
+	"MIX_GAP_SET": "대기열 {track}의 곡 간격을 {seconds}초로 설정했습니다",
+	"MIX_LOOP_ON": "대기열 {track}을(를) 반복합니다",
+	"MIX_LOOP_OFF": "대기열 {track} 반복을 껐습니다",
 	"VOICE_COMMANDS_ON": "음성 명령을 켰습니다. \"엠하라\"라고 부른 뒤 명령을 말하세요. 예: \"엠하라, 다음 곡\"",
 	"VOICE_COMMANDS_OFF": "음성 명령을 껐습니다. 이 서버에서 더 이상 듣지 않습니다.",
 	"VOICE_COMMANDS_ALREADY_ON": "음성 명령이 이미 켜져 있습니다.",
@@ -439,11 +491,16 @@
 	"VOICE_SAY_LYRICS": "가사를 찾습니다.",
 	"VOICE_SAY_RELOCATE": "{position} 지점으로 이동합니다.",
 	"VOICE_SAY_MIX_ADD": "믹스에 추가합니다.",
-	"VOICE_SAY_MIX_REMOVE": "믹스 트랙 {track}을 제거합니다.",
-	"VOICE_SAY_MIX_SKIP": "믹스 트랙 {track}을 건너뜁니다.",
-	"VOICE_SAY_MIX_VOLUME": "믹스 트랙 {track}을 {volume}퍼센트로 설정합니다.",
-	"VOICE_SAY_MIX_GAP": "믹스 트랙 {track}의 곡 간격을 {seconds}초로 합니다.",
-	"VOICE_SAY_MIX_LOOP": "믹스 트랙 {track}의 반복을 바꿉니다.",
-	"VOICE_SAY_MIX_MAIN": "재생 목록 곡을 {volume}퍼센트로 설정합니다.",
-	"VOICE_SAY_MIX_LIST": "믹스 목록입니다."
+	"VOICE_SAY_MIX_REMOVE": "믹스 대기열 {track}을 제거합니다.",
+	"VOICE_SAY_MIX_SKIP": "믹스 대기열 {track}을 건너뜁니다.",
+	"VOICE_SAY_MIX_VOLUME": "믹스 대기열 {track}을 {volume}퍼센트로 설정합니다.",
+	"VOICE_SAY_MIX_GAP": "믹스 대기열 {track}의 곡 간격을 {seconds}초로 합니다.",
+	"VOICE_SAY_MIX_LOOP": "믹스 대기열 {track}의 반복을 바꿉니다.",
+	"VOICE_SAY_MIX_MAIN": "대기열 1을 {volume}퍼센트로 설정합니다.",
+	"VOICE_SAY_MIX_LIST": "믹스 목록입니다.",
+	"QUEUE_CHOICE_PLAYING": "대기열 {queue}: {title} (대기 {queued}곡)",
+	"QUEUE_CHOICE_IDLE": "대기열 {queue}: 재생 중인 곡 없음 (대기 {queued}곡)",
+	"QUEUE_CHOICE_NEW": "대기열 {queue}: 새 대기열 만들기",
+	"QUEUE_NATIVE_ONLY": "2번 이후의 대기열은 Rust 음성 백엔드(`USE_RUST_VOICE`)가 필요합니다",
+	"SET_QUEUE_VOLUME": "대기열 {queue} 음량을 {volume}%(으)로 설정했습니다"
 }

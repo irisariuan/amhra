@@ -7,11 +7,16 @@ import {
 } from "../../lib/voice/core";
 import { type Command } from "../../lib/interaction";
 import { languageText } from "../../lib/language";
+import { queueOf, queueOption, respondQueues } from "../../lib/voice/queueOption";
 
 export default {
 	data: new SlashCommandBuilder()
 		.setName("skipnonmusic")
-		.setDescription("Skip current non-music part"),
+		.setDescription("Skip current non-music part")
+		.addIntegerOption(queueOption()),
+	async autocomplete({ interaction, client, language }) {
+		return respondQueues(interaction, client, language);
+	},
 	async execute({ interaction, client, language }) {
 		if (!interaction.guild)
 			return await interaction.reply({
@@ -41,9 +46,7 @@ export default {
 			interaction.guild.id,
 			interaction.channel,
 			language,
-			{
-				createPlayer: false,
-			},
+			{ createPlayer: false, queue: queueOf(interaction) },
 		);
 		if (!player || !player.isPlaying)
 			return await interaction.reply(

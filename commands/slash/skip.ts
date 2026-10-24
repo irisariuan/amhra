@@ -14,6 +14,7 @@ import {
 import { type Command } from "../../lib/interaction";
 import { languageText } from "../../lib/language";
 import { globalApp } from "../../lib/misc";
+import { queueOf, queueOption, respondQueues } from "../../lib/voice/queueOption";
 
 const VOTE_BUTTON_ID = "skip_vote";
 
@@ -33,7 +34,11 @@ export default {
 				.setDescription("The number of songs to skip")
 				.setRequired(false)
 				.setMinValue(1),
-		),
+		)
+		.addIntegerOption(queueOption()),
+	async autocomplete({ interaction, client, language }) {
+		return respondQueues(interaction, client, language);
+	},
 	async execute({ interaction, client, language }) {
 		if (!interaction.guild)
 			return await interaction.reply({
@@ -65,7 +70,7 @@ export default {
 			interaction.guild.id,
 			interaction.channel,
 			language,
-			{ createPlayer: false },
+			{ createPlayer: false, queue: queueOf(interaction) },
 		);
 		if (!player || !player.isPlaying)
 			return await interaction.reply(

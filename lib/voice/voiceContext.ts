@@ -39,9 +39,16 @@ export interface PlaybackState {
 	autoSuggest: boolean;
 	autoSkipNonMusic: boolean;
 	crossfadeMs: number;
-	/** Tracks mixed in over the queue's song, in their numbered order. */
-	mix: { playing: string | null; volume: number; queued: number; gapMs: number; loop: boolean }[];
-	/** Percent, the queue's song in the mix. */
+	/** The queues mixed in over queue 1, by number. */
+	mix: {
+		queue: number;
+		playing: string | null;
+		volume: number;
+		queued: number;
+		gapMs: number;
+		loop: boolean;
+	}[];
+	/** Percent, queue 1's own level in the mix. */
 	mixMainVolume: number;
 }
 
@@ -93,13 +100,13 @@ export function describePlayback(state: PlaybackState | null): string {
 		`Loop: ${onOff(state.loop)}. Suggesting songs when the queue runs out: ${onOff(state.autoSuggest)}. Skipping non-music parts automatically: ${onOff(state.autoSkipNonMusic)}. Crossfade: ${state.crossfadeMs ? `${state.crossfadeMs / 1000}s` : "off"}.`,
 	);
 	if (state.mix.length) {
-		lines.push(`Mix tracks over the queue's song (at ${Math.round(state.mixMainVolume)}%):`);
-		state.mix.forEach((track, index) => {
+		lines.push(`Queues mixed in over queue 1 (queue 1 at ${Math.round(state.mixMainVolume)}%):`);
+		state.mix.forEach((track) => {
 			const playing = track.playing ? `"${track.playing}"` : "nothing playing";
 			const queued = track.queued ? `, ${track.queued} queued` : "";
 			const gap = track.gapMs ? `, ${track.gapMs / 1000}s between songs` : "";
 			lines.push(
-				`${index + 1}. ${playing} at ${Math.round(track.volume)}%${queued}${gap}${track.loop ? ", looping" : ""}`,
+				`Queue ${track.queue}: ${playing} at ${Math.round(track.volume)}%${queued}${gap}${track.loop ? ", looping" : ""}`,
 			);
 		});
 	}
@@ -180,6 +187,7 @@ export async function playbackState(
 			autoSkipNonMusic: player.customSetting.autoSkipSegment ?? false,
 			crossfadeMs: player.native ? player.crossfadeMs : 0,
 			mix: (mix ?? []).map((track) => ({
+				queue: track.queueId,
 				playing: track.isPlaying ? (track.nowPlaying?.title ?? null) : null,
 				volume: Math.round(track.volume * 100),
 				queued: track.queue.length,
