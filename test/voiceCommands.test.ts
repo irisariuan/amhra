@@ -25,6 +25,8 @@ mock.module("../lib/voice/core", () => ({
 	getAudioPlayer: () => null,
 	getBotVoiceChannel: () => undefined,
 	getConnection: () => undefined,
+	pauseAll: () => false,
+	unpauseAll: () => false,
 }));
 type Handler = Command<import("discord.js").SlashCommandBuilder>;
 const pause: Handler = (await import("../commands/slash/pause")).default;

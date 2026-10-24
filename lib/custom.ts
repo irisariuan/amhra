@@ -18,19 +18,26 @@ import {
 	armNext,
 	nativePause,
 	nativePlay,
+	nativeRemoveQueue,
 	nativeResume,
 	nativeSeek,
+	nativeSetQueueVolume,
 	nativeSetVolume,
 	nativeSkip,
 	nativeStop,
 	nativeSetFades,
 	nativeVoiceActive,
-	findMix,
 } from "./voice/native";
 import { fadeSettings } from "./voice/sidecar";
 import { nextFades, syncedFades, type Fades } from "./voice/fades";
 import { NativePlayback, shouldSendPlay } from "./voice/nativePlan";
-import { MAX_TRACKS } from "./voice/mixPlan";
+import {
+	dueIn,
+	gainFromPercent,
+	MAX_QUEUES,
+	type QueueWait,
+} from "./voice/queuePlan";
+import { dropExtraQueues, extraQueues } from "./voice/queues";
 import { prefetch } from "./voice/stream";
 import { Language } from "./interaction";
 
@@ -100,6 +107,8 @@ export interface SongDataPacket {
 	 * sidecar can do it, so a dashboard should hide the controls otherwise.
 	 */
 	canMix: boolean;
+	/** Silence the queue leaves between its songs, in milliseconds. */
+	gapMs: number;
 	/**
 	 * Tracks playing on top of the queue, each with a queue of its own.
 	 * Volumes are linear, like `volume`; times are milliseconds, measured as
@@ -160,6 +169,15 @@ export interface QueueItem {
 	 * picks up where it was interrupted rather than from the top.
 	 */
 	seek?: number;
+	/**
+	 * Silence before it in place of the queue's gap: set by where it was put
+	 * on the dashboard's timeline, to line it up with another queue.
+	 */
+	gapBeforeMs?: number;
+	/** Known when it was queued from a lookup, for a timeline that needs lengths. */
+	title?: string;
+	/** Milliseconds; absent or null when the length was not known. */
+	durationMs?: number | null;
 }
 
 export interface AudioPlayerSetting {
@@ -171,6 +189,29 @@ export interface AudioPlayerSetting {
 
 export class CustomAudioPlayer extends AudioPlayer {
 	guildId: string;
+	/**
+	 * Which of the guild's queues this is. Queue 1 is the one `/play` fills and
+	 * lives in `client.player`; the others are mixed in over it by the
+	 * sidecar, each a full player like this one (lib/voice/queues.ts).
+	 */
+	readonly queueId: number;
+	/** Silence between one song ending and the next starting. */
+	gapMs: number;
+	/**
+	 * Since when, and after what, the queue has been waiting for its next
+	 * song: a gap or a lead-in being waited out. Ended by the sweep in
+	 * lib/voice/core.ts once the song is due.
+	 */
+	wait: QueueWait | null;
+	/** The track ending now was skipped, which cuts the gap after it short. */
+	skipping: boolean;
+	/** Set once the queue has been dropped, so a fetch still running for it plays nothing. */
+	closed: boolean;
+	/**
+	 * Queue 1's own level in percent, under `volume`, which on queue 1 is the
+	 * whole guild's. On the other queues `volume` is their own level already.
+	 */
+	mainVolume: number;
 
 	volume: number;
 	isMuting: boolean;
@@ -272,9 +313,16 @@ export class CustomAudioPlayer extends AudioPlayer {
 		guildId: string,
 		channel: Channel | null = null,
 		options?: CreateAudioPlayerOptions,
+		queueId = 1,
 	) {
 		super(options);
 		this.guildId = guildId;
+		this.queueId = queueId;
+		this.gapMs = 0;
+		this.wait = null;
+		this.skipping = false;
+		this.closed = false;
+		this.mainVolume = 100;
 		this.nativePlayback = nativeVoiceActive() ? new NativePlayback() : null;
 
 		const fades = fadeSettings();
@@ -311,6 +359,11 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.customSetting = {};
 	}
 
+	/** This queue's name in the sidecar. */
+	get sidecarQueue() {
+		return String(this.queueId);
+	}
+
 	setChannel(channel?: Channel | null) {
 		this.channel = channel ?? null;
 	}
@@ -332,8 +385,24 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 * all, so this is the one place that decides between the two.
 	 */
 	private applyGain(gain: number) {
-		if (this.nativePlayback) return nativeSetVolume(this.guildId, gain);
-		this.nowPlaying?.volume?.setVolume(gain);
+		if (!this.nativePlayback) return this.nowPlaying?.volume?.setVolume(gain);
+		// Queue 1's volume is the whole guild's, as it was before there were
+		// other queues; theirs is their own, under it.
+		if (this.queueId === 1) return nativeSetVolume(this.guildId, gain);
+		nativeSetQueueVolume(this.guildId, this.sidecarQueue, gain);
+	}
+
+	/** What the backend is given for a volume: the configured boost applies once, on the guild's. */
+	private gainFor(volume: number) {
+		if (this.isMuting) return 0;
+		return this.queueId === 1 ? volume * (setting.VOLUME_MODIFIER ?? 1) : volume;
+	}
+
+	/** Queue 1's own level within the guild's sound, in percent. */
+	setMainVolume(volume: number) {
+		this.mainVolume = volume;
+		if (this.nativePlayback)
+			nativeSetQueueVolume(this.guildId, this.sidecarQueue, gainFromPercent(volume));
 	}
 
 	resetAll() {
@@ -354,10 +423,10 @@ export class CustomAudioPlayer extends AudioPlayer {
 		const wasPlaying = this.isPlaying;
 		this.nativePlayback.armed = null;
 		this.nativePlayback.promoted = null;
-		// Forgotten before the sidecar drops the layers, so their reports find
-		// no track to move on to its next song.
-		if (!keepMix) findMix(this.guildId)?.clear();
-		nativeStop(this.guildId, { keepLayers: keepMix });
+		this.wait = null;
+		nativeStop(this.guildId, this.sidecarQueue);
+		// Stopping queue 1 outright stops the guild: the other queues go too.
+		if (!keepMix && this.queueId === 1) dropExtraQueues(this.guildId);
 		return wasPlaying;
 	}
 
@@ -376,7 +445,20 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 		this.startTime = 0;
 		this.startFrom = 0;
+		this.wait = null;
+		this.skipping = false;
 		this.nativePlayback?.clear();
+	}
+
+	/**
+	 * Drop this queue, one past the first: silence it and forget everything
+	 * on it. `send` is left off when the sidecar's session is already gone.
+	 */
+	close({ send = true } = {}) {
+		this.closed = true;
+		this.clearSongTimeouts();
+		this.reset();
+		if (send && this.nativePlayback) nativeRemoveQueue(this.guildId, this.sidecarQueue);
 	}
 
 	cleanStop() {
@@ -401,7 +483,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 * `wasPlaying` came back false and the reset never ran.
 	 */
 	endPlayback() {
-		// The mix's tracks have queues of their own, and play on without this one.
+		// The other queues play on without this one.
 		this.hardStop({ keepMix: true });
 		this.resetPlaying();
 		this.isPaused = false;
@@ -444,10 +526,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 		if (!item) return null;
 		if (item.repeating) {
 			// The repeat starts from the top; only this play resumes
-			this.queue.push({
-				repeating: true,
-				url: item.url,
-			});
+			const { seek: _seek, ...again } = item;
+			this.queue.push(again);
 		}
 		return item;
 	}
@@ -483,11 +563,9 @@ export class CustomAudioPlayer extends AudioPlayer {
 				seek: Math.floor(position / 1000),
 			});
 		}
-		const wasPaused = this.isPaused;
+		// A cut-in is meant to be heard, and is: both backends end a queue's
+		// pause when a new track starts on it.
 		this.playResource(resource);
-		// A cut-in is meant to be heard. The discord.js player starts the new
-		// resource regardless; the sidecar keeps a guild's pause across tracks.
-		if (wasPaused && this.nativePlayback) nativeResume(this.guildId);
 		return resumed;
 	}
 
@@ -500,6 +578,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.nowPlaying = resource;
 		this.isPlaying = true;
 		this.isPaused = false;
+		this.wait = null;
 
 		this.pauseCounter = 0;
 		this.startFrom = resource.startFrom ?? 0;
@@ -511,9 +590,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		} else if (resource.resource) {
 			this.play(resource.resource);
 		}
-		this.applyGain(
-			(this.isMuting ? 0 : this.volume) * (setting.VOLUME_MODIFIER ?? 1),
-		);
+		this.applyGain(this.gainFor(this.volume));
 
 		this.clearSongTimeouts();
 		this.updateSongTimeouts();
@@ -542,15 +619,18 @@ export class CustomAudioPlayer extends AudioPlayer {
 		const promoted = playback.takePromotion();
 		if (shouldSendPlay(promoted, trackId, startMs, Date.now())) {
 			playback.armed = null;
-			nativePlay(this.guildId, trackId, startMs);
+			nativePlay(this.guildId, this.sidecarQueue, trackId, startMs);
 		}
 		armNext(this);
 	}
 
 	setVolume(volume: number) {
 		this.volume = volume;
-		if (this.isPlaying && this.nowPlaying && !this.isMuting) {
-			this.applyGain(volume * (setting.VOLUME_MODIFIER ?? 1));
+		// A queue past the first may be set before it plays anything: its
+		// level is its own, and the sidecar keeps it for the next track.
+		const idleQueue = this.queueId !== 1 && this.nativePlayback;
+		if ((idleQueue || (this.isPlaying && this.nowPlaying)) && !this.isMuting) {
+			this.applyGain(this.gainFor(volume));
 		}
 	}
 
@@ -593,7 +673,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 	/** Send the current fades to the sidecar, if it is the one playing. */
 	pushFades() {
 		if (!this.nativePlayback) return;
-		nativeSetFades(this.guildId, this.crossfadeMs, this.skipFadeMs);
+		nativeSetFades(this.guildId, this.sidecarQueue, this.crossfadeMs, this.skipFadeMs);
 	}
 
 	/**
@@ -608,7 +688,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 			// The sidecar plays from an indexed cache file, or from a stream it
 			// keeps whole while the track is loaded, so every track it can play
 			// at all, it can seek in — ahead of the download too, by waiting.
-			nativeSeek(this.guildId, seconds * 1000);
+			nativeSeek(this.guildId, this.sidecarQueue, seconds * 1000);
 			this.nativePlayback.anchorAt(seconds * 1000, Date.now());
 		} else {
 			const stream = this.nowPlaying.volume;
@@ -666,35 +746,83 @@ export class CustomAudioPlayer extends AudioPlayer {
 			skipToTimestamp: this.currentSegment()?.segment[1] ?? null,
 			canMix: this.native,
 			mix: this.mixData(),
+			gapMs: this.gapMs,
 		};
 	}
 
+	/** The guild's other queues, as the dashboard's mix lanes. */
 	private mixData(): SongDataPacket["mix"] {
-		const mix = findMix(this.guildId);
-		const now = Date.now();
-		const song = ({ title, url, durationMs, gapBeforeMs }: MixSongData) => ({
-			title,
-			url,
-			durationMs,
-			gapBeforeMs: gapBeforeMs ?? null,
-		});
 		return {
-			mainVolume: (mix?.mainVolume ?? 100) / 100,
-			maxTracks: MAX_TRACKS,
-			tracks: (mix?.list() ?? []).map((track) => ({
-				id: track.id,
-				volume: track.volume / 100,
-				gapMs: track.gapMs,
-				loop: track.loop,
-				playing: track.playing
-					? { ...song(track.playing), positionMs: mix?.position(track, now) ?? 0 }
-					: null,
-				loading: track.loading ? song(track.loading) : null,
-				queue: track.queue.map(song),
-				dueInMs: mix?.dueIn(track, now) ?? null,
-			})),
+			mainVolume: this.mainVolume / 100,
+			maxTracks: MAX_QUEUES - 1,
+			tracks: extraQueues(this.guildId).map((queue) => queue.laneData()),
 		};
 	}
+
+	/** This queue as one lane of the mix. */
+	private laneData(): SongDataPacket["mix"]["tracks"][number] {
+		const now = this.nowPlaying;
+		const song = (item: QueueItem): MixSongData => ({
+			title: item.title ?? item.url,
+			url: item.url,
+			durationMs: item.durationMs ?? null,
+			gapBeforeMs: item.gapBeforeMs ?? null,
+		});
+		return {
+			id: this.sidecarQueue,
+			volume: this.volume,
+			gapMs: this.gapMs,
+			loop: this.customSetting.looping ?? false,
+			playing:
+				this.isPlaying && now
+					? {
+							title: now.title,
+							url: now.url,
+							durationMs: now.details.durationInSec * 1000 || null,
+							gapBeforeMs: null,
+							positionMs: this.getCurrentSongPosition() ?? 0,
+						}
+					: null,
+			loading: null,
+			// A looping queue keeps its playing song at the back as well; the
+			// lane shows it once, where it is playing.
+			queue: this.queue.map(song),
+			dueInMs: this.dueInMs(),
+		};
+	}
+
+	/** How long until the next song, while a gap or lead-in is being waited out. */
+	dueInMs() {
+		return dueIn(
+			this.wait,
+			this.gapMs,
+			this.queue[0],
+			Date.now(),
+			this.isPaused ? this.pauseTimestamp : null,
+		);
+	}
+
+	/**
+	 * Whether this queue's next song is due: it is waiting, not paused, and
+	 * its gap has run out.
+	 */
+	isDue(now: number) {
+		if (this.isPaused || this.isPlaying || this.closed) return false;
+		const left = dueIn(this.wait, this.gapMs, this.queue[0], now, null);
+		return left !== null && left <= 0;
+	}
+
+	/**
+	 * A song was put at `index` on a silent queue: wait for it, counting from
+	 * now, which is where the dashboard measures its lead-in from.
+	 */
+	placed(index: number) {
+		if (this.isPlaying) return;
+		if (index === 0 || !this.wait) {
+			this.wait = { from: this.isPaused ? this.pauseTimestamp : Date.now(), after: "silence" };
+		}
+	}
+
 	pause() {
 		if (this.isPaused) return false;
 		// Read before the flag flips: once paused, the position is frozen at
@@ -706,7 +834,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 			// No report arrives while paused, so the wall clock must stop
 			// contributing to the position too.
 			this.nativePlayback.anchorAt(position ?? 0, Date.now());
-			nativePause(this.guildId);
+			nativePause(this.guildId, this.sidecarQueue);
 		} else {
 			super.pause();
 		}
@@ -716,15 +844,18 @@ export class CustomAudioPlayer extends AudioPlayer {
 	unpause() {
 		const wasPaused = this.isPaused;
 		if (wasPaused) {
-			this.pauseCounter += Date.now() - this.pauseTimestamp;
+			const paused = Date.now() - this.pauseTimestamp;
+			this.pauseCounter += paused;
 			this.isPaused = false;
+			// A gap stops counting down while paused, like the song does.
+			if (this.wait) this.wait.from += paused;
 			// Time starts counting again from now, not from the last report,
 			// which arrived before the pause.
 			this.nativePlayback?.resumeAt(Date.now());
 			this.updateSongTimeouts();
 		}
 		if (this.nativePlayback) {
-			nativeResume(this.guildId);
+			nativeResume(this.guildId, this.sidecarQueue);
 			// The callers announce success from this, so it has to mean "was
 			// paused and is not any more" rather than "the message was sent".
 			return wasPaused;
@@ -743,7 +874,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 	stop(force?: boolean) {
 		if (!this.nativePlayback) return super.stop(force);
 		if (!this.isPlaying) return false;
-		nativeSkip(this.guildId);
+		this.skipping = true;
+		nativeSkip(this.guildId, this.sidecarQueue);
 		return true;
 	}
 

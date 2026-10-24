@@ -4,9 +4,10 @@ import type { CustomAudioPlayer, CustomClient } from "../custom";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { getYouTubeVideoId } from "../youtube";
-import { gainFromPercent, GuildMix, type MixTrack } from "./mixPlan";
 import { nativeFetchBin } from "./nativeFetch";
 import { planArm } from "./nativePlan";
+import { gapBefore } from "./queuePlan";
+import { dropExtraQueues, findQueue } from "./queues";
 import {
 	joinVoiceViaSidecar,
 	LeftVoiceError,
@@ -118,7 +119,7 @@ export class NativeConnection {
 			return false;
 		}
 		connections.delete(this.guildId);
-		mixes.delete(this.guildId);
+		dropExtraQueues(this.guildId, { send: false });
 		sidecar().send({ type: "disconnect", guildId: this.guildId });
 		// Closing the voice socket alone leaves the bot sitting in the channel:
 		// the gateway still has it there until it is told otherwise.
@@ -134,7 +135,7 @@ export class NativeConnection {
 	dropped() {
 		if (connections.get(this.guildId) !== this) return;
 		connections.delete(this.guildId);
-		mixes.delete(this.guildId);
+		dropExtraQueues(this.guildId, { send: false });
 		this.leaveGateway();
 	}
 
@@ -219,162 +220,72 @@ function send(guildId: string, command: SidecarCommand) {
 }
 
 /**
- * The sidecar's queue the guild's main queue plays on. Every queue there is a
- * full player of its own, mixed with the rest.
+ * Every queue a guild has is a full player in the sidecar, named by its
+ * number: "1" is the one `/play` fills, the rest are mixed in over it. A
+ * `null` queue means all of them at once.
  */
-export const MAIN_QUEUE = "1";
+type QueueName = string;
 
-/** The sidecar's queue a mix track plays on. */
-export function mixQueueId(track: Pick<MixTrack, "id">) {
-	return `m${track.id}`;
-}
-
-/**
- * Start a track on the main queue. A new song there is one to hear, as the
- * player already assumes: it ends the guild's pause, the mix's included.
- */
-export function nativePlay(guildId: string, trackId: string, startMs = 0) {
-	mixes.get(guildId)?.release(Date.now());
-	send(guildId, {
-		type: "play",
-		guildId,
-		queueId: MAIN_QUEUE,
-		trackId,
-		startMs,
-		stream: nativeNoCache(),
-	});
-	send(guildId, { type: "resume", guildId, queueId: null });
-}
-
-export function nativeSkip(guildId: string) {
-	send(guildId, { type: "skip", guildId, queueId: MAIN_QUEUE });
-}
-
-/**
- * Silence the main queue's track. `keepLayers` leaves the mix's queues playing,
- * for a main queue that ran out rather than a listener asking for silence.
- */
-export function nativeStop(guildId: string, { keepLayers = false } = {}) {
-	send(guildId, { type: "stop", guildId, queueId: keepLayers ? MAIN_QUEUE : null });
-}
-
-/** Pauses every queue, so the mix's clock stops too. */
-export function nativePause(guildId: string) {
-	mixes.get(guildId)?.hold(Date.now());
-	send(guildId, { type: "pause", guildId, queueId: null });
-}
-
-export function nativeResume(guildId: string) {
-	mixes.get(guildId)?.release(Date.now());
-	send(guildId, { type: "resume", guildId, queueId: null });
-}
-
-export function nativeSeek(guildId: string, positionMs: number) {
-	send(guildId, {
-		type: "seek",
-		guildId,
-		queueId: MAIN_QUEUE,
-		positionMs: Math.max(0, Math.round(positionMs)),
-	});
-}
-
-export function nativeSetVolume(guildId: string, gain: number) {
-	send(guildId, { type: "setVolume", guildId, gain });
-}
-
-/**
- * The mix's queues live in the sidecar's guild session, so they go when it does: every
- * way a connection ends drops its mix here too.
- */
-const mixes = new Map<string, GuildMix>();
-
-/** The guild's mix, created empty on first use. */
-export function getMix(guildId: string) {
-	let mix = mixes.get(guildId);
-	if (!mix) {
-		mix = new GuildMix();
-		mixes.set(guildId, mix);
-	}
-	return mix;
-}
-
-/** The guild's mix if it has one, without creating it. */
-export function findMix(guildId: string) {
-	return mixes.get(guildId);
-}
-
-/** Every guild's mix, for the sweep that starts tracks' next songs. */
-export function allMixes(): IterableIterator<[string, GuildMix]> {
-	return mixes.entries();
-}
-
-/** Whether the mix is playing anything, or is about to. */
-export function hasLayers(guildId: string) {
-	return mixes.get(guildId)?.busy() ?? false;
-}
-
-/**
- * Play a track on a mix track's own queue in the sidecar, at the track's
- * volume.
- *
- * The file only has to have started downloading: the sidecar follows a
- * growing file, and a queue that outruns its download stalls on its own while
- * the rest of the mix plays on. With caching off there is no file, and the
- * sidecar streams it the same way it streams the main queue.
- */
-export function nativePlayOnTrack(
-	guildId: string,
-	track: Pick<MixTrack, "id" | "volume">,
-	videoId: string,
-	startMs = 0,
-) {
-	const queueId = mixQueueId(track);
-	nativeSetTrackVolume(guildId, track, track.volume);
+/** Start a track on a queue. Its own pause ends with it; other queues' do not. */
+export function nativePlay(guildId: string, queueId: QueueName, trackId: string, startMs = 0) {
 	send(guildId, {
 		type: "play",
 		guildId,
 		queueId,
-		trackId: videoId,
+		trackId,
 		startMs: Math.max(0, Math.round(startMs)),
 		stream: nativeNoCache(),
 	});
 }
 
-/** Fade a mix track's queue out and drop it. Nothing is reported finished. */
-export function nativeRemoveTrack(guildId: string, track: Pick<MixTrack, "id">) {
-	send(guildId, { type: "removeQueue", guildId, queueId: mixQueueId(track) });
+export function nativeSkip(guildId: string, queueId: QueueName) {
+	send(guildId, { type: "skip", guildId, queueId });
 }
 
-export function nativeSetTrackVolume(
-	guildId: string,
-	track: Pick<MixTrack, "id">,
-	volume: number,
-) {
+/** Silence a queue's track, or every queue's. Each reports its track finished. */
+export function nativeStop(guildId: string, queueId: QueueName | null) {
+	send(guildId, { type: "stop", guildId, queueId });
+}
+
+export function nativePause(guildId: string, queueId: QueueName | null) {
+	send(guildId, { type: "pause", guildId, queueId });
+}
+
+export function nativeResume(guildId: string, queueId: QueueName | null) {
+	send(guildId, { type: "resume", guildId, queueId });
+}
+
+export function nativeSeek(guildId: string, queueId: QueueName, positionMs: number) {
 	send(guildId, {
-		type: "setQueueVolume",
+		type: "seek",
 		guildId,
-		queueId: mixQueueId(track),
-		gain: gainFromPercent(volume),
+		queueId,
+		positionMs: Math.max(0, Math.round(positionMs)),
 	});
 }
 
-/** The queue track's own level, under the overall volume. */
-export function nativeSetMainVolume(guildId: string, volume: number) {
-	getMix(guildId).mainVolume = volume;
-	send(guildId, {
-		type: "setQueueVolume",
-		guildId,
-		queueId: MAIN_QUEUE,
-		gain: gainFromPercent(volume),
-	});
+/** The level of the whole guild's sound, every queue together. */
+export function nativeSetVolume(guildId: string, gain: number) {
+	send(guildId, { type: "setVolume", guildId, gain });
+}
+
+/** One queue's level, under the guild's. */
+export function nativeSetQueueVolume(guildId: string, queueId: QueueName, gain: number) {
+	send(guildId, { type: "setQueueVolume", guildId, queueId, gain });
+}
+
+/** Fade a queue out and drop it. Nothing it was playing is reported finished. */
+export function nativeRemoveQueue(guildId: string, queueId: QueueName) {
+	send(guildId, { type: "removeQueue", guildId, queueId });
 }
 
 export function nativeSetFades(
 	guildId: string,
+	queueId: QueueName | null,
 	crossfadeMs: number,
 	skipFadeMs: number,
 ) {
-	send(guildId, { type: "setFades", guildId, queueId: null, crossfadeMs, skipFadeMs });
+	send(guildId, { type: "setFades", guildId, queueId, crossfadeMs, skipFadeMs });
 }
 
 /** The cache id for a URL, but only when the whole track is already on disk. */
@@ -412,10 +323,10 @@ export function armNext(player: CustomAudioPlayer) {
 	// A track resuming from a position cannot be armed: the sidecar would
 	// promote it from the top at the seam, then be told to seek a moment later.
 	// Left unarmed, it starts with an ordinary `play` at the right place.
-	const plan = planArm(
-		next && !next.seek ? armableTrackId(next.url) : null,
-		playback.armed,
-	);
+	// Nor can one with a gap before it: the sidecar runs straight on into
+	// whatever is armed, and the gap is this side's to wait out.
+	const armable = next && !next.seek && !gapBefore("song", player.gapMs, next);
+	const plan = planArm(armable ? armableTrackId(next.url) : null, playback.armed);
 	const guildId = player.guildId;
 
 	switch (plan.action) {
@@ -424,14 +335,14 @@ export function armNext(player: CustomAudioPlayer) {
 			send(guildId, {
 				type: "setNext",
 				guildId,
-				queueId: MAIN_QUEUE,
+				queueId: player.sidecarQueue,
 				trackId: plan.trackId,
 				stream: nativeNoCache(),
 			});
 			break;
 		case "clear":
 			playback.armed = null;
-			send(guildId, { type: "clearNext", guildId, queueId: MAIN_QUEUE });
+			send(guildId, { type: "clearNext", guildId, queueId: player.sidecarQueue });
 			break;
 		case "none":
 			break;
@@ -451,7 +362,9 @@ export function bindNativeVoice(client: CustomClient) {
 	boundClient = client;
 	const bus = sidecar();
 
-	const playerFor = (guildId: string) => client.player.get(guildId) ?? null;
+	/** The player behind one of the sidecar's queues, by its number. */
+	const playerFor = (guildId: string, queueId: string) =>
+		(queueId === "1" ? client.player.get(guildId) : findQueue(guildId, Number(queueId))) ?? null;
 
 	bus.on("ready", (payload: { guildId: string; daveVersion: number }) => {
 		dcb.log(
@@ -459,43 +372,19 @@ export function bindNativeVoice(client: CustomClient) {
 		);
 	});
 
-	/**
-	 * The mix track playing `trackId` on `queueId`. A report naming another
-	 * song is a late one from before a skip or a replacement, and is ignored.
-	 */
-	const mixTrackFor = (guildId: string, queueId: string, trackId: string) => {
-		const mix = mixes.get(guildId);
-		const track = mix?.list().find((track) => mixQueueId(track) === queueId);
-		const playing = track?.playing;
-		if (!mix || !playing || playing.videoId !== trackId) return null;
-		return { mix, layerId: playing.layerId };
-	};
-
 	bus.on("started", (payload: { guildId: string; queueId: string; trackId: string }) => {
 		dcb.log(`Sidecar started ${payload.trackId} on queue ${payload.queueId} in ${payload.guildId}`);
-		if (payload.queueId === MAIN_QUEUE) return;
-		// Streaming, the audio begins a fetch after it was asked for.
-		const found = mixTrackFor(payload.guildId, payload.queueId, payload.trackId);
-		found?.mix.layerStarted(found.layerId, Date.now());
 	});
 
 	bus.on("position", (payload: { guildId: string; queueId: string; positionMs: number }) => {
-		if (payload.queueId !== MAIN_QUEUE) return;
-		const player = playerFor(payload.guildId);
+		const player = playerFor(payload.guildId, payload.queueId);
 		if (!player) return;
 		player.nativePlayback?.anchorAt(payload.positionMs, Date.now());
 		armNext(player);
 	});
 
 	bus.on("finished", (payload: { guildId: string; queueId: string; trackId: string }) => {
-		if (payload.queueId !== MAIN_QUEUE) {
-			// Ended on its own or cleared by a stop: the track waits out its
-			// gap and moves on.
-			const found = mixTrackFor(payload.guildId, payload.queueId, payload.trackId);
-			found?.mix.finish(found.layerId, Date.now());
-			return;
-		}
-		const player = playerFor(payload.guildId);
+		const player = playerFor(payload.guildId, payload.queueId);
 		const playback = player?.nativePlayback;
 		if (!player || !playback) return;
 		// A report for a track that is no longer the current one is stale — a
@@ -532,7 +421,7 @@ export function bindNativeVoice(client: CustomClient) {
 		// seated in the channel, silent, with nothing left that could make it
 		// leave.
 		connections.get(payload.guildId)?.dropped();
-		const player = playerFor(payload.guildId);
+		const player = client.player.get(payload.guildId);
 		if (!player?.nativePlayback) return;
 		globalApp.warn(`Voice disconnected in ${payload.guildId}: ${payload.reason}`);
 		player.nativePlayback.clear();

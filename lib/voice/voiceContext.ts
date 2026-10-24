@@ -1,5 +1,4 @@
 import type { CustomAudioPlayer, CustomClient } from "../custom";
-import type { GuildMix } from "./mixPlan";
 
 /**
  * What the voice command model is told about the bot as it stands: what is
@@ -139,8 +138,12 @@ export async function playbackState(
 	{
 		within = RESOLVE_WITHIN_MS,
 		lookup = lookUp,
-		mixOf = async (guildId: string) => (await import("./native.js")).findMix(guildId),
-	}: { within?: number; lookup?: Lookup; mixOf?: (guildId: string) => Promise<GuildMix | undefined> } = {},
+		mixOf = async (guildId: string) => (await import("./queues.js")).extraQueues(guildId),
+	}: {
+		within?: number;
+		lookup?: Lookup;
+		mixOf?: (guildId: string) => Promise<readonly CustomAudioPlayer[] | undefined>;
+	} = {},
 ): Promise<PlaybackState | null> {
 	const player: CustomAudioPlayer | undefined = client.player.get(guildId);
 	if (!player) return null;
@@ -176,14 +179,14 @@ export async function playbackState(
 			autoSuggest: player.customSetting.autoSuggest ?? false,
 			autoSkipNonMusic: player.customSetting.autoSkipSegment ?? false,
 			crossfadeMs: player.native ? player.crossfadeMs : 0,
-			mix: (mix?.list() ?? []).map((track) => ({
-				playing: (track.playing ?? track.loading)?.title ?? null,
-				volume: track.volume,
+			mix: (mix ?? []).map((track) => ({
+				playing: track.isPlaying ? (track.nowPlaying?.title ?? null) : null,
+				volume: Math.round(track.volume * 100),
 				queued: track.queue.length,
 				gapMs: track.gapMs,
-				loop: track.loop,
+				loop: track.customSetting.looping ?? false,
 			})),
-			mixMainVolume: mix?.mainVolume ?? 100,
+			mixMainVolume: player.mainVolume,
 		};
 	} finally {
 		clearTimeout(timer);

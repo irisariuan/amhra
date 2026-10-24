@@ -3,7 +3,7 @@
  * `/mix remove track` or `/remove index`. Users still get the 1-based number
  * they would have typed; the suggestion just shows what each number is.
  *
- * Kept free of imports, like `mixPlan.ts`, so the matching is testable without
+ * Kept free of imports, like `queuePlan.ts`, so the matching is testable without
  * loading discord.js or the player.
  */
 

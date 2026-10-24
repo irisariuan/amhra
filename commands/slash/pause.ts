@@ -4,6 +4,7 @@ import {
 	getAudioPlayer,
 	getBotVoiceChannel,
 	getConnection,
+	pauseAll,
 } from "../../lib/voice/core";
 import { dcb } from "../../lib/misc";
 import { languageText } from "../../lib/language";
@@ -50,7 +51,7 @@ export default {
 			return await interaction.reply({
 				content: languageText("not_playing", language),
 			});
-		if (player.pause()) {
+		if (pauseAll(player)) {
 			dcb.log(`(Guild ID: ${player.guildId}) Paused the music`);
 			await interaction.reply({
 				content: languageText("paused", language),

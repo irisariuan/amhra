@@ -2,7 +2,7 @@ import z from "zod";
 import { SongEditType } from "./event";
 import { isYouTubePlaylist, isYouTubeVideo } from "../youtube";
 import { Language } from "../interaction";
-import { MAX_GAP_MS, MAX_LEAD_IN_MS } from "../voice/mixPlan";
+import { MAX_GAP_MS, MAX_LEAD_IN_MS } from "../voice/queuePlan";
 
 // Queue item (from custom.ts)
 export const QueueItemSchema = z.object({

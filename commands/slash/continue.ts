@@ -3,6 +3,7 @@ import {
 	getAudioPlayer,
 	getBotVoiceChannel,
 	getConnection,
+	unpauseAll,
 } from "../../lib/voice/core";
 import { type Command } from "../../lib/interaction";
 import { languageText } from "../../lib/language";
@@ -47,7 +48,7 @@ export default {
 			return await interaction.reply({
 				content: languageText("not_playing", language),
 			});
-		if (player.unpause()) {
+		if (unpauseAll(player)) {
 			await interaction.reply({
 				content: languageText("resumed", language),
 			});

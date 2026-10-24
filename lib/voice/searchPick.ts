@@ -5,13 +5,12 @@ import {
 	type ChatInputCommandInteraction,
 	type CacheType,
 } from "discord.js";
-import type { CustomAudioPlayer } from "../custom";
+import type { CustomAudioPlayer, QueueItem } from "../custom";
 import type { Language } from "../interaction";
 import { languageText } from "../language";
 import { dcb, globalApp } from "../misc";
 import { createResource, timeFormat } from "./core";
 import { replaceTrackSong } from "./mix";
-import type { MixSong, MixTrack } from "./mixPlan";
 import type { YouTubeVideo } from "../youtube";
 
 /** Alternatives offered besides the one already queued */
@@ -190,19 +189,18 @@ export function offerQueueAlternatives({
 
 /** For /mix add: a pick replaces the song on its track, playing or queued. */
 export function offerTrackAlternatives({
-	guildId,
 	track,
 	song,
 	language,
 	...alternatives
-}: Alternatives & { guildId: string; track: MixTrack; song: MixSong; language: Language }) {
+}: Alternatives & { track: CustomAudioPlayer; song: QueueItem; language: Language }) {
 	// Follows the replacements, since each one is a new song
 	let current = song;
 	return sendSearchAlternatives({
 		...alternatives,
 		language,
 		swap: async (_currentUrl, nextUrl) => {
-			const replaced = await replaceTrackSong(guildId, track, current, nextUrl);
+			const replaced = await replaceTrackSong(track, current, nextUrl);
 			if (!replaced) return false;
 			current = replaced;
 			return true;
