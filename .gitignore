@@ -46,3 +46,9 @@ rust/target/
 
 # Wake-word training environment, data and checkpoints
 /training/wake/work/
+
+# Voice clips the sidecar saves when run from rust/
+rust/recordings/
+
+# Python bytecode
+__pycache__/
