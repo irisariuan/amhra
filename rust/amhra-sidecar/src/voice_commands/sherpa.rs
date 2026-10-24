@@ -685,23 +685,33 @@ impl Transcriber for OfflineRecogniser {
 	}
 }
 
+/// Characters written in Cantonese and not in Mandarin: 嘅, 咗, 佢, 唔 and
+/// the like. Qwen3-ASR writes Cantonese as it is spoken, so one of these is
+/// enough to answer in the Cantonese voice.
+const CANTONESE: &str = "嘅咗佢啲冇喺嚟嘢唔噉嗰啱搵揾攞睇畀諗谂咩冚嘥乜咁";
+
 /// The language a transcript is written in, by its script: any kana is
-/// Japanese, any Hangul Korean, otherwise Han is Chinese and Latin letters
-/// English. Japanese written in kanji alone reads as Chinese, and Cantonese
-/// as Chinese too; both are rare in a command, and the bot answers Chinese
-/// and Cantonese in the same language.
+/// Japanese, any Hangul Korean, Han with a Cantonese-only character
+/// Cantonese, other Han Chinese, and Latin letters English. Japanese written
+/// in kanji alone reads as Chinese, as does Cantonese that uses none of
+/// those characters ("暫停"); the Mandarin voice says it then.
 fn script_language(text: &str) -> Option<&'static str> {
-	let (mut han, mut latin) = (false, false);
+	let (mut han, mut cantonese, mut latin) = (false, false, false);
 	for c in text.chars() {
 		match c {
 			'\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}' | '\u{ff66}'..='\u{ff9d}' => return Some("ja"),
 			'\u{1100}'..='\u{11ff}' | '\u{3130}'..='\u{318f}' | '\u{ac00}'..='\u{d7af}' => return Some("ko"),
-			'\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}' | '\u{f900}'..='\u{faff}' => han = true,
+			'\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}' | '\u{f900}'..='\u{faff}' => {
+				han = true;
+				cantonese |= CANTONESE.contains(c);
+			}
 			c if c.is_ascii_alphabetic() => latin = true,
 			_ => {}
 		}
 	}
-	if han {
+	if cantonese {
+		Some("yue")
+	} else if han {
 		Some("zh")
 	} else if latin {
 		Some("en")
@@ -750,6 +760,12 @@ mod tests {
 		assert_eq!(script_language("次の曲を再生して"), Some("ja"));
 		assert_eq!(script_language("다음 곡 틀어줘"), Some("ko"));
 		assert_eq!(script_language("播放 BTS 的歌"), Some("zh"));
+		// Written as Cantonese is spoken, it is Cantonese.
+		assert_eq!(script_language("跳過呢首歌啦唔該"), Some("yue"));
+		assert_eq!(script_language("佢播緊咩歌"), Some("yue"));
+		assert_eq!(script_language("播放 BTS 嘅歌"), Some("yue"));
+		// Nothing in it only Cantonese writes: Chinese.
+		assert_eq!(script_language("暫停"), Some("zh"));
 		assert_eq!(script_language("..."), None);
 	}
 

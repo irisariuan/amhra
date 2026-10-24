@@ -616,9 +616,10 @@ Differences that matter downstream:
   SenseVoice writes "30%"; the intent model reads either.
 - **The language.** sherpa-onnx strips the `language English` Qwen3-ASR
   writes before the text and keeps nothing of it. Unpinned, the language is
-  read off the writing: any kana is `ja`, any Hangul `ko`, other Han `zh`,
-  Latin letters `en`. Cantonese comes back `zh`, not `yue`, and Japanese in
-  kanji alone does too.
+  read off the writing: any kana is `ja`, any Hangul `ko`, Han with a
+  character only Cantonese writes (嘅, 咗, 佢, 唔…) `yue`, other Han `zh`,
+  Latin letters `en`. Cantonese without one of those ("暫停") comes back
+  `zh`, and Japanese in kanji alone does too.
 - **Pinning is per stream.** Qwen3-ASR takes the language each window, so
   a language per server would cost nothing more; SenseVoice's is per
   recogniser. Pinned, Qwen3-ASR writes in that language whatever was said,
