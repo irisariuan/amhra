@@ -296,10 +296,6 @@
 					"name": "ループ",
 					"description": "ミックストラックのキューを繰り返し再生します"
 				},
-				"swap": {
-					"name": "入れ替え",
-					"description": "ミックストラックの曲をキューの曲と入れ替えます"
-				},
 				"main": {
 					"name": "メイン",
 					"description": "ミックス内のキューの曲の音量を設定します"
@@ -398,10 +394,6 @@
 	"MIX_GAP_SET": "トラック {track} の曲間を {seconds}秒にしました",
 	"MIX_LOOP_ON": "トラック {track} はキューを繰り返し再生します",
 	"MIX_LOOP_OFF": "トラック {track} のループを止めました",
-	"MIX_SWAPPED": "入れ替えました: **[{title}]({url})** がキューの曲になり、**[{mixed}]({mixedUrl})** はトラック {track} で再生を続けます",
-	"MIX_SWAP_NOTHING_PLAYING": "入れ替えるキューの曲が再生されていません",
-	"MIX_SWAP_SILENT": "トラック {track} には入れ替える曲が再生されていません",
-	"MIX_SWAP_FAILED": "入れ替えできませんでした。少し待ってからもう一度お試しください",
 	"VOICE_COMMANDS_ON": "音声コマンドをオンにしました。「エムハラ」と呼んでからコマンドを言ってください。例:「エムハラ、スキップ」",
 	"VOICE_COMMANDS_OFF": "音声コマンドをオフにしました。このサーバーでは聞き取りをやめます。",
 	"VOICE_COMMANDS_ALREADY_ON": "音声コマンドはすでにオンです。",
@@ -464,6 +456,5 @@
 	"VOICE_SAY_MIX_GAP": "ミックスのトラック{track}の曲間を{seconds}秒にします。",
 	"VOICE_SAY_MIX_LOOP": "ミックスのトラック{track}のループを切り替えます。",
 	"VOICE_SAY_MIX_MAIN": "キューの曲を{volume}パーセントにします。",
-	"VOICE_SAY_MIX_SWAP": "ミックスのトラック{track}と入れ替えます。",
 	"VOICE_SAY_MIX_LIST": "ミックスを表示します。"
 }

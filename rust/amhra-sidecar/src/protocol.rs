@@ -44,10 +44,15 @@ pub enum Command {
 	/// Leave, releasing the guild's thread and sockets.
 	#[serde(rename_all = "camelCase")]
 	Disconnect { guild_id: String },
-	/// Play a cached track now, from `start_ms`.
+	/// Play a cached track now on a queue, from `start_ms`. A queue named for
+	/// the first time is made, up to `MAX_QUEUES`.
 	#[serde(rename_all = "camelCase")]
 	Play {
 		guild_id: String,
+		/// Every queue is a full player of its own, mixed with the others.
+		/// The bot names them; `"1"` when left out.
+		#[serde(default = "first_queue")]
+		queue_id: String,
 		/// The cache id, not a path: the sidecar owns the cache layout.
 		track_id: String,
 		#[serde(default)]
@@ -57,68 +62,83 @@ pub enum Command {
 		#[serde(default)]
 		stream: bool,
 	},
-	/// Queue what follows, so the seam can be prepared before it is needed.
-	/// Sending it again replaces the previous choice.
+	/// Queue what follows on a queue, so the seam can be prepared before it is
+	/// needed. Sending it again replaces the previous choice.
 	#[serde(rename_all = "camelCase")]
 	SetNext {
 		guild_id: String,
+		#[serde(default = "first_queue")]
+		queue_id: String,
 		track_id: String,
 		#[serde(default)]
 		stream: bool,
 	},
 	#[serde(rename_all = "camelCase")]
-	ClearNext { guild_id: String },
+	ClearNext {
+		guild_id: String,
+		#[serde(default = "first_queue")]
+		queue_id: String,
+	},
 	#[serde(rename_all = "camelCase")]
-	Skip { guild_id: String },
-	/// Silence the queue's track, and the layers with it unless `keep_layers`:
-	/// a queue that ran out leaves the mix playing on its own.
+	Skip {
+		guild_id: String,
+		#[serde(default = "first_queue")]
+		queue_id: String,
+	},
+	/// Silence one queue's track, or every queue's when `queue_id` is left out.
 	#[serde(rename_all = "camelCase")]
 	Stop {
 		guild_id: String,
 		#[serde(default)]
-		keep_layers: bool,
+		queue_id: Option<String>,
+	},
+	/// Hold one queue where it is, or the whole guild when `queue_id` is left
+	/// out. A queue paused on its own stays paused through a guild resume.
+	#[serde(rename_all = "camelCase")]
+	Pause {
+		guild_id: String,
+		#[serde(default)]
+		queue_id: Option<String>,
 	},
 	#[serde(rename_all = "camelCase")]
-	Pause { guild_id: String },
+	Resume {
+		guild_id: String,
+		#[serde(default)]
+		queue_id: Option<String>,
+	},
 	#[serde(rename_all = "camelCase")]
-	Resume { guild_id: String },
-	#[serde(rename_all = "camelCase")]
-	Seek { guild_id: String, position_ms: u32 },
-	/// The overall linear gain, applied on top of every track's own. 1.0 with
-	/// nothing layered keeps the passthrough path, where no codec runs.
+	Seek {
+		guild_id: String,
+		#[serde(default = "first_queue")]
+		queue_id: String,
+		position_ms: u32,
+	},
+	/// The overall linear gain, applied on top of every queue's own. 1.0 with
+	/// one queue sounding keeps the passthrough path, where no codec runs.
 	#[serde(rename_all = "camelCase")]
 	SetVolume { guild_id: String, gain: f32 },
-	/// The queue track's own linear gain, under the overall one.
+	/// One queue's own linear gain, under the overall one.
 	#[serde(rename_all = "camelCase")]
-	SetMainVolume { guild_id: String, gain: f32 },
-	/// Play a cached track alongside the queue, mixed in at its own gain.
-	/// Reusing a `layer_id` replaces that layer's track.
-	#[serde(rename_all = "camelCase")]
-	AddLayer {
+	SetQueueVolume {
 		guild_id: String,
-		/// Chosen by the bot, and how every later layer command and event
-		/// names this one.
-		layer_id: String,
-		track_id: String,
+		#[serde(default = "first_queue")]
+		queue_id: String,
 		gain: f32,
-		#[serde(default)]
-		start_ms: u32,
-		#[serde(default)]
-		stream: bool,
 	},
-	/// Fade a layer out and drop it.
+	/// Fade a queue out and drop it, with what it was playing and had armed.
+	/// Nothing is reported finished: the bot asked.
 	#[serde(rename_all = "camelCase")]
-	RemoveLayer { guild_id: String, layer_id: String },
+	RemoveQueue { guild_id: String, queue_id: String },
+	/// One queue's seams, or every queue's — and any made later — when
+	/// `queue_id` is left out.
 	#[serde(rename_all = "camelCase")]
-	SetLayerVolume { guild_id: String, layer_id: String, gain: f32 },
-	/// Exchange a layer with the queue's track, on one tick and inaudibly:
-	/// each keeps its place and its own gain. The layer keeps its id, now
-	/// naming what was the queue's track. Answered by `LayerSwapped`, or an
-	/// `Error` when the queue has nothing playing or is mid-fade.
-	#[serde(rename_all = "camelCase")]
-	SwapLayer { guild_id: String, layer_id: String },
-	#[serde(rename_all = "camelCase")]
-	SetFades { guild_id: String, crossfade_ms: u16, skip_fade_ms: u16 },
+	SetFades {
+		guild_id: String,
+		#[serde(default)]
+		queue_id: Option<String>,
+		crossfade_ms: u16,
+		skip_fade_ms: u16,
+	},
 	/// Say `text` in the call, over the music, lowered meanwhile. Only a
 	/// sidecar started with `--speech` speaks; others ignore it.
 	#[serde(rename_all = "camelCase")]
@@ -189,38 +209,17 @@ pub enum Event {
 	#[serde(rename_all = "camelCase")]
 	Ready { guild_id: String, dave_version: u8 },
 	#[serde(rename_all = "camelCase")]
-	Started { guild_id: String, track_id: String },
+	Started { guild_id: String, queue_id: String, track_id: String },
 	#[serde(rename_all = "camelCase")]
-	Finished { guild_id: String, track_id: String },
+	Finished { guild_id: String, queue_id: String, track_id: String },
 	/// Playback stalled because the download has not kept up. Not an ending:
-	/// the track resumes when bytes arrive.
+	/// the track resumes when bytes arrive, and the other queues play on.
 	#[serde(rename_all = "camelCase")]
-	Starved { guild_id: String, track_id: String },
-	/// A layer's audio has begun.
+	Starved { guild_id: String, queue_id: String, track_id: String },
+	/// Where a queue's playback is, emitted about once a second.
 	#[serde(rename_all = "camelCase")]
-	LayerStarted { guild_id: String, layer_id: String },
-	/// A layer ended, was removed, or failed. Its id is free again.
-	#[serde(rename_all = "camelCase")]
-	LayerFinished { guild_id: String, layer_id: String },
-	/// A layer stalled waiting for its download. The rest of the mix plays on.
-	#[serde(rename_all = "camelCase")]
-	LayerStarved { guild_id: String, layer_id: String },
-	/// A layer and the queue's track traded places.
-	#[serde(rename_all = "camelCase")]
-	LayerSwapped {
-		guild_id: String,
-		layer_id: String,
-		/// What the queue is playing now: the layer's former track.
-		track_id: String,
-		position_ms: u32,
-		/// What the layer is playing now: the queue's former track.
-		layer_track_id: String,
-		layer_position_ms: u32,
-	},
-	/// Where playback is, emitted about once a second.
-	#[serde(rename_all = "camelCase")]
-	Position { guild_id: String, track_id: String, position_ms: u32 },
-	/// The guild has nothing left to play.
+	Position { guild_id: String, queue_id: String, track_id: String, position_ms: u32 },
+	/// None of the guild's queues has anything left to play.
 	#[serde(rename_all = "camelCase")]
 	Idle { guild_id: String },
 	/// The voice connection dropped and is being re-established.
@@ -279,17 +278,34 @@ pub enum Event {
 pub struct SessionState {
 	pub guild_id: String,
 	pub channel_id: String,
-	pub track_id: Option<String>,
-	pub position_ms: u32,
+	/// Whether the whole guild is paused.
 	pub paused: bool,
 	/// The overall gain.
 	pub gain: f32,
-	/// The queue track's own gain.
-	pub main_gain: f32,
+	pub queues: Vec<QueueState>,
+}
+
+/// One queue's state, within a `SessionState`.
+#[derive(Debug, Clone, Deserialize, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "protocol.d.ts")]
+pub struct QueueState {
+	pub queue_id: String,
+	pub track_id: Option<String>,
+	pub position_ms: u32,
+	/// Whether this queue is paused on its own.
+	pub paused: bool,
+	/// The queue's own gain.
+	pub gain: f32,
+}
+
+/// The queue a command means when it does not say.
+fn first_queue() -> String {
+	"1".to_owned()
 }
 
 /// Bumped when a change would break an older bot talking to a newer sidecar.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 impl Command {
 	/// The guild a command applies to, when it applies to one.
@@ -299,18 +315,15 @@ impl Command {
 			| Self::Disconnect { guild_id }
 			| Self::Play { guild_id, .. }
 			| Self::SetNext { guild_id, .. }
-			| Self::ClearNext { guild_id }
-			| Self::Skip { guild_id }
+			| Self::ClearNext { guild_id, .. }
+			| Self::Skip { guild_id, .. }
 			| Self::Stop { guild_id, .. }
-			| Self::Pause { guild_id }
-			| Self::Resume { guild_id }
+			| Self::Pause { guild_id, .. }
+			| Self::Resume { guild_id, .. }
 			| Self::Seek { guild_id, .. }
 			| Self::SetVolume { guild_id, .. }
-			| Self::SetMainVolume { guild_id, .. }
-			| Self::AddLayer { guild_id, .. }
-			| Self::RemoveLayer { guild_id, .. }
-			| Self::SetLayerVolume { guild_id, .. }
-			| Self::SwapLayer { guild_id, .. }
+			| Self::SetQueueVolume { guild_id, .. }
+			| Self::RemoveQueue { guild_id, .. }
 			| Self::SetFades { guild_id, .. }
 			| Self::SetListen { guild_id, .. }
 			| Self::Speak { guild_id, .. }
@@ -383,35 +396,50 @@ mod tests {
 	fn events_serialise_with_their_tag() {
 		let event = Event::Started {
 			guild_id: "1".to_owned(),
+			queue_id: "2".to_owned(),
 			track_id: "dQw4w9WgXcQ".to_owned(),
 		};
 		let encoded = serde_json::to_string(&event).unwrap();
 		assert!(encoded.contains("\"type\":\"started\""));
+		assert!(encoded.contains("\"queueId\":\"2\""));
 		assert!(encoded.contains("\"trackId\":\"dQw4w9WgXcQ\""));
 	}
 
 	#[test]
-	fn a_stop_takes_the_layers_unless_told_otherwise() {
-		// An older bot sends no `keepLayers`, and meant silence.
-		let command: Command = serde_json::from_str(r#"{"type":"stop","guildId":"1"}"#).unwrap();
-		assert!(matches!(command, Command::Stop { keep_layers: false, .. }));
+	fn a_queue_command_without_a_queue_means_the_first() {
+		// An older bot names no queue, and had only the one.
+		for json in [
+			r#"{"type":"play","guildId":"1","trackId":"x"}"#,
+			r#"{"type":"setNext","guildId":"1","trackId":"x"}"#,
+			r#"{"type":"skip","guildId":"1"}"#,
+			r#"{"type":"seek","guildId":"1","positionMs":5}"#,
+			r#"{"type":"setQueueVolume","guildId":"1","gain":0.5}"#,
+		] {
+			let command: Command = serde_json::from_str(json).unwrap();
+			let queue = match &command {
+				Command::Play { queue_id, .. }
+				| Command::SetNext { queue_id, .. }
+				| Command::Skip { queue_id, .. }
+				| Command::Seek { queue_id, .. }
+				| Command::SetQueueVolume { queue_id, .. } => queue_id,
+				other => panic!("wrong variant: {other:?}"),
+			};
+			assert_eq!(queue, "1", "{json}");
+		}
 		let command: Command =
-			serde_json::from_str(r#"{"type":"stop","guildId":"1","keepLayers":true}"#).unwrap();
-		assert!(matches!(command, Command::Stop { keep_layers: true, .. }));
+			serde_json::from_str(r#"{"type":"play","guildId":"1","queueId":"3","trackId":"x"}"#).unwrap();
+		assert!(matches!(command, Command::Play { queue_id, .. } if queue_id == "3"));
 	}
 
 	#[test]
-	fn a_layer_may_omit_its_start() {
-		let command: Command = serde_json::from_str(
-			r#"{"type":"addLayer","guildId":"1","layerId":"rain","trackId":"x","gain":0.4}"#,
-		)
-		.unwrap();
-		let Command::AddLayer { layer_id, gain, start_ms, .. } = command else {
-			panic!("wrong variant: {command:?}");
-		};
-		assert_eq!(layer_id, "rain");
-		assert_eq!(gain, 0.4);
-		assert_eq!(start_ms, 0);
+	fn stop_pause_and_resume_without_a_queue_mean_the_whole_guild() {
+		let command: Command = serde_json::from_str(r#"{"type":"stop","guildId":"1"}"#).unwrap();
+		assert!(matches!(command, Command::Stop { queue_id: None, .. }));
+		let command: Command = serde_json::from_str(r#"{"type":"pause","guildId":"1","queueId":"2"}"#).unwrap();
+		assert!(matches!(command, Command::Pause { queue_id: Some(queue), .. } if queue == "2"));
+		let command: Command =
+			serde_json::from_str(r#"{"type":"setFades","guildId":"1","crossfadeMs":0,"skipFadeMs":40}"#).unwrap();
+		assert!(matches!(command, Command::SetFades { queue_id: None, .. }));
 	}
 
 	#[test]
@@ -457,11 +485,9 @@ mod tests {
 			r#"{"type":"seek","guildId":"g","positionMs":1}"#,
 			r#"{"type":"setVolume","guildId":"g","gain":0.5}"#,
 			r#"{"type":"setFades","guildId":"g","crossfadeMs":0,"skipFadeMs":40}"#,
-			r#"{"type":"setMainVolume","guildId":"g","gain":0.5}"#,
-			r#"{"type":"addLayer","guildId":"g","layerId":"l","trackId":"t","gain":1}"#,
-			r#"{"type":"removeLayer","guildId":"g","layerId":"l"}"#,
-			r#"{"type":"setLayerVolume","guildId":"g","layerId":"l","gain":0.2}"#,
-			r#"{"type":"swapLayer","guildId":"g","layerId":"l"}"#,
+			r#"{"type":"setQueueVolume","guildId":"g","queueId":"2","gain":0.5}"#,
+			r#"{"type":"removeQueue","guildId":"g","queueId":"2"}"#,
+			r#"{"type":"stop","guildId":"g","queueId":"2"}"#,
 			r#"{"type":"setListen","guildId":"g","listen":true}"#,
 			r#"{"type":"speak","guildId":"g","text":"Skipping."}"#,
 			r#"{"type":"settle","guildId":"g","userId":"2"}"#,

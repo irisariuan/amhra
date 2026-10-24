@@ -19,7 +19,6 @@ import {
 	removeTrack,
 	setTrackVolume,
 	skipTrack,
-	swapTrackWithMain,
 } from "../../lib/voice/mix";
 import { MAX_GAP_MS, type GuildMix, type MixTrack } from "../../lib/voice/mixPlan";
 import { offerTrackAlternatives } from "../../lib/voice/searchPick";
@@ -124,12 +123,6 @@ export default {
 				.addBooleanOption((opt) =>
 					opt.setName("enabled").setDescription("On or off; toggles if left empty"),
 				),
-		)
-		.addSubcommand((sub) =>
-			sub
-				.setName("swap")
-				.setDescription("Make a mix track's song the queue's song, and the queue's song the track's")
-				.addIntegerOption(trackOption(TRACK, true)),
 		)
 		.addSubcommand((sub) =>
 			sub
@@ -342,35 +335,6 @@ export default {
 				return interaction.reply(
 					languageText(track.loop ? "mix_loop_on" : "mix_loop_off", language, { track: index }),
 				);
-			}
-			case "swap": {
-				const player = getAudioPlayer(client, guildId, interaction.channel, language, {
-					createPlayer: false,
-				});
-				if (!player?.isPlaying)
-					return interaction.reply(languageText("mix_swap_nothing_playing", language));
-				if (!track.playing)
-					return interaction.reply(languageText("mix_swap_silent", language, { track: index }));
-				await interaction.deferReply();
-				const result = await swapTrackWithMain(player, track);
-				if ("error" in result)
-					return interaction.editReply(
-						result.error === "nothing_playing"
-							? languageText("mix_swap_nothing_playing", language)
-							: result.error === "track_silent"
-								? languageText("mix_swap_silent", language, { track: index })
-								: languageText("mix_swap_failed", language),
-					);
-				return interaction.editReply({
-					content: languageText("mix_swapped", language, {
-						title: result.before.title,
-						url: result.before.url,
-						mixed: result.now.title,
-						mixedUrl: result.now.url,
-						track: index,
-					}),
-					flags: ["SuppressEmbeds"],
-				});
 			}
 		}
 

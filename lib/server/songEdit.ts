@@ -16,7 +16,6 @@ import {
 	removeTrack,
 	setTrackVolume,
 	skipTrack,
-	swapTrackWithMain,
 } from "../voice/mix";
 import type { MixTrack } from "../voice/mixPlan";
 import { getMix, nativeSetMainVolume } from "../voice/native";
@@ -298,17 +297,6 @@ export async function handleSongInterruption(
 			if (!track) return 404;
 			dcb.log(`Skipping on mix track ${track.id} from dashboard`);
 			skipTrack(guildId, track);
-			break;
-		}
-		case SongEditType.SwapMixTrack: {
-			const track = getMix(guildId).find(data.detail.track);
-			if (!track) return 404;
-			const result = await swapTrackWithMain(player, track);
-			if ("error" in result) {
-				globalApp.err(`Failed to swap mix track ${track.id} in: ${result.error}`);
-				return result.error === "failed" ? 502 : 409;
-			}
-			dcb.log(`Swapped ${result.before.url} in from mix track ${track.id} from dashboard`);
 			break;
 		}
 		case SongEditType.AddMixSong: {

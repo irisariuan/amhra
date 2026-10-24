@@ -74,13 +74,13 @@ mod tests {
 
 	#[test]
 	fn a_frame_round_trips() {
-		let command = Command::Skip { guild_id: "42".to_owned() };
+		let command = Command::Skip { guild_id: "42".to_owned(), queue_id: "2".to_owned() };
 		let mut pipe = Vec::new();
 		write_frame(&mut pipe, &command).unwrap();
 
 		let mut buffer = Vec::new();
 		let decoded: Command = read_frame(&mut pipe.as_slice(), &mut buffer).unwrap();
-		assert!(matches!(decoded, Command::Skip { guild_id } if guild_id == "42"));
+		assert!(matches!(decoded, Command::Skip { guild_id, queue_id } if guild_id == "42" && queue_id == "2"));
 	}
 
 	#[test]

@@ -285,10 +285,6 @@
 					"name": "반복",
 					"description": "믹스 트랙의 대기열을 반복 재생합니다"
 				},
-				"swap": {
-					"name": "교체",
-					"description": "믹스 트랙의 곡을 대기열 곡과 교체합니다"
-				},
 				"main": {
 					"name": "메인",
 					"description": "믹스 내 대기열 곡의 음량을 설정합니다"
@@ -387,10 +383,6 @@
 	"MIX_GAP_SET": "트랙 {track}의 곡 간격을 {seconds}초로 설정했습니다",
 	"MIX_LOOP_ON": "트랙 {track}이(가) 대기열을 반복 재생합니다",
 	"MIX_LOOP_OFF": "트랙 {track} 반복을 껐습니다",
-	"MIX_SWAPPED": "교체했습니다: **[{title}]({url})** 이(가) 대기열 곡이 되었고, **[{mixed}]({mixedUrl})** 은(는) 트랙 {track}에서 계속 재생됩니다",
-	"MIX_SWAP_NOTHING_PLAYING": "교체할 대기열 곡이 재생 중이 아닙니다",
-	"MIX_SWAP_SILENT": "트랙 {track}에서 교체할 곡이 재생 중이 아닙니다",
-	"MIX_SWAP_FAILED": "교체하지 못했습니다. 잠시 후 다시 시도하세요",
 	"VOICE_COMMANDS_ON": "음성 명령을 켰습니다. \"엠하라\"라고 부른 뒤 명령을 말하세요. 예: \"엠하라, 다음 곡\"",
 	"VOICE_COMMANDS_OFF": "음성 명령을 껐습니다. 이 서버에서 더 이상 듣지 않습니다.",
 	"VOICE_COMMANDS_ALREADY_ON": "음성 명령이 이미 켜져 있습니다.",
@@ -453,6 +445,5 @@
 	"VOICE_SAY_MIX_GAP": "믹스 트랙 {track}의 곡 간격을 {seconds}초로 합니다.",
 	"VOICE_SAY_MIX_LOOP": "믹스 트랙 {track}의 반복을 바꿉니다.",
 	"VOICE_SAY_MIX_MAIN": "재생 목록 곡을 {volume}퍼센트로 설정합니다.",
-	"VOICE_SAY_MIX_SWAP": "믹스 트랙 {track}과 바꿉니다.",
 	"VOICE_SAY_MIX_LIST": "믹스 목록입니다."
 }

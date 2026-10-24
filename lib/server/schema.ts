@@ -222,16 +222,6 @@ const SkipMixTrackSchema = z.object({
 });
 
 /**
- * Trade a track's song with the queue's. Inaudible: each keeps its place and
- * volume, and the queue then controls the swapped-in song.
- */
-const SwapMixTrackSchema = z.object({
-	action: z.literal(SongEditType.SwapMixTrack),
-	guildId: z.string(),
-	detail: z.object({ track: TrackId }),
-});
-
-/**
  * Queue a video on a track, at `index` or the end, or on a new track made
  * with the settings given when `track` is left out.
  */
@@ -314,7 +304,6 @@ export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	RemoveMixTrackSchema,
 	SetMixTrackSchema,
 	SkipMixTrackSchema,
-	SwapMixTrackSchema,
 	AddMixSongSchema,
 	RemoveMixSongSchema,
 	MoveMixSongSchema,

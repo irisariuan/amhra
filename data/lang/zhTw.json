@@ -296,10 +296,6 @@
 					"name": "循環",
 					"description": "讓混音音軌循環播放其佇列"
 				},
-				"swap": {
-					"name": "交換",
-					"description": "將混音音軌的歌曲與佇列歌曲交換"
-				},
 				"main": {
 					"name": "主要",
 					"description": "設定混音中佇列歌曲的音量"
@@ -398,10 +394,6 @@
 	"MIX_GAP_SET": "音軌 {track} 的歌曲間隔已設為 {seconds} 秒",
 	"MIX_LOOP_ON": "音軌 {track} 現在會循環播放其佇列",
 	"MIX_LOOP_OFF": "音軌 {track} 已停止循環",
-	"MIX_SWAPPED": "已交換：**[{title}]({url})** 現在是佇列歌曲，**[{mixed}]({mixedUrl})** 繼續在音軌 {track} 播放",
-	"MIX_SWAP_NOTHING_PLAYING": "佇列中沒有正在播放的歌曲可以交換",
-	"MIX_SWAP_SILENT": "音軌 {track} 沒有正在播放的歌曲可以交換",
-	"MIX_SWAP_FAILED": "無法交換，請稍後再試",
 	"VOICE_COMMANDS_ON": "已開啟語音指令。先說「Amhra」(em-ha-ra)再說指令,例如「Amhra,跳過這首歌」。",
 	"VOICE_COMMANDS_OFF": "已關閉語音指令,我不會再在這個伺服器聆聽。",
 	"VOICE_COMMANDS_ALREADY_ON": "語音指令已經是開啟的。",
@@ -460,7 +452,6 @@
 	"VOICE_SAY_MIX_GAP": "混音音軌{track}歌曲間隔{seconds}秒。",
 	"VOICE_SAY_MIX_LOOP": "切換混音音軌{track}的循環。",
 	"VOICE_SAY_MIX_MAIN": "佇列的歌音量百分之{volume}。",
-	"VOICE_SAY_MIX_SWAP": "和混音音軌{track}交換。",
 	"VOICE_SAY_MIX_LIST": "這是目前的混音。",
 	"TRANSCRIPT_ON": "從現在起,你說出我的名字後,我會把聽到的內容貼在頻道裡(在所有開啟語音指令的伺服器)。可用 `/transcript enabled:false` 關閉。",
 	"TRANSCRIPT_OFF": "我不會再貼出聽到你說的內容。",

@@ -23,7 +23,7 @@ use std::time::{Duration, Instant};
 use amhra_audio::CacheReader;
 use amhra_voice::dave::driver::Driver;
 use amhra_voice::dsp::Volume;
-use amhra_voice::mixer::{Frame, LayerEvent, Mixer};
+use amhra_voice::mixer::{Frame, MAX_QUEUES, Mixer};
 use amhra_voice::player::{Event as PlayerEvent, FadeSettings, Player, Tick};
 use amhra_voice::{SILENCE_FRAME, Session};
 
@@ -50,29 +50,23 @@ pub enum WorkerCommand {
 	},
 	/// The connection dropped; stop sending until another `Attach`.
 	Detach,
-	Play { track_id: String, reader: Box<CacheReader>, start_ms: u32 },
-	SetNext { track_id: String, reader: Box<CacheReader> },
-	ClearNext,
-	Skip,
-	Stop { keep_layers: bool },
-	Pause,
-	Resume,
-	Seek(u32),
+	Play { queue: String, track_id: String, reader: Box<CacheReader>, start_ms: u32 },
+	SetNext { queue: String, track_id: String, reader: Box<CacheReader> },
+	ClearNext(String),
+	Skip(String),
+	/// One queue, or every queue when `None`.
+	Stop(Option<String>),
+	/// One queue, or the whole guild when `None`.
+	Pause(Option<String>),
+	Resume(Option<String>),
+	Seek { queue: String, position_ms: u32 },
 	/// The overall gain.
 	SetVolume(f32),
-	/// The queue track's own gain.
-	SetMainVolume(f32),
-	AddLayer {
-		layer_id: String,
-		track_id: String,
-		reader: Box<CacheReader>,
-		gain: f32,
-		start_ms: u32,
-	},
-	RemoveLayer(String),
-	SetLayerVolume { layer_id: String, gain: f32 },
-	SwapLayer(String),
-	SetFades(FadeSettings),
+	/// One queue's own gain.
+	SetQueueVolume { queue: String, gain: f32 },
+	RemoveQueue(String),
+	/// One queue's seams, or every queue's and the default for new ones.
+	SetFades { queue: Option<String>, fades: FadeSettings },
 	/// Someone said the bot's name: chime, if `chime`, and lower the music to
 	/// `duck` until a matching `Heard`.
 	Woke { chime: bool, duck: f32 },
@@ -156,6 +150,59 @@ impl Drop for Worker {
 	}
 }
 
+/// One queue: a full player, mixed with the guild's others.
+struct Queue {
+	id: String,
+	player: Player,
+	/// Held on its own, apart from the guild's pause.
+	paused: bool,
+	/// Fading out over this tick's frame, to be dropped after it.
+	leaving: bool,
+}
+
+/// The guild's queues, in the order they were made: the first sounding one
+/// sets each mixed frame's length.
+#[derive(Default)]
+struct Queues {
+	list: Vec<Queue>,
+	/// The seams a new queue starts with.
+	fades: FadeSettings,
+}
+
+impl Queues {
+	fn get(&mut self, id: &str) -> Option<&mut Queue> {
+		self.list.iter_mut().find(|queue| queue.id == id && !queue.leaving)
+	}
+
+	/// The queue `id`, made if it is new. An error when the guild already
+	/// has as many as it may.
+	fn get_or_make(&mut self, id: &str) -> Result<&mut Queue, String> {
+		// A queue on its way out is not brought back: the bot never reuses an
+		// id, so this one is a new queue that happens to share it.
+		self.list.retain(|queue| !(queue.id == id && queue.leaving));
+		if let Some(index) = self.list.iter().position(|queue| queue.id == id) {
+			return Ok(&mut self.list[index]);
+		}
+		// One on its way out leaves within a tick and does not hold a place.
+		if self.list.iter().filter(|queue| !queue.leaving).count() >= MAX_QUEUES {
+			return Err(format!("already playing {MAX_QUEUES} queues"));
+		}
+		self.list.push(Queue {
+			id: id.to_owned(),
+			player: Player::with_fades(self.fades),
+			paused: false,
+			leaving: false,
+		});
+		Ok(self.list.last_mut().expect("just pushed"))
+	}
+
+	/// Whether a queue is holding a track while paused on its own: quiet, but
+	/// not finished.
+	fn any_held(&self) -> bool {
+		self.list.iter().any(|queue| queue.paused && !queue.player.is_idle())
+	}
+}
+
 /// Everything needed to actually put a packet on the wire.
 struct Attachment {
 	socket: std::net::UdpSocket,
@@ -172,7 +219,7 @@ fn run(
 	events: Sender<Event>,
 	speaking: Arc<AtomicBool>,
 ) {
-	let mut player = Player::new();
+	let mut queues = Queues::default();
 	let mut mixer = Mixer::new();
 	let mut output = Output::default();
 	let mut attachment: Option<Attachment> = None;
@@ -207,7 +254,7 @@ fn run(
 					}
 					apply(
 						command,
-						&mut player,
+						&mut queues,
 						&mut mixer,
 						&mut output,
 						&mut attachment,
@@ -259,23 +306,31 @@ fn run(
 			continue;
 		}
 
-		// Paused, the queue and its layers hold their place; only a chime or
-		// speech is left to send.
-		let tick = if paused { Tick::Idle } else { player.tick() };
-		// A stalled queue track is not an ending, even with nothing to send.
-		let stalled = matches!(tick, Tick::Starving);
-		let main = match tick {
-			Tick::Frame { bytes, samples } => Some(Frame { bytes, samples }),
-			Tick::Starving | Tick::Idle => None,
-		};
-		let mixed = if paused { Ok(None) } else { mixer.mix(main) };
+		// Paused, every queue holds its place; only a chime or speech is left
+		// to send. A queue paused on its own sits out while the rest play.
+		let mut frames = Vec::with_capacity(queues.list.len());
+		// A stalled queue is not an ending, even with nothing to send.
+		let mut stalled = false;
+		if !paused {
+			for Queue { id, player, paused: held, .. } in queues.list.iter_mut() {
+				if *held {
+					continue;
+				}
+				match player.tick() {
+					Tick::Frame { bytes, samples } => frames.push((id.as_str(), Frame { bytes, samples })),
+					Tick::Starving => stalled = true,
+					Tick::Idle => {}
+				}
+			}
+		}
+		let mixed = mixer.mix(&frames);
 
 		let silent = match mixed {
 			Ok(Some(frame)) => {
 				speaking.store(true, Ordering::Relaxed);
 				player_spoke = true;
 				// The duck and anything said over the music go on last, over the
-				// whole mix, so they reach every layer alike.
+				// whole mix, so they reach every queue alike.
 				match output.volume.process_with(frame.bytes, overlay) {
 					Ok(scaled) => {
 						if let Err(message) = send_frame(attached, scaled, &mut e2ee, &mut packet) {
@@ -302,65 +357,64 @@ fn run(
 				false
 			}
 		};
-		// Nothing sent, and nothing about to be: the queue is not merely
-		// stalled and no layer is waiting on its download. A stall instead
-		// holds the speaking flag, because dropping it would make the client
-		// show the bot as having stopped.
-		if silent && !stalled && !mixer.has_layers() && speaking.swap(false, Ordering::Relaxed) {
+		// Nothing sent, and nothing about to be: no queue is merely stalled on
+		// its download. A stall instead holds the speaking flag, because
+		// dropping it would make the client show the bot as having stopped.
+		if silent && !stalled && speaking.swap(false, Ordering::Relaxed) {
 			// Three silence frames tell the decoder not to interpolate across
 			// the gap that is about to start.
 			for _ in 0..3 {
 				let _ = send_frame(attached, &SILENCE_FRAME, &mut e2ee, &mut packet);
 				attached.session.advance(960);
 			}
-			// A chime over nothing ending is not the queue going quiet.
-			if std::mem::take(&mut player_spoke) && !paused {
+			// A chime over nothing ending is not the queues going quiet, and
+			// neither is one held by its own pause.
+			if std::mem::take(&mut player_spoke) && !paused && !queues.any_held() {
 				let _ = events.send(Event::Idle { guild_id: guild_id.clone() });
 			}
 		}
 
-		for event in player.drain_events() {
-			let event = match event {
-				PlayerEvent::Started(track_id) => {
-					Event::Started { guild_id: guild_id.clone(), track_id }
-				}
-				PlayerEvent::Finished(track_id) => {
-					Event::Finished { guild_id: guild_id.clone(), track_id }
-				}
-				PlayerEvent::Starved(track_id) => {
-					Event::Starved { guild_id: guild_id.clone(), track_id }
-				}
-			};
-			let _ = events.send(event);
-		}
-		for event in mixer.drain_events() {
-			let event = match event {
-				LayerEvent::Started(layer_id) => {
-					Event::LayerStarted { guild_id: guild_id.clone(), layer_id }
-				}
-				LayerEvent::Finished(layer_id) => {
-					Event::LayerFinished { guild_id: guild_id.clone(), layer_id }
-				}
-				LayerEvent::Starved(layer_id) => {
-					Event::LayerStarved { guild_id: guild_id.clone(), layer_id }
-				}
-				LayerEvent::Failed { id, reason } => {
-					report(&events, &guild_id, format!("layer {id} dropped: {reason}"));
-					continue;
-				}
-			};
-			let _ = events.send(event);
+		// A frame that could not be decoded is left out of the mix; its track
+		// is ended rather than tried again every tick, so its queue moves on.
+		for (queue_id, reason) in mixer.drain_failures() {
+			report(&events, &guild_id, format!("queue {queue_id} dropped its track: {reason}"));
+			if let Some(queue) = queues.get(&queue_id) {
+				queue.player.stop();
+			}
 		}
 
-		if ticks.is_multiple_of(POSITION_EVERY)
-			&& let Some(track_id) = player.current_id()
-		{
-			let _ = events.send(Event::Position {
-				guild_id: guild_id.clone(),
-				track_id: track_id.to_owned(),
-				position_ms: player.position_ms(),
-			});
+		let report_position = ticks.is_multiple_of(POSITION_EVERY);
+		for queue in &mut queues.list {
+			let player_events = queue.player.drain_events();
+			// The bot removed it and expects nothing more from it.
+			if queue.leaving {
+				continue;
+			}
+			for event in player_events {
+				let guild_id = guild_id.clone();
+				let queue_id = queue.id.clone();
+				let event = match event {
+					PlayerEvent::Started(track_id) => Event::Started { guild_id, queue_id, track_id },
+					PlayerEvent::Finished(track_id) => Event::Finished { guild_id, queue_id, track_id },
+					PlayerEvent::Starved(track_id) => Event::Starved { guild_id, queue_id, track_id },
+				};
+				let _ = events.send(event);
+			}
+			if report_position && let Some(track_id) = queue.player.current_id() {
+				let _ = events.send(Event::Position {
+					guild_id: guild_id.clone(),
+					queue_id: queue.id.clone(),
+					track_id: track_id.to_owned(),
+					position_ms: queue.player.position_ms(),
+				});
+			}
 		}
+
+		// A removed queue has had its fade-out frame; now it goes.
+		for queue in queues.list.iter().filter(|queue| queue.leaving) {
+			mixer.remove(&queue.id);
+		}
+		queues.list.retain(|queue| !queue.leaving);
 	}
 }
 
@@ -464,7 +518,7 @@ fn send_frame(
 #[allow(clippy::too_many_arguments)]
 fn apply(
 	command: WorkerCommand,
-	player: &mut Player,
+	queues: &mut Queues,
 	mixer: &mut Mixer,
 	output: &mut Output,
 	attachment: &mut Option<Attachment>,
@@ -491,68 +545,68 @@ fn apply(
 			*attachment = Some(Attachment { socket, session: *session, dave, _listener: listener });
 		}
 		WorkerCommand::Detach => *attachment = None,
-		WorkerCommand::Play { track_id, mut reader, start_ms } => {
-			if start_ms > 0 {
-				reader.seek(start_ms);
+		WorkerCommand::Play { queue, track_id, mut reader, start_ms } => match queues.get_or_make(&queue) {
+			Ok(queue) => {
+				if start_ms > 0 {
+					reader.seek(start_ms);
+				}
+				queue.player.play(track_id, *reader);
+				// A track started on a queue is one to hear: it ends that
+				// queue's own pause, though not the guild's.
+				queue.paused = false;
 			}
-			player.play(track_id, *reader);
-			*paused = false;
-		}
-		WorkerCommand::SetNext { track_id, reader } => player.set_next(track_id, *reader),
-		WorkerCommand::ClearNext => player.clear_next(),
-		WorkerCommand::Skip => player.skip(),
-		// Stop means silence, so the layers go with the queue — unless the
-		// queue only ran out, and the mix is playing on its own.
-		WorkerCommand::Stop { keep_layers } => {
-			player.stop();
-			if !keep_layers {
-				mixer.clear_layers();
+			Err(message) => report(events, guild_id, message),
+		},
+		WorkerCommand::SetNext { queue, track_id, reader } => match queues.get_or_make(&queue) {
+			Ok(queue) => queue.player.set_next(track_id, *reader),
+			Err(message) => report(events, guild_id, message),
+		},
+		WorkerCommand::ClearNext(queue) => {
+			if let Some(queue) = queues.get(&queue) {
+				queue.player.clear_next();
 			}
 		}
-		WorkerCommand::Pause => *paused = true,
-		WorkerCommand::Resume => *paused = false,
-		WorkerCommand::Seek(position_ms) => {
-			if player.seek(position_ms).is_none() {
-				report(events, guild_id, "nothing is playing to seek".to_owned());
+		WorkerCommand::Skip(queue) => {
+			if let Some(queue) = queues.get(&queue) {
+				queue.player.skip();
+			}
+		}
+		WorkerCommand::Stop(None) => {
+			for queue in &mut queues.list {
+				queue.player.stop();
+			}
+		}
+		WorkerCommand::Stop(Some(queue)) => {
+			if let Some(queue) = queues.get(&queue) {
+				queue.player.stop();
+			}
+		}
+		WorkerCommand::Pause(None) => *paused = true,
+		WorkerCommand::Resume(None) => *paused = false,
+		WorkerCommand::Pause(Some(queue)) => match queues.get_or_make(&queue) {
+			Ok(queue) => queue.paused = true,
+			Err(message) => report(events, guild_id, message),
+		},
+		WorkerCommand::Resume(Some(queue)) => {
+			if let Some(queue) = queues.get(&queue) {
+				queue.paused = false;
+			}
+		}
+		WorkerCommand::Seek { queue, position_ms } => {
+			let sought = queues.get(&queue).and_then(|queue| queue.player.seek(position_ms));
+			if sought.is_none() {
+				report(events, guild_id, format!("nothing is playing on queue {queue} to seek"));
 			}
 		}
 		WorkerCommand::SetVolume(gain) => mixer.set_master(gain),
-		WorkerCommand::SetMainVolume(gain) => mixer.set_main_gain(gain),
-		WorkerCommand::AddLayer { layer_id, track_id, mut reader, gain, start_ms } => {
-			if start_ms > 0 {
-				reader.seek(start_ms);
-			}
-			if let Err(error) = mixer.add_layer(layer_id, track_id, *reader, gain) {
-				report(events, guild_id, error.to_string());
-			}
-		}
-		WorkerCommand::RemoveLayer(layer_id) => {
-			if let Err(error) = mixer.remove_layer(&layer_id) {
-				report(events, guild_id, error.to_string());
-			}
-		}
-		WorkerCommand::SetLayerVolume { layer_id, gain } => {
-			if let Err(error) = mixer.set_layer_gain(&layer_id, gain) {
-				report(events, guild_id, error.to_string());
-			}
-		}
-		WorkerCommand::SwapLayer(layer_id) => {
-			match mixer.swap_with_main(&layer_id, |track, reader| player.swap_active(track, reader)) {
-				Ok(()) => {
-					let (layer_track_id, layer_position_ms) = mixer
-						.layer_track(&layer_id)
-						.map(|(track, position)| (track.to_owned(), position))
-						.expect("the swapped layer is still there");
-					let _ = events.send(Event::LayerSwapped {
-						guild_id: guild_id.to_owned(),
-						layer_id,
-						track_id: player.current_id().unwrap_or_default().to_owned(),
-						position_ms: player.position_ms(),
-						layer_track_id,
-						layer_position_ms,
-					});
-				}
-				Err(error) => report(events, guild_id, format!("cannot swap: {error}")),
+		WorkerCommand::SetQueueVolume { queue, gain } => mixer.set_gain(&queue, gain),
+		WorkerCommand::RemoveQueue(queue) => {
+			if let Some(queue) = queues.get(&queue) {
+				// Faded to silence over the next frame, then dropped.
+				queue.leaving = true;
+				mixer.set_gain(&queue.id, 0.0);
+			} else {
+				mixer.remove(&queue);
 			}
 		}
 		WorkerCommand::Woke { chime, duck } => {
@@ -594,7 +648,16 @@ fn apply(
 			}
 			output.say(clip);
 		}
-		WorkerCommand::SetFades(fades) => player.set_fades(fades),
+		WorkerCommand::SetFades { queue: None, fades } => {
+			queues.fades = fades;
+			for queue in &mut queues.list {
+				queue.player.set_fades(fades);
+			}
+		}
+		WorkerCommand::SetFades { queue: Some(queue), fades } => match queues.get_or_make(&queue) {
+			Ok(queue) => queue.player.set_fades(fades),
+			Err(message) => report(events, guild_id, message),
+		},
 		WorkerCommand::Shutdown => {}
 	}
 }
@@ -627,10 +690,11 @@ mod tests {
 
 		// A bot can issue any of these before the voice connection lands.
 		worker.send(WorkerCommand::SetVolume(0.5));
-		worker.send(WorkerCommand::Pause);
-		worker.send(WorkerCommand::Resume);
-		worker.send(WorkerCommand::Seek(1000));
-		worker.send(WorkerCommand::Skip);
+		worker.send(WorkerCommand::Pause(None));
+		worker.send(WorkerCommand::Resume(None));
+		worker.send(WorkerCommand::Seek { queue: "1".to_owned(), position_ms: 1000 });
+		worker.send(WorkerCommand::Skip("1".to_owned()));
+		worker.send(WorkerCommand::RemoveQueue("2".to_owned()));
 		std::thread::sleep(Duration::from_millis(80));
 
 		// Seeking with nothing loaded is reported rather than ignored.
@@ -640,6 +704,39 @@ mod tests {
 			"expected a seek complaint, got {errors:?}"
 		);
 		worker.shutdown();
+	}
+
+	#[test]
+	fn queues_are_made_on_first_mention_up_to_the_cap() {
+		let mut queues = Queues::default();
+		for index in 0..MAX_QUEUES {
+			assert!(queues.get_or_make(&index.to_string()).is_ok());
+		}
+		// Naming one again finds it rather than making another
+		assert!(queues.get_or_make("0").is_ok());
+		assert_eq!(queues.list.len(), MAX_QUEUES);
+		assert!(queues.get_or_make("extra").is_err());
+	}
+
+	#[test]
+	fn a_queue_on_its_way_out_is_not_found_or_revived() {
+		let mut queues = Queues::default();
+		queues.get_or_make("2").unwrap().player.set_fades(FadeSettings { crossfade_ms: 900, skip_fade_ms: 0 });
+		queues.get("2").unwrap().leaving = true;
+		assert!(queues.get("2").is_none(), "a leaving queue takes no more commands");
+		// The same id again is a fresh queue, not the old one coming back
+		let fresh = queues.get_or_make("2").unwrap();
+		assert!(!fresh.leaving);
+		assert_eq!(queues.list.len(), 1);
+	}
+
+	#[test]
+	fn new_queues_start_with_the_guild_s_fades() {
+		let mut queues = Queues { fades: FadeSettings { crossfade_ms: 1200, skip_fade_ms: 80 }, ..Default::default() };
+		let queue = queues.get_or_make("3").unwrap();
+		assert_eq!(queue.player.fades().crossfade_ms, 1200);
+		assert_eq!(queue.player.fades().skip_fade_ms, 80);
+		assert!(!queue.paused);
 	}
 
 	#[test]

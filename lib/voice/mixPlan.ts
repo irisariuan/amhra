@@ -4,25 +4,25 @@
  * The mix is a set of *tracks*, like the lanes of a track editor. Each plays
  * at its own volume, one song at a time, and has a queue of its own: when its
  * song ends, the next one starts after the track's gap. They run beside the
- * guild's main queue, not under it — the main queue can run dry, skip or be
- * swapped while every track carries on.
+ * guild's main queue, not under it — the main queue can run dry or skip
+ * while every track carries on.
  *
- * The sidecar owns the audio and knows only *layers*: one per track that is
- * playing a song. This is the bookkeeping that turns those layers into tracks,
+ * The sidecar owns the audio: each track plays on a queue of its own there,
+ * beside the main queue's. This is the bookkeeping that turns those into tracks,
  * and it is kept free of imports for the same reason as `nativePlan.ts`: the
  * rules are testable without loading the player. Nothing here sets a timer.
  * A waiting track records when it started waiting and why; when its next
  * song is due follows from that song's gap, and the caller polls `due()`.
  * That keeps pausing, reordering and changing a gap a matter of arithmetic.
  *
- * Ids are never reused, for layers or for tracks. Removing a layer fades it
- * out, and its `layerFinished` lands a frame later; had its id been handed to
- * a new layer in between, that late report would end the new one.
+ * Ids are never reused, for tracks or for the songs they play (`layerId`). A
+ * report from the sidecar names its queue and its song, and one that names a
+ * song the track has moved on from is late and ignored.
  */
 
 /**
- * Tracks one guild may have. Each plays at most one layer, so this is kept in
- * step with MAX_LAYERS in rust/amhra-voice/src/mixer.rs.
+ * Tracks one guild may have. Each has a queue in the sidecar, as does the main
+ * queue, so this is kept one below MAX_QUEUES in rust/amhra-voice/src/mixer.rs.
  */
 export const MAX_TRACKS = 8;
 /** Songs one track may have waiting, so a stuck bot cannot pile up thousands. */
@@ -351,27 +351,6 @@ export class GuildMix {
 	replacePlaying(track: MixTrack, song: MixSong, now: number): PlayingSong | null {
 		if (!track.playing) return null;
 		return this.started(track, song, now);
-	}
-
-	/**
-	 * Record a track's song trading places with the queue's: the track now
-	 * plays `main`, from `positionMs`, and the volumes swap too, because each
-	 * song kept its own level through the exchange. Returns what the track
-	 * played before, or null if it plays nothing.
-	 */
-	swap(track: MixTrack, main: MixSong, positionMs: number, now: number): PlayingSong | null {
-		const before = track.playing;
-		if (!before) return null;
-		track.playing = {
-			...main,
-			layerId: before.layerId,
-			startedAt: (this.heldAt ?? now) - positionMs,
-			startMs: 0,
-		};
-		const volume = track.volume;
-		track.volume = this.mainVolume;
-		this.mainVolume = volume;
-		return before;
 	}
 
 	/**

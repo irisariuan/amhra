@@ -251,9 +251,6 @@
 				"loop": {
 					"description": "Have a mix track play its queue round and round"
 				},
-				"swap": {
-					"description": "Make a mix track's song the queue's song, and the queue's song the track's"
-				},
 				"main": {
 					"description": "Set the volume of the queue's song within the mix"
 				},
@@ -344,10 +341,6 @@
 	"MIX_GAP_SET": "Track {track} now leaves {seconds}s between songs",
 	"MIX_LOOP_ON": "Track {track} now plays its queue round and round",
 	"MIX_LOOP_OFF": "Track {track} no longer loops",
-	"MIX_SWAPPED": "Swapped: **[{title}]({url})** is now the queue's song, and **[{mixed}]({mixedUrl})** plays on in track {track}",
-	"MIX_SWAP_NOTHING_PLAYING": "Nothing in the queue is playing to swap with",
-	"MIX_SWAP_SILENT": "Track {track} isn't playing anything to swap",
-	"MIX_SWAP_FAILED": "Couldn't swap, try again in a moment",
 	"VOICE_COMMANDS_ON": "Voice commands are on. Say \"Amhra\" (em-ha-ra) and then a command, like \"Amhra, skip this song\".",
 	"VOICE_COMMANDS_OFF": "Voice commands are off. I no longer listen in this server.",
 	"VOICE_COMMANDS_ALREADY_ON": "Voice commands are already on.",
@@ -406,7 +399,6 @@
 	"VOICE_SAY_MIX_GAP": "Mix track {track} with {seconds} seconds between songs.",
 	"VOICE_SAY_MIX_LOOP": "Changing looping on mix track {track}.",
 	"VOICE_SAY_MIX_MAIN": "The queue's song at {volume} percent.",
-	"VOICE_SAY_MIX_SWAP": "Swapping in mix track {track}.",
 	"VOICE_SAY_MIX_LIST": "Here's the mix.",
 	"TRANSCRIPT_ON": "From now on, when you say my name, I'll post what I heard in the channel, in every server with voice commands on. Turn it off with `/transcript enabled:false`.",
 	"TRANSCRIPT_OFF": "I'll stop posting what I hear from you.",

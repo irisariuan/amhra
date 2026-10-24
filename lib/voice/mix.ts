@@ -1,25 +1,22 @@
-import type { CustomAudioPlayer } from "../custom";
 import { globalApp } from "../misc";
 import { getYouTubeVideoId } from "../youtube";
 import { updateLastUsed } from "./cache";
-import { createResource, getVideoInfo, isVideo } from "./core";
+import { getVideoInfo, isVideo } from "./core";
 import {
 	clampLeadIn,
 	type GuildMix,
 	type MixSong,
 	type MixTrack,
-	type PlayingSong,
 	type TrackOptions,
 } from "./mixPlan";
 import {
 	allMixes,
 	findMix,
 	getMix,
-	nativeAddLayer,
 	nativeNoCache,
-	nativeRemoveLayer,
-	nativeSetLayerVolume,
-	nativeSwapLayer,
+	nativePlayOnTrack,
+	nativeRemoveTrack,
+	nativeSetTrackVolume,
 } from "./native";
 import { nativeFetchReady } from "./nativeFetch";
 
@@ -61,7 +58,7 @@ async function startNext(guildId: string, mix: GuildMix, track: MixTrack) {
 	if (findMix(guildId) !== mix || !mix.stillLoading(track, song)) return;
 	const startMs = song.startMs ?? 0;
 	const playing = mix.started(track, song, Date.now(), startMs);
-	nativeAddLayer(guildId, playing.layerId, playing.videoId, track.volume, startMs);
+	nativePlayOnTrack(guildId, track, playing.videoId, startMs);
 	prefetch(track);
 }
 
@@ -156,20 +153,20 @@ export async function queueOnTrack(
 
 /** Move a track on to its next song now, without waiting out the gap. */
 export function skipTrack(guildId: string, track: MixTrack) {
-	const layerId = getMix(guildId).skip(track, Date.now());
-	if (layerId) nativeRemoveLayer(guildId, layerId);
+	// Dropped rather than stopped: a dropped queue reports nothing, so no late
+	// `finished` can land on whatever the track plays next.
+	if (getMix(guildId).skip(track, Date.now())) nativeRemoveTrack(guildId, track);
 }
 
 /** Stop a track and drop its queue. */
 export function removeTrack(guildId: string, track: MixTrack) {
-	const layerId = getMix(guildId).removeTrack(track);
-	if (layerId) nativeRemoveLayer(guildId, layerId);
+	if (getMix(guildId).removeTrack(track)) nativeRemoveTrack(guildId, track);
 }
 
 /** A track's volume, applied at once to whatever it is playing. */
 export function setTrackVolume(guildId: string, track: MixTrack, volume: number) {
 	track.volume = volume;
-	if (track.playing) nativeSetLayerVolume(guildId, track.playing.layerId, volume);
+	nativeSetTrackVolume(guildId, track, volume);
 }
 
 /**
@@ -203,63 +200,7 @@ export async function replaceTrackSong(
 	if (!old || old.videoId !== song.videoId) return null;
 	const playing = mix.replacePlaying(track, next, Date.now());
 	if (!playing) return null;
-	nativeRemoveLayer(guildId, old.layerId);
-	nativeAddLayer(guildId, playing.layerId, playing.videoId, track.volume);
+	// A play replaces what the queue holds without reporting it finished.
+	nativePlayOnTrack(guildId, track, playing.videoId);
 	return playing;
-}
-
-export type SwapResult =
-	/** `now` is what the track plays now: the queue's former song. */
-	| { now: PlayingSong; before: PlayingSong }
-	| { error: "nothing_playing" | "track_silent" | "failed" };
-
-/**
- * Make a track's song the queue's song, and the queue's song the track's.
- *
- * Inaudible: each keeps its place and its volume. What changes is which one
- * the queue controls — skip, seek, segment skips, lyrics and now playing all
- * follow the swapped-in song, and when it ends the queue moves on as usual.
- * The swapped-out song plays on in the track until it ends, and then the
- * track moves on to its own next song.
- */
-export async function swapTrackWithMain(
-	player: CustomAudioPlayer,
-	track: MixTrack,
-): Promise<SwapResult> {
-	const guildId = player.guildId;
-	if (!player.nativePlayback || !player.isPlaying || !player.nowPlaying) {
-		return { error: "nothing_playing" };
-	}
-	const layer = track.playing;
-	if (!layer) return { error: "track_silent" };
-	// Built first, so the queue's view can change the moment the sidecar
-	// reports the swap rather than a network round trip later.
-	const resource = await createResource(layer.url).catch(() => null);
-	if (!resource) return { error: "failed" };
-
-	const swapped = await nativeSwapLayer(guildId, layer.layerId);
-	if (!swapped) return { error: "failed" };
-
-	// Read after the waits: the queue may have moved on in the meantime, and
-	// the sidecar's report says which track actually went into the mix.
-	const outgoing = player.nowPlaying;
-	const main: MixSong =
-		outgoing?.videoId === swapped.layerTrackId
-			? {
-					videoId: swapped.layerTrackId,
-					title: outgoing.title,
-					url: outgoing.url,
-					durationMs: outgoing.details.durationInSec * 1000 || null,
-				}
-			: {
-					videoId: swapped.layerTrackId,
-					title: swapped.layerTrackId,
-					url: `https://youtu.be/${swapped.layerTrackId}`,
-					durationMs: null,
-				};
-	const mix = getMix(guildId);
-	const before = mix.swap(track, main, swapped.layerPositionMs, Date.now());
-	player.adoptSwapped(resource, swapped.positionMs);
-	if (!before || !track.playing) return { error: "failed" };
-	return { now: track.playing, before };
 }

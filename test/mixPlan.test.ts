@@ -396,32 +396,6 @@ describe("pausing", () => {
 	});
 });
 
-describe("swapping with the queue", () => {
-	test("trades the songs and their volumes, keeping the layer", () => {
-		// The sidecar swaps inaudibly: each song keeps its own level, so the
-		// queue's volume becomes the track's and the other way round.
-		const mix = new GuildMix();
-		mix.mainVolume = 80;
-		const track = mix.addTrack({ volume: 30 })!;
-		mix.enqueue(track, song(1), 0);
-		const layer = play(mix, track, 0);
-
-		const before = mix.swap(track, song(9), 42_000, 50_000);
-		expect(before?.title).toBe("Song 1");
-		expect(mix.mainVolume).toBe(30);
-		expect(track.volume).toBe(80);
-		expect(track.playing?.title).toBe("Song 9");
-		expect(track.playing?.layerId).toBe(layer.layerId);
-		expect(mix.position(track, 50_000)).toBe(42_000);
-	});
-
-	test("needs the track to be playing", () => {
-		const mix = new GuildMix();
-		const track = mix.addTrack()!;
-		expect(mix.swap(track, song(1), 0, 0)).toBeNull();
-	});
-});
-
 describe("clearing", () => {
 	test("returns every layer to stop and leaves nothing to start", () => {
 		const mix = new GuildMix();

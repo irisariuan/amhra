@@ -25,7 +25,6 @@ export enum SongEditType {
 	RemoveMixTrack = "removeMixTrack",
 	SetMixTrack = "setMixTrack",
 	SkipMixTrack = "skipMixTrack",
-	SwapMixTrack = "swapMixTrack",
 	AddMixSong = "addMixSong",
 	RemoveMixSong = "removeMixSong",
 	MoveMixSong = "moveMixSong",

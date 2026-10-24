@@ -70,7 +70,6 @@ function phrase(intent: VoiceIntent): [string, Record<string, string | number>?]
 				case "remove":
 				case "skip":
 				case "loop":
-				case "swap":
 					return [`voice_say_mix_${intent.subcommand}`, { track: options.track as number }];
 				case "volume":
 					return [

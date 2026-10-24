@@ -11,6 +11,11 @@ export type Command = { "type": "connect", guildId: string, channelId: string, u
  */
 listen: boolean, } | { "type": "setListen", guildId: string, listen: boolean, } | { "type": "disconnect", guildId: string, } | { "type": "play", guildId: string, 
 /**
+ * Every queue is a full player of its own, mixed with the others.
+ * The bot names them; `"1"` when left out.
+ */
+queueId: string, 
+/**
  * The cache id, not a path: the sidecar owns the cache layout.
  */
 trackId: string, startMs: number, 
@@ -18,12 +23,7 @@ trackId: string, startMs: number,
  * Fetch the track straight into playback rather than read it from
  * the cache, unless the cache already holds all of it.
  */
-stream: boolean, } | { "type": "setNext", guildId: string, trackId: string, stream: boolean, } | { "type": "clearNext", guildId: string, } | { "type": "skip", guildId: string, } | { "type": "stop", guildId: string, keepLayers: boolean, } | { "type": "pause", guildId: string, } | { "type": "resume", guildId: string, } | { "type": "seek", guildId: string, positionMs: number, } | { "type": "setVolume", guildId: string, gain: number, } | { "type": "setMainVolume", guildId: string, gain: number, } | { "type": "addLayer", guildId: string, 
-/**
- * Chosen by the bot, and how every later layer command and event
- * names this one.
- */
-layerId: string, trackId: string, gain: number, startMs: number, stream: boolean, } | { "type": "removeLayer", guildId: string, layerId: string, } | { "type": "setLayerVolume", guildId: string, layerId: string, gain: number, } | { "type": "swapLayer", guildId: string, layerId: string, } | { "type": "setFades", guildId: string, crossfadeMs: number, skipFadeMs: number, } | { "type": "speak", guildId: string, text: string, 
+stream: boolean, } | { "type": "setNext", guildId: string, queueId: string, trackId: string, stream: boolean, } | { "type": "clearNext", guildId: string, queueId: string, } | { "type": "skip", guildId: string, queueId: string, } | { "type": "stop", guildId: string, queueId: string | null, } | { "type": "pause", guildId: string, queueId: string | null, } | { "type": "resume", guildId: string, queueId: string | null, } | { "type": "seek", guildId: string, queueId: string, positionMs: number, } | { "type": "setVolume", guildId: string, gain: number, } | { "type": "setQueueVolume", guildId: string, queueId: string, gain: number, } | { "type": "removeQueue", guildId: string, queueId: string, } | { "type": "setFades", guildId: string, queueId: string | null, crossfadeMs: number, skipFadeMs: number, } | { "type": "speak", guildId: string, text: string, 
 /**
  * `en`, `ja`, `ko`, `zh` (Mandarin) or `yue` (Cantonese); anything
  * else, or nothing, is English.
@@ -44,15 +44,7 @@ listen: boolean, } | { "type": "setTimings", waitForSpeechMs: number | null, end
 /**
  * What this process reports back.
  */
-export type Event = { "type": "hello", version: number, pid: number, } | { "type": "ready", guildId: string, daveVersion: number, } | { "type": "started", guildId: string, trackId: string, } | { "type": "finished", guildId: string, trackId: string, } | { "type": "starved", guildId: string, trackId: string, } | { "type": "layerStarted", guildId: string, layerId: string, } | { "type": "layerFinished", guildId: string, layerId: string, } | { "type": "layerStarved", guildId: string, layerId: string, } | { "type": "layerSwapped", guildId: string, layerId: string, 
-/**
- * What the queue is playing now: the layer's former track.
- */
-trackId: string, positionMs: number, 
-/**
- * What the layer is playing now: the queue's former track.
- */
-layerTrackId: string, layerPositionMs: number, } | { "type": "position", guildId: string, trackId: string, positionMs: number, } | { "type": "idle", guildId: string, } | { "type": "reconnecting", guildId: string, reason: string, } | { "type": "disconnected", guildId: string, reason: string, } | { "type": "error", guildId: string | null, message: string, } | { "type": "sessions", guilds: Array<SessionState>, } | { "type": "woke", guildId: string, userId: string, } | { "type": "captured", guildId: string, userId: string, } | { "type": "nothingHeard", guildId: string, userId: string, } | { "type": "utterance", guildId: string, userId: string, text: string, 
+export type Event = { "type": "hello", version: number, pid: number, } | { "type": "ready", guildId: string, daveVersion: number, } | { "type": "started", guildId: string, queueId: string, trackId: string, } | { "type": "finished", guildId: string, queueId: string, trackId: string, } | { "type": "starved", guildId: string, queueId: string, trackId: string, } | { "type": "position", guildId: string, queueId: string, trackId: string, positionMs: number, } | { "type": "idle", guildId: string, } | { "type": "reconnecting", guildId: string, reason: string, } | { "type": "disconnected", guildId: string, reason: string, } | { "type": "error", guildId: string | null, message: string, } | { "type": "sessions", guilds: Array<SessionState>, } | { "type": "woke", guildId: string, userId: string, } | { "type": "captured", guildId: string, userId: string, } | { "type": "nothingHeard", guildId: string, userId: string, } | { "type": "utterance", guildId: string, userId: string, text: string, 
 /**
  * The language the recogniser detected: `en`, `ja`, `ko`, `zh` or
  * `yue`, or null when it could not tell.
@@ -74,14 +66,27 @@ latencyMs: number, };
 export type Phrase = { text: string, language: string | null, };
 
 /**
+ * One queue's state, within a `SessionState`.
+ */
+export type QueueState = { queueId: string, trackId: string | null, positionMs: number, 
+/**
+ * Whether this queue is paused on its own.
+ */
+paused: boolean, 
+/**
+ * The queue's own gain.
+ */
+gain: number, };
+
+/**
  * One guild's state, for a bot that has just restarted and lost its own.
  */
-export type SessionState = { guildId: string, channelId: string, trackId: string | null, positionMs: number, paused: boolean, 
+export type SessionState = { guildId: string, channelId: string, 
+/**
+ * Whether the whole guild is paused.
+ */
+paused: boolean, 
 /**
  * The overall gain.
  */
-gain: number, 
-/**
- * The queue track's own gain.
- */
-mainGain: number, };
+gain: number, queues: Array<QueueState>, };
