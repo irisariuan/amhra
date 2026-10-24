@@ -3,6 +3,7 @@ import {
 	gainFromPercent,
 	GuildMix,
 	MAX_GAP_MS,
+	MAX_LEAD_IN_MS,
 	MAX_TRACK_QUEUE,
 	MAX_TRACKS,
 	type MixSong,
@@ -297,6 +298,23 @@ describe("a song's own gap", () => {
 		expect(mix.moveSong(from, 0, to, 0, 12_000, 4_000)).toBe(true);
 		expect(to.queue[0]).toEqual({ ...song(1), gapBeforeMs: 4_000 });
 		expect(mix.dueIn(to, 12_000)).toBe(4_000);
+	});
+
+	test("may be far longer than a track's gap", () => {
+		// Dropped after a long queue on another lane, a song can start an
+		// hour out; a track's own gap stays capped at ten minutes.
+		const mix = new GuildMix();
+		const from = mix.addTrack()!;
+		const to = mix.addTrack({ gapMs: MAX_GAP_MS * 2 })!;
+		expect(to.gapMs).toBe(MAX_GAP_MS);
+		mix.enqueue(from, song(0), 0);
+		play(mix, from, 0);
+		mix.enqueue(from, song(1), 0);
+		mix.moveSong(from, 0, to, 0, 0, 72 * 60_000);
+		expect(mix.dueIn(to, 0)).toBe(72 * 60_000);
+		mix.enqueue(from, song(2), 0);
+		mix.moveSong(from, 0, to, 0, 0, MAX_LEAD_IN_MS * 2);
+		expect(to.queue[0].gapBeforeMs).toBe(MAX_LEAD_IN_MS);
 	});
 
 	test("a move without one keeps the song's own", () => {

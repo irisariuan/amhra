@@ -4,7 +4,7 @@ import { getYouTubeVideoId } from "../youtube";
 import { updateLastUsed } from "./cache";
 import { createResource, getVideoInfo, isVideo } from "./core";
 import {
-	clampGap,
+	clampLeadIn,
 	type GuildMix,
 	type MixSong,
 	type MixTrack,
@@ -99,7 +99,7 @@ export async function resolveSong(
 		url: info.video_details.url,
 		durationMs: seconds > 0 ? seconds * 1000 : null,
 		...(startMs ? { startMs } : {}),
-		...(gapBeforeMs === undefined ? {} : { gapBeforeMs: clampGap(gapBeforeMs) }),
+		...(gapBeforeMs === undefined ? {} : { gapBeforeMs: clampLeadIn(gapBeforeMs) }),
 	};
 }
 

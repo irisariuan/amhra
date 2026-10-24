@@ -2,7 +2,7 @@ import z from "zod";
 import { SongEditType } from "./event";
 import { isYouTubePlaylist, isYouTubeVideo } from "../youtube";
 import { Language } from "../interaction";
-import { MAX_GAP_MS } from "../voice/mixPlan";
+import { MAX_GAP_MS, MAX_LEAD_IN_MS } from "../voice/mixPlan";
 
 // Queue item (from custom.ts)
 export const QueueItemSchema = z.object({
@@ -174,6 +174,11 @@ const AutoSuggestSchema = z.object({
  */
 const MixVolume = z.number().nonnegative().max(5, "Volume must be <= 5");
 const MixGap = z.number().nonnegative().max(MAX_GAP_MS, `Gap must be <= ${MAX_GAP_MS}ms`);
+/** A song's own silence before it, from where it was dropped on the timeline. */
+const MixLeadIn = z
+	.number()
+	.nonnegative()
+	.max(MAX_LEAD_IN_MS, `Lead-in must be <= ${MAX_LEAD_IN_MS}ms`);
 const TrackId = z.string().min(1);
 
 const TrackSettings = z.object({
@@ -279,7 +284,7 @@ const MoveMixSongSchema = z.object({
 			 * how the editor lines a song up on its timeline. Ignored for the
 			 * guild's queue, which plays back to back.
 			 */
-			gapMs: MixGap.optional(),
+			gapMs: MixLeadIn.optional(),
 		}),
 		url: z.string().optional(),
 	}),

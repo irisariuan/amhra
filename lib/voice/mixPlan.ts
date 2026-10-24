@@ -29,6 +29,12 @@ export const MAX_TRACKS = 8;
 export const MAX_TRACK_QUEUE = 100;
 /** The longest silence a track may leave between two songs. */
 export const MAX_GAP_MS = 10 * 60_000;
+/**
+ * The longest silence before one song, set by where it was dropped on the
+ * editor's timeline. Far more than a track's gap: lining a song up after a
+ * long queue on another lane can put it an hour or more out.
+ */
+export const MAX_LEAD_IN_MS = 6 * 60 * 60_000;
 
 export interface MixSong {
 	videoId: string;
@@ -216,7 +222,8 @@ export class GuildMix {
 		if (!song) return false;
 		if (from !== to && to.queue.length >= MAX_TRACK_QUEUE) return false;
 		this.removeSong(from, fromIndex);
-		const moved = gapBeforeMs === undefined ? song : { ...song, gapBeforeMs: clampGap(gapBeforeMs) };
+		const moved =
+			gapBeforeMs === undefined ? song : { ...song, gapBeforeMs: clampLeadIn(gapBeforeMs) };
 		const at = clampIndex(toIndex, to.queue.length);
 		to.queue.splice(at, 0, moved);
 		this.placed(to, at, now);
@@ -413,9 +420,14 @@ export function songOf({ videoId, title, url, durationMs, gapBeforeMs }: MixSong
 	return { videoId, title, url, durationMs, ...(gapBeforeMs === undefined ? {} : { gapBeforeMs }) };
 }
 
-/** A gap as the mix allows it: whole milliseconds, from none to `MAX_GAP_MS`. */
-export function clampGap(gapMs: number) {
-	return Number.isFinite(gapMs) ? Math.min(Math.max(0, Math.round(gapMs)), MAX_GAP_MS) : 0;
+/** A track's gap as the mix allows it: whole milliseconds, from none to `MAX_GAP_MS`. */
+export function clampGap(gapMs: number, max = MAX_GAP_MS) {
+	return Number.isFinite(gapMs) ? Math.min(Math.max(0, Math.round(gapMs)), max) : 0;
+}
+
+/** A song's own lead-in as the mix allows it, up to `MAX_LEAD_IN_MS`. */
+export function clampLeadIn(gapMs: number) {
+	return clampGap(gapMs, MAX_LEAD_IN_MS);
 }
 
 function clampIndex(index: number, length: number) {
