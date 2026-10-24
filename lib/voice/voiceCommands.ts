@@ -125,19 +125,39 @@ function listeningKey(guildId: string, userId: string) {
 async function speaker(client: CustomClient, guildId: string, userId: string) {
 	// The sidecar should not have heard a guild that turned this off, but the
 	// switch is checked here too: a `setListen` may still be in flight.
-	if (!guildListens(guildId)) return null;
-	if (readSetting().BANNED_IDS?.includes(userId)) return null;
+	const passOver = (why: string) => {
+		dcb.log(`(Guild ID: ${guildId}) Not answering ${userId}'s voice: ${why}`);
+		return null;
+	};
+	if (!guildListens(guildId)) return passOver("voice commands are off here");
+	if (readSetting().BANNED_IDS?.includes(userId)) return passOver("banned");
 	const guild = client.guilds.cache.get(guildId);
-	const member = await guild?.members.fetch(userId).catch(() => null);
-	if (!guild || !member || member.user.bot || !member.voice.channel) return null;
+	if (!guild) return passOver("guild not cached");
+	const member = await guild.members.fetch(userId).catch(() => null);
+	if (!member) return passOver("member not found");
+	if (member.user.bot) return passOver("a bot");
+	if (!member.voice.channel) return passOver("not in a voice channel");
 	return { guild, member };
+}
+
+/** Say a voice answer could not be posted, rather than leave it unexplained. */
+function postFailed(guildId: string, what: string, channel: { id: string } | null) {
+	return (error: unknown) => {
+		globalApp.warn(
+			`(Guild ID: ${guildId}) Could not post the voice ${what} in ${channel?.id ?? "no channel"}: ${error}`,
+		);
+		return null;
+	};
 }
 
 async function onWoke(
 	client: CustomClient,
 	{ guildId, userId }: Extract<SidecarEvent, { type: "woke" }>,
 ) {
-	if (!userSetting(userId).showTranscript) return;
+	if (!userSetting(userId).showTranscript) {
+		dcb.log(`(Guild ID: ${guildId}) No transcript for ${userId}: /transcript is off for them`);
+		return;
+	}
 	const key = listeningKey(guildId, userId);
 	// One from an earlier wake that never got an answer stays as it is.
 	void takeListening(guildId, userId);
@@ -146,11 +166,15 @@ async function onWoke(
 	const wordings = stageWordings(guild, userId);
 	const post = (async () => {
 		const found = await speaker(client, guildId, userId);
-		const channel = found && replyChannel(client, found.guild, found.member);
-		if (!found || !channel) return null;
+		if (!found) return null;
+		const channel = replyChannel(client, found.guild, found.member);
+		if (!channel) {
+			globalApp.warn(`(Guild ID: ${guildId}) Nowhere to post a voice transcript`);
+			return null;
+		}
 		return channel
 			.send({ content: wordings("listening")[0] ?? "", allowedMentions: { parse: [] } })
-			.catch(() => null);
+			.catch(postFailed(guildId, "transcript", channel));
 	})();
 	listening.set(key, new TranscriptStatus(post, "listening", wordings));
 }
@@ -254,8 +278,8 @@ async function handleUtterance(
 				text: escapeMarkdown(text),
 			});
 			const answer = { content, allowedMentions: { parse: [] } };
-			if (waiting) await waiting.edit(answer).catch(() => {});
-			else await channel?.send(answer).catch(() => {});
+			if (waiting) await waiting.edit(answer).catch(postFailed(guildId, "transcript", waiting.channel));
+			else await channel?.send(answer).catch(postFailed(guildId, "transcript", channel));
 		}
 		return false;
 	}
@@ -361,8 +385,8 @@ async function speakBack(
 				answer: escapeMarkdown(reply.text),
 			});
 	const message = { content, allowedMentions: { parse: [] } };
-	if (waiting) await waiting.edit(message).catch(() => {});
-	else await channel?.send(message).catch(() => {});
+	if (waiting) await waiting.edit(message).catch(postFailed(guildId, "answer", waiting.channel));
+	else await channel?.send(message).catch(postFailed(guildId, "answer", channel));
 
 	// Without speech nothing is said, so nothing is listened for after it.
 	if (!speaksAnswers()) return false;
