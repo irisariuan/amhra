@@ -93,7 +93,12 @@
 			"options": {
 				"add": {
 					"name": "추가",
-					"description": "동영상 끼어들기 재생을 예약합니다. 최초 공개는 자동으로 시간이 정해집니다"
+					"description": "동영상 끼어들기 재생을 예약합니다. 최초 공개는 자동으로 시간이 정해집니다",
+					"options": {
+						"queue": {
+							"description": "끼어들 대기열, 비워 두면 1; 새 번호를 쓰면 대기열을 하나 더 만듭니다"
+						}
+					}
 				},
 				"list": {
 					"name": "목록",
@@ -311,39 +316,39 @@
 		},
 		"mix": {
 			"name": "믹스",
-			"description": "대기열 위에 트랙을 겹쳐 재생합니다. 트랙마다 대기열과 음량이 따로 있습니다",
+			"description": "대기열 1 위에 다른 대기열을 겹쳐 재생합니다. 대기열마다 곡과 음량이 따로 있습니다",
 			"options": {
 				"add": {
 					"name": "추가",
-					"description": "믹스 트랙에 곡을 추가하거나, 그 곡으로 새 트랙을 만듭니다"
+					"description": "겹친 대기열에 곡을 추가하거나, 그 곡으로 새 대기열을 만듭니다"
 				},
 				"remove": {
 					"name": "제거",
-					"description": "믹스 트랙이나 그 대기열의 곡 하나를 제거합니다"
+					"description": "겹친 대기열 또는 그 안의 곡 하나를 제거합니다"
 				},
 				"skip": {
 					"name": "건너뛰기",
-					"description": "믹스 트랙을 지금 다음 곡으로 넘깁니다"
+					"description": "겹친 대기열을 지금 다음 곡으로 넘깁니다"
 				},
 				"volume": {
 					"name": "음량",
-					"description": "믹스 트랙의 음량을 설정합니다"
+					"description": "겹친 대기열의 음량을 설정합니다"
 				},
 				"gap": {
 					"name": "간격",
-					"description": "믹스 트랙의 곡 사이 간격을 설정합니다"
+					"description": "겹친 대기열의 곡 간격을 설정합니다"
 				},
 				"loop": {
 					"name": "반복",
-					"description": "믹스 트랙의 대기열을 반복 재생합니다"
+					"description": "겹친 대기열을 반복합니다"
 				},
 				"main": {
 					"name": "메인",
-					"description": "믹스 내 대기열 곡의 음량을 설정합니다"
+					"description": "믹스 내 대기열 1 자체의 음량을 설정합니다"
 				},
 				"list": {
 					"name": "목록",
-					"description": "믹스의 트랙과 각 트랙의 대기열을 표시합니다"
+					"description": "겹친 대기열과 각 대기열의 곡을 보여줍니다"
 				}
 			}
 		},
@@ -502,5 +507,6 @@
 	"QUEUE_CHOICE_IDLE": "대기열 {queue}: 재생 중인 곡 없음 (대기 {queued}곡)",
 	"QUEUE_CHOICE_NEW": "대기열 {queue}: 새 대기열 만들기",
 	"QUEUE_NATIVE_ONLY": "2번 이후의 대기열은 Rust 음성 백엔드(`USE_RUST_VOICE`)가 필요합니다",
-	"SET_QUEUE_VOLUME": "대기열 {queue} 음량을 {volume}%(으)로 설정했습니다"
+	"SET_QUEUE_VOLUME": "대기열 {queue} 음량을 {volume}%(으)로 설정했습니다",
+	"SCHEDULE_QUEUE_TAG": " · 대기열 {queue}"
 }

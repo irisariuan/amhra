@@ -1,4 +1,5 @@
 import bodyParser from "body-parser";
+import { nativeVoiceActive } from "../voice/native";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
 import express, { type Request, type Response } from "express";
@@ -364,7 +365,9 @@ export async function initServer(client: CustomClient) {
 		async (req, res) => {
 			const parsed = ScheduleAddSchema.safeParse(req.body);
 			if (!parsed.success) return res.sendStatus(400);
-			const { guildId, url, at } = parsed.data;
+			const { guildId, url, at, queue } = parsed.data;
+			// Only the sidecar plays more than one queue
+			if (queue !== undefined && queue !== 1 && !nativeVoiceActive()) return res.sendStatus(501);
 			const player = client.player.get(guildId);
 			// A schedule waits in the bot's voice seat, so there has to be one
 			if (!player || !getConnection(guildId)) return res.sendStatus(409);
@@ -382,6 +385,7 @@ export async function initServer(client: CustomClient) {
 					? `${account.displayName} (${dashboard})`
 					: dashboard,
 				language: player.currentLanguage,
+				queue,
 			});
 			if ("error" in result) {
 				const status = { not_found: 404, need_time: 422, past: 400 }[

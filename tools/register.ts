@@ -69,8 +69,9 @@ function loadLocale(
 					);
 				}
 				if (
-					option.type ===
-						ApplicationCommandOptionType.SubcommandGroup &&
+					(option.type ===
+						ApplicationCommandOptionType.SubcommandGroup ||
+						option.type === ApplicationCommandOptionType.Subcommand) &&
 					localeOption.options
 				) {
 					for (const subOption of option.options ?? []) {

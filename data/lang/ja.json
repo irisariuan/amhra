@@ -93,7 +93,13 @@
 			"options": {
 				"add": {
 					"name": "追加",
-					"description": "動画の割り込み再生を予約します。プレミアは自動で時間が設定されます"
+					"description": "動画の割り込み再生を予約します。プレミアは自動で時間が設定されます",
+					"options": {
+						"queue": {
+							"name": "キュー",
+							"description": "割り込むキュー。空欄なら 1、新しい番号なら別のキューを作ります"
+						}
+					}
 				},
 				"list": {
 					"name": "一覧",
@@ -336,39 +342,39 @@
 		},
 		"mix": {
 			"name": "ミックス",
-			"description": "キューの上にトラックを重ねて再生します。トラックごとにキューと音量があります",
+			"description": "キュー 1 の上に別のキューを重ねて再生します。キューごとに曲と音量があります",
 			"options": {
 				"add": {
 					"name": "追加",
-					"description": "ミックストラックに曲を追加するか、その曲で新しいトラックを作ります"
+					"description": "重ねたキューに曲を追加するか、その曲で新しいキューを作ります"
 				},
 				"remove": {
 					"name": "削除",
-					"description": "ミックストラック、またはそのキューの曲を1曲削除します"
+					"description": "重ねたキュー、またはその曲を1曲削除します"
 				},
 				"skip": {
 					"name": "スキップ",
-					"description": "ミックストラックを今すぐ次の曲へ進めます"
+					"description": "重ねたキューを今すぐ次の曲へ進めます"
 				},
 				"volume": {
 					"name": "音量",
-					"description": "ミックストラックの音量を設定します"
+					"description": "重ねたキューの音量を設定します"
 				},
 				"gap": {
 					"name": "間隔",
-					"description": "ミックストラックの曲と曲の間隔を設定します"
+					"description": "重ねたキューの曲と曲の間隔を設定します"
 				},
 				"loop": {
 					"name": "ループ",
-					"description": "ミックストラックのキューを繰り返し再生します"
+					"description": "重ねたキューをループします"
 				},
 				"main": {
 					"name": "メイン",
-					"description": "ミックス内のキューの曲の音量を設定します"
+					"description": "ミックス内のキュー 1 自身の音量を設定します"
 				},
 				"list": {
 					"name": "一覧",
-					"description": "ミックスのトラックとそれぞれのキューを表示します"
+					"description": "重ねたキューと、それぞれに入っている曲を表示します"
 				}
 			}
 		},
@@ -527,5 +533,6 @@
 	"QUEUE_CHOICE_IDLE": "キュー {queue}: 再生なし（待ち {queued} 曲）",
 	"QUEUE_CHOICE_NEW": "キュー {queue}: 新しいキューを作る",
 	"QUEUE_NATIVE_ONLY": "キュー 2 以降には Rust 音声バックエンド（`USE_RUST_VOICE`）が必要です",
-	"SET_QUEUE_VOLUME": "キュー {queue} の音量を {volume}% に設定しました"
+	"SET_QUEUE_VOLUME": "キュー {queue} の音量を {volume}% に設定しました",
+	"SCHEDULE_QUEUE_TAG": " · キュー {queue}"
 }

@@ -184,6 +184,7 @@ export default {
 					createdBy: interaction.user.displayName,
 					language,
 					upcoming,
+					queue,
 				});
 				if ("entry" in result) {
 					return interaction.editReply({

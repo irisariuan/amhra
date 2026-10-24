@@ -2,7 +2,7 @@ import z from "zod";
 import { SongEditType } from "./event";
 import { isYouTubePlaylist, isYouTubeVideo } from "../youtube";
 import { Language } from "../interaction";
-import { MAX_GAP_MS, MAX_LEAD_IN_MS } from "../voice/queuePlan";
+import { MAX_GAP_MS, MAX_LEAD_IN_MS, MAX_QUEUES } from "../voice/queuePlan";
 
 // Queue item (from custom.ts)
 export const QueueItemSchema = z.object({
@@ -322,6 +322,8 @@ export const ScheduleAddSchema = z.object({
 		.string()
 		.refine((u) => isYouTubeVideo(u), "Must be a valid YouTube video URL"),
 	at: z.number().int().positive().optional(),
+	/** The queue to cut in on; 1 if left out */
+	queue: z.number().int().min(1).max(MAX_QUEUES).optional(),
 });
 
 /** Answer a pending schedule: drop it, or queue it next instead of cutting in. */

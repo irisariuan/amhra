@@ -44,11 +44,11 @@ const TRACK = "The queue's number, 2 and up, as /mix list shows it";
 export default {
 	data: new SlashCommandBuilder()
 		.setName("mix")
-		.setDescription("Play tracks on top of the queue, each with its own queue and volume")
+		.setDescription("Play queues on top of queue 1, each with its own songs and volume")
 		.addSubcommand((sub) =>
 			sub
 				.setName("add")
-				.setDescription("Queue a song on a mix track, or start a new track with it")
+				.setDescription("Queue a song on a mixed-in queue, or start a new queue with it")
 				.addStringOption((opt) =>
 					opt
 						.setName("search")
@@ -61,14 +61,14 @@ export default {
 				.addNumberOption((opt) =>
 					opt
 						.setName("volume")
-						.setDescription("The track's volume (0-500), 100 for a new one if left empty")
+						.setDescription("The queue's volume (0-500), 100 for a new one if left empty")
 						.setMinValue(0)
 						.setMaxValue(500),
 				)
 				.addNumberOption((opt) =>
 					opt
 						.setName("gap")
-						.setDescription("Seconds of silence between the track's songs, 0 for a new one if left empty")
+						.setDescription("Seconds of silence between the queue's songs, 0 for a new one if left empty")
 						.setMinValue(0)
 						.setMaxValue(MAX_GAP_MS / 1000),
 				),
@@ -76,12 +76,12 @@ export default {
 		.addSubcommand((sub) =>
 			sub
 				.setName("remove")
-				.setDescription("Remove a mix track, or one song from its queue")
+				.setDescription("Remove a mixed-in queue, or one song from it")
 				.addIntegerOption(trackOption(TRACK, true))
 				.addIntegerOption((opt) =>
 					opt
 						.setName("song")
-						.setDescription("The song's place in the track's queue; the whole track if left empty")
+						.setDescription("The song's place in the queue; the whole queue if left empty")
 						.setMinValue(1)
 						.setAutocomplete(true),
 				),
@@ -89,13 +89,13 @@ export default {
 		.addSubcommand((sub) =>
 			sub
 				.setName("skip")
-				.setDescription("Move a mix track on to its next song now")
+				.setDescription("Move a mixed-in queue on to its next song now")
 				.addIntegerOption(trackOption(TRACK, true)),
 		)
 		.addSubcommand((sub) =>
 			sub
 				.setName("volume")
-				.setDescription("Set the volume of a mix track")
+				.setDescription("Set the volume of a mixed-in queue")
 				.addIntegerOption(trackOption(TRACK, true))
 				.addNumberOption((opt) =>
 					opt
@@ -109,7 +109,7 @@ export default {
 		.addSubcommand((sub) =>
 			sub
 				.setName("gap")
-				.setDescription("Set how long a mix track waits between its songs")
+				.setDescription("Set how long a mixed-in queue waits between its songs")
 				.addIntegerOption(trackOption(TRACK, true))
 				.addNumberOption((opt) =>
 					opt
@@ -123,7 +123,7 @@ export default {
 		.addSubcommand((sub) =>
 			sub
 				.setName("loop")
-				.setDescription("Have a mix track play its queue round and round")
+				.setDescription("Have a mixed-in queue loop")
 				.addIntegerOption(trackOption(TRACK, true))
 				.addBooleanOption((opt) =>
 					opt.setName("enabled").setDescription("On or off; toggles if left empty"),
@@ -132,7 +132,7 @@ export default {
 		.addSubcommand((sub) =>
 			sub
 				.setName("main")
-				.setDescription("Set the volume of the queue's song within the mix")
+				.setDescription("Set queue 1's own volume within the mix")
 				.addNumberOption((opt) =>
 					opt
 						.setName("volume")
@@ -143,7 +143,7 @@ export default {
 				),
 		)
 		.addSubcommand((sub) =>
-			sub.setName("list").setDescription("Show the mix's tracks and what each has queued"),
+			sub.setName("list").setDescription("Show the mixed-in queues and what each has queued"),
 		),
 	async autocomplete({ interaction, client, language }) {
 		const guildId = interaction.guildId;
