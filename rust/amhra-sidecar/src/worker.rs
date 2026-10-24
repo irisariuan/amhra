@@ -54,7 +54,7 @@ pub enum WorkerCommand {
 	SetNext { track_id: String, reader: Box<CacheReader> },
 	ClearNext,
 	Skip,
-	Stop,
+	Stop { keep_layers: bool },
 	Pause,
 	Resume,
 	Seek(u32),
@@ -501,10 +501,13 @@ fn apply(
 		WorkerCommand::SetNext { track_id, reader } => player.set_next(track_id, *reader),
 		WorkerCommand::ClearNext => player.clear_next(),
 		WorkerCommand::Skip => player.skip(),
-		// Stop means silence, so the layers go with the queue.
-		WorkerCommand::Stop => {
+		// Stop means silence, so the layers go with the queue — unless the
+		// queue only ran out, and the mix is playing on its own.
+		WorkerCommand::Stop { keep_layers } => {
 			player.stop();
-			mixer.clear_layers();
+			if !keep_layers {
+				mixer.clear_layers();
+			}
 		}
 		WorkerCommand::Pause => *paused = true,
 		WorkerCommand::Resume => *paused = false,

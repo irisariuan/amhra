@@ -1,5 +1,5 @@
-import { SlashCommandBuilder } from "discord.js";
-import { type Command } from "../../lib/interaction";
+import { SlashCommandBuilder, type SlashCommandIntegerOption } from "discord.js";
+import { type Command, type Language } from "../../lib/interaction";
 import { languageText } from "../../lib/language";
 import { dcb, misc } from "../../lib/misc";
 import { searchYouTube, type YouTubeVideo } from "../../lib/youtube";
@@ -10,66 +10,89 @@ import {
 	getConnection,
 	isPlaylist,
 	isVideo,
+	timeFormat,
 } from "../../lib/voice/core";
 import { indexChoices } from "../../lib/autocompletePlan";
+import { findMix, getMix, nativeSetMainVolume, nativeVoiceActive } from "../../lib/voice/native";
 import {
-	findMix,
-	getMix,
-	nativeRemoveLayer,
-	nativeSetLayerVolume,
-	nativeSetMainVolume,
-	nativeVoiceActive,
-} from "../../lib/voice/native";
-import { addLayerFromInput, swapLayerWithMain } from "../../lib/voice/mix";
-import { offerLayerAlternatives } from "../../lib/voice/searchPick";
+	queueOnTrack,
+	removeTrack,
+	setTrackVolume,
+	skipTrack,
+	swapTrackWithMain,
+} from "../../lib/voice/mix";
+import { MAX_GAP_MS, type GuildMix, type MixTrack } from "../../lib/voice/mixPlan";
+import { offerTrackAlternatives } from "../../lib/voice/searchPick";
+
+/** Songs shown under each track by `/mix list`, so a long queue fits a message. */
+const LIST_QUEUE_SHOWN = 5;
+
+const trackOption = (description: string, required: boolean) => (opt: SlashCommandIntegerOption) =>
+	opt
+		.setName("track")
+		.setDescription(description)
+		.setMinValue(1)
+		.setRequired(required)
+		.setAutocomplete(true);
+
+const TRACK = "The track's number, as /mix list shows it";
 
 export default {
 	data: new SlashCommandBuilder()
 		.setName("mix")
-		.setDescription("Play songs on top of the queue, each at its own volume")
+		.setDescription("Play tracks on top of the queue, each with its own queue and volume")
 		.addSubcommand((sub) =>
 			sub
 				.setName("add")
-				.setDescription("Play a song alongside whatever is playing")
+				.setDescription("Queue a song on a mix track, or start a new track with it")
 				.addStringOption((opt) =>
 					opt
 						.setName("search")
 						.setDescription("A video link or a search on YouTube")
 						.setRequired(true),
 				)
+				.addIntegerOption(
+					trackOption("The track to queue it on; a new track if left empty", false),
+				)
 				.addNumberOption((opt) =>
 					opt
 						.setName("volume")
-						.setDescription("Its volume (0-500), 100 if left empty")
+						.setDescription("The track's volume (0-500), 100 for a new one if left empty")
 						.setMinValue(0)
 						.setMaxValue(500),
+				)
+				.addNumberOption((opt) =>
+					opt
+						.setName("gap")
+						.setDescription("Seconds of silence between the track's songs, 0 for a new one if left empty")
+						.setMinValue(0)
+						.setMaxValue(MAX_GAP_MS / 1000),
 				),
 		)
 		.addSubcommand((sub) =>
 			sub
 				.setName("remove")
-				.setDescription("Stop a song that is mixed in")
+				.setDescription("Remove a mix track, or one song from its queue")
+				.addIntegerOption(trackOption(TRACK, true))
 				.addIntegerOption((opt) =>
 					opt
-						.setName("layer")
-						.setDescription("The number shown by /mix list")
+						.setName("song")
+						.setDescription("The song's place in the track's queue; the whole track if left empty")
 						.setMinValue(1)
-						.setRequired(true)
 						.setAutocomplete(true),
 				),
 		)
 		.addSubcommand((sub) =>
 			sub
+				.setName("skip")
+				.setDescription("Move a mix track on to its next song now")
+				.addIntegerOption(trackOption(TRACK, true)),
+		)
+		.addSubcommand((sub) =>
+			sub
 				.setName("volume")
-				.setDescription("Set the volume of a song that is mixed in")
-				.addIntegerOption((opt) =>
-					opt
-						.setName("layer")
-						.setDescription("The number shown by /mix list")
-						.setMinValue(1)
-						.setRequired(true)
-						.setAutocomplete(true),
-				)
+				.setDescription("Set the volume of a mix track")
+				.addIntegerOption(trackOption(TRACK, true))
 				.addNumberOption((opt) =>
 					opt
 						.setName("volume")
@@ -81,16 +104,32 @@ export default {
 		)
 		.addSubcommand((sub) =>
 			sub
-				.setName("swap")
-				.setDescription("Make a mixed-in song the queue's song, and the queue's song mixed in")
-				.addIntegerOption((opt) =>
+				.setName("gap")
+				.setDescription("Set how long a mix track waits between its songs")
+				.addIntegerOption(trackOption(TRACK, true))
+				.addNumberOption((opt) =>
 					opt
-						.setName("layer")
-						.setDescription("The number shown by /mix list")
-						.setMinValue(1)
-						.setRequired(true)
-						.setAutocomplete(true),
+						.setName("seconds")
+						.setDescription("Seconds of silence between songs")
+						.setMinValue(0)
+						.setMaxValue(MAX_GAP_MS / 1000)
+						.setRequired(true),
 				),
+		)
+		.addSubcommand((sub) =>
+			sub
+				.setName("loop")
+				.setDescription("Have a mix track play its queue round and round")
+				.addIntegerOption(trackOption(TRACK, true))
+				.addBooleanOption((opt) =>
+					opt.setName("enabled").setDescription("On or off; toggles if left empty"),
+				),
+		)
+		.addSubcommand((sub) =>
+			sub
+				.setName("swap")
+				.setDescription("Make a mix track's song the queue's song, and the queue's song the track's")
+				.addIntegerOption(trackOption(TRACK, true)),
 		)
 		.addSubcommand((sub) =>
 			sub
@@ -106,15 +145,22 @@ export default {
 				),
 		)
 		.addSubcommand((sub) =>
-			sub.setName("list").setDescription("Show what is mixed in"),
+			sub.setName("list").setDescription("Show the mix's tracks and what each has queued"),
 		),
 	async autocomplete({ interaction }) {
-		// Only "layer" is autocompleted, in remove, volume and swap alike.
 		const mix = interaction.guildId ? findMix(interaction.guildId) : undefined;
-		const labels = (mix?.list() ?? []).map(
-			(layer) => `${layer.title} (${layer.volume}%)`,
-		);
-		return interaction.respond(indexChoices(labels, interaction.options.getFocused()));
+		const focused = interaction.options.getFocused(true);
+		if (focused.name === "song") {
+			const track = mix?.at(interaction.options.getInteger("track") ?? 0);
+			const labels = (track?.queue ?? []).map((song) => song.title);
+			return interaction.respond(indexChoices(labels, String(focused.value)));
+		}
+		const labels = (mix?.list() ?? []).map((track) => {
+			const song = track.playing ?? track.loading ?? track.queue[0];
+			const queued = track.queue.length ? ` +${track.queue.length}` : "";
+			return `${song?.title ?? "—"} (${track.volume}%)${queued}`;
+		});
+		return interaction.respond(indexChoices(labels, String(focused.value)));
 	},
 	async execute({ interaction, client, language }) {
 		if (!interaction.guild)
@@ -132,22 +178,8 @@ export default {
 		const mix = getMix(guildId);
 
 		if (subcommand === "list") {
-			const lines = mix.list().map((layer, i) =>
-				languageText("mix_list_item", language, {
-					index: i + 1,
-					title: layer.title,
-					url: layer.url,
-					volume: layer.volume,
-				}),
-			);
 			return interaction.reply({
-				content: [
-					languageText("mix_main_volume", language, { volume: mix.mainVolume }),
-					lines.length
-						? languageText("mix_list_header", language)
-						: languageText("mix_empty", language),
-					...lines,
-				].join("\n"),
+				content: listText(mix, language),
 				flags: ["SuppressEmbeds"],
 			});
 		}
@@ -175,10 +207,15 @@ export default {
 
 		if (subcommand === "add") {
 			const input = interaction.options.getString("search", true);
-			const volume = interaction.options.getNumber("volume") ?? 100;
+			const volume = interaction.options.getNumber("volume");
+			const gap = interaction.options.getNumber("gap");
+			const position = interaction.options.getInteger("track");
+			const track = position === null ? undefined : mix.at(position);
+			if (position !== null && !track)
+				return interaction.reply(languageText("mix_no_track", language, { index: position }));
 			if (isPlaylist(input))
 				return interaction.reply(languageText("mix_video_only", language));
-			if (mix.isFull())
+			if (!track && mix.isFull())
 				return interaction.reply(languageText("mix_full", language));
 
 			await interaction.deferReply();
@@ -199,32 +236,51 @@ export default {
 					return interaction.editReply(languageText("mix_not_found", language));
 				url = searchResults[0].url;
 			}
-			const result = await addLayerFromInput(guildId, url, volume);
+			const result = await queueOnTrack(guildId, url, {
+				track,
+				volume: volume ?? undefined,
+				gapMs: gap === null ? undefined : gap * 1000,
+			});
 			if ("error" in result) {
 				return interaction.editReply(
 					result.error === "full"
 						? languageText("mix_full", language)
-						: result.error === "not_found"
-							? languageText("mix_not_found", language)
-							: misc.errorMessageObj(language),
+						: result.error === "queue_full"
+							? languageText("mix_queue_full", language)
+							: languageText("mix_not_found", language),
 				);
 			}
-			dcb.log(`Mixed ${result.layer.url} into ${guildId} from /mix`);
+			// Given for an existing track, they change it
+			if (!result.created) {
+				if (volume !== null) setTrackVolume(guildId, result.track, volume);
+				if (gap !== null) mix.setGap(result.track, gap * 1000);
+			}
+			const trackNumber = mix.positionOf(result.track);
+			const queuedAt = result.track.queue.indexOf(result.song);
+			const playsNow = !result.track.playing && !result.track.loading && queuedAt === 0;
+			dcb.log(`Queued ${result.song.url} on mix track ${result.track.id} in ${guildId} from /mix`);
 			const reply = await interaction.editReply({
-				content: languageText("mix_added", language, {
-					title: result.layer.title,
-					url: result.layer.url,
-					volume: result.layer.volume,
-				}),
+				content: languageText(
+					result.created ? "mix_added_track" : playsNow ? "mix_playing_on" : "mix_queued",
+					language,
+					{
+						title: result.song.title,
+						url: result.song.url,
+						track: trackNumber,
+						volume: result.track.volume,
+						position: queuedAt + 1,
+					},
+				),
 				flags: ["SuppressEmbeds"],
 			});
-			await offerLayerAlternatives({
+			await offerTrackAlternatives({
 				interaction,
 				language,
 				guildId,
-				layer: result.layer,
+				track: result.track,
+				song: result.song,
 				results: searchResults,
-				// The search's URL rather than the layer's, which is the
+				// The search's URL rather than the song's, which is the
 				// video's canonical form and may not match it
 				chosenUrl: url,
 			});
@@ -242,60 +298,138 @@ export default {
 			return interaction.reply(languageText("mix_main_set", language, { volume }));
 		}
 
-		const index = interaction.options.getInteger("layer", true);
-		const layer = mix.at(index);
-		if (!layer)
-			return interaction.reply(languageText("mix_no_layer", language, { index }));
+		const index = interaction.options.getInteger("track", true);
+		const track = mix.at(index);
+		if (!track)
+			return interaction.reply(languageText("mix_no_track", language, { index }));
 
-		if (subcommand === "remove") {
-			nativeRemoveLayer(guildId, layer);
-			return interaction.reply({
-				content: languageText("mix_removed", language, {
-					title: layer.title,
-					url: layer.url,
-				}),
-				flags: ["SuppressEmbeds"],
-			});
-		}
-
-		if (subcommand === "swap") {
-			const player = getAudioPlayer(client, guildId, interaction.channel, language, {
-				createPlayer: false,
-			});
-			if (!player?.isPlaying)
-				return interaction.reply(languageText("mix_swap_nothing_playing", language));
-			await interaction.deferReply();
-			const result = await swapLayerWithMain(player, layer);
-			if ("error" in result)
-				return interaction.editReply(
-					languageText(
-						result.error === "nothing_playing"
-							? "mix_swap_nothing_playing"
-							: "mix_swap_failed",
-						language,
-					),
+		switch (subcommand) {
+			case "remove": {
+				const songAt = interaction.options.getInteger("song");
+				if (songAt === null) {
+					removeTrack(guildId, track);
+					return interaction.reply(languageText("mix_track_removed", language, { track: index }));
+				}
+				const removed = mix.removeSong(track, songAt - 1);
+				if (!removed)
+					return interaction.reply(
+						languageText("mix_no_song", language, { track: index, index: songAt }),
+					);
+				return interaction.reply({
+					content: languageText("mix_song_removed", language, {
+						title: removed.title,
+						url: removed.url,
+						track: index,
+					}),
+					flags: ["SuppressEmbeds"],
+				});
+			}
+			case "skip": {
+				if (!track.playing && !track.queue.length)
+					return interaction.reply(languageText("mix_skip_nothing", language, { track: index }));
+				skipTrack(guildId, track);
+				return interaction.reply(languageText("mix_skipped", language, { track: index }));
+			}
+			case "gap": {
+				const seconds = interaction.options.getNumber("seconds", true);
+				mix.setGap(track, seconds * 1000);
+				return interaction.reply(
+					languageText("mix_gap_set", language, { track: index, seconds: track.gapMs / 1000 }),
 				);
-			return interaction.editReply({
-				content: languageText("mix_swapped", language, {
-					title: result.playing.title,
-					url: result.playing.url,
-					mixed: result.layer.title,
-					mixedUrl: result.layer.url,
-				}),
-				flags: ["SuppressEmbeds"],
-			});
+			}
+			case "loop": {
+				track.loop = interaction.options.getBoolean("enabled") ?? !track.loop;
+				return interaction.reply(
+					languageText(track.loop ? "mix_loop_on" : "mix_loop_off", language, { track: index }),
+				);
+			}
+			case "swap": {
+				const player = getAudioPlayer(client, guildId, interaction.channel, language, {
+					createPlayer: false,
+				});
+				if (!player?.isPlaying)
+					return interaction.reply(languageText("mix_swap_nothing_playing", language));
+				if (!track.playing)
+					return interaction.reply(languageText("mix_swap_silent", language, { track: index }));
+				await interaction.deferReply();
+				const result = await swapTrackWithMain(player, track);
+				if ("error" in result)
+					return interaction.editReply(
+						result.error === "nothing_playing"
+							? languageText("mix_swap_nothing_playing", language)
+							: result.error === "track_silent"
+								? languageText("mix_swap_silent", language, { track: index })
+								: languageText("mix_swap_failed", language),
+					);
+				return interaction.editReply({
+					content: languageText("mix_swapped", language, {
+						title: result.before.title,
+						url: result.before.url,
+						mixed: result.now.title,
+						mixedUrl: result.now.url,
+						track: index,
+					}),
+					flags: ["SuppressEmbeds"],
+				});
+			}
 		}
 
 		// volume
 		const volume = interaction.options.getNumber("volume", true);
-		nativeSetLayerVolume(guildId, layer, volume);
-		return interaction.reply({
-			content: languageText("mix_volume_set", language, {
-				title: layer.title,
-				url: layer.url,
-				volume,
-			}),
-			flags: ["SuppressEmbeds"],
-		});
+		setTrackVolume(guildId, track, volume);
+		return interaction.reply(languageText("mix_volume_set", language, { track: index, volume }));
 	},
 } as Command<SlashCommandBuilder>;
+
+/** Every track, what it is playing and the start of its queue. */
+function listText(mix: GuildMix, language: Language) {
+	const now = Date.now();
+	const lines = [languageText("mix_main_volume", language, { volume: mix.mainVolume })];
+	if (!mix.size) lines.push(languageText("mix_empty", language));
+	mix.list().forEach((track, i) => {
+		lines.push("", trackHeader(track, i + 1, language));
+		lines.push(trackState(mix, track, now, language));
+		track.queue.slice(0, LIST_QUEUE_SHOWN).forEach((song, at) =>
+			lines.push(
+				languageText("mix_track_queue_item", language, {
+					index: at + 1,
+					title: song.title,
+					url: song.url,
+				}),
+			),
+		);
+		const more = track.queue.length - LIST_QUEUE_SHOWN;
+		if (more > 0) lines.push(languageText("mix_track_queue_more", language, { count: more }));
+	});
+	return lines.join("\n");
+}
+
+function trackHeader(track: MixTrack, index: number, language: Language) {
+	const header = languageText("mix_track_header", language, {
+		index,
+		volume: track.volume,
+		gap: track.gapMs / 1000,
+	});
+	return track.loop ? `${header}${languageText("mix_track_looping", language)}` : header;
+}
+
+function trackState(mix: GuildMix, track: MixTrack, now: number, language: Language) {
+	if (track.playing) {
+		const position = Math.floor((mix.position(track, now) ?? 0) / 1000);
+		const length = track.playing.durationMs ? `/${timeFormat(track.playing.durationMs / 1000)}` : "";
+		return languageText("mix_track_playing", language, {
+			title: track.playing.title,
+			url: track.playing.url,
+			time: `${timeFormat(position)}${length}`,
+		});
+	}
+	if (track.loading)
+		return languageText("mix_track_loading", language, {
+			title: track.loading.title,
+			url: track.loading.url,
+		});
+	const due = mix.dueIn(track, now);
+	if (due !== null)
+		return languageText("mix_track_waiting", language, { seconds: Math.ceil(due / 1000) });
+	return languageText("mix_track_silent", language);
+}

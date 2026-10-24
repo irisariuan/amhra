@@ -3,127 +3,242 @@ import { globalApp } from "../misc";
 import { getYouTubeVideoId } from "../youtube";
 import { updateLastUsed } from "./cache";
 import { createResource, getVideoInfo, isVideo } from "./core";
-import type { MixLayer } from "./mixPlan";
+import type { GuildMix, MixSong, MixTrack, PlayingSong, TrackOptions } from "./mixPlan";
 import {
+	allMixes,
+	findMix,
 	getMix,
 	nativeAddLayer,
 	nativeNoCache,
-	nativeReplaceLayer,
+	nativeRemoveLayer,
+	nativeSetLayerVolume,
 	nativeSwapLayer,
 } from "./native";
 import { nativeFetchReady } from "./nativeFetch";
 
-export type AddLayerResult =
-	| { layer: MixLayer }
-	| { error: "not_found" | "full" | "failed" };
+/** How often waiting tracks are checked for a song that is due. */
+const SWEEP_MS = 100;
+
+let sweeper: ReturnType<typeof setInterval> | null = null;
 
 /**
- * Download a video and mix it in over the guild's queue.
+ * Start the songs that tracks are waiting on, as their gaps run out.
+ *
+ * One sweep for every guild, rather than a timer per track: a pause, a skip
+ * or a removed track then only has to change `dueAt`, and there is never a
+ * timer left over to fire into a mix that has gone.
+ */
+export function bindMixTracks() {
+	if (sweeper) return;
+	sweeper = setInterval(() => {
+		const now = Date.now();
+		for (const [guildId, mix] of allMixes()) {
+			for (const track of mix.due(now)) void startNext(guildId, mix, track);
+		}
+	}, SWEEP_MS);
+	sweeper.unref?.();
+}
+
+async function startNext(guildId: string, mix: GuildMix, track: MixTrack) {
+	const song = mix.begin(track);
+	if (!song) return;
+	try {
+		await fetchSong(song.videoId);
+	} catch (error) {
+		globalApp.err(`Failed to fetch ${song.videoId} for mix track ${track.id}`, error);
+		if (mix.stillLoading(track, song)) mix.failed(track, Date.now());
+		return;
+	}
+	// The fetch takes a while; the track may have been removed, skipped or
+	// stopped in the meantime, and then nothing should start.
+	if (findMix(guildId) !== mix || !mix.stillLoading(track, song)) return;
+	const startMs = song.startMs ?? 0;
+	const playing = mix.started(track, song, Date.now(), startMs);
+	nativeAddLayer(guildId, playing.layerId, playing.videoId, track.volume, startMs);
+	prefetch(track);
+}
+
+/**
+ * Make sure enough of a video is cached for the sidecar to play it. Streaming,
+ * the sidecar fetches it itself and there is no file to wait for.
+ */
+async function fetchSong(videoId: string) {
+	if (nativeNoCache()) return;
+	await nativeFetchReady(videoId);
+	// Marked as used so the cache sweep does not delete a file being played.
+	await updateLastUsed([videoId]).catch(() => {});
+}
+
+/** Start downloading a track's next song now, so its gap is not spent waiting on it. */
+function prefetch(track: MixTrack) {
+	const next = track.queue[0];
+	if (next && !nativeNoCache()) fetchSong(next.videoId).catch(() => {});
+}
+
+/** A video as a track can queue it: its title and length, nothing downloaded yet. */
+export async function resolveSong(url: string, startMs?: number): Promise<MixSong | null> {
+	const videoId = isVideo(url) ? getYouTubeVideoId(url) : null;
+	if (!videoId) return null;
+	const info = await getVideoInfo(url).catch(() => null);
+	if (!info) return null;
+	const seconds = info.video_details.durationInSec;
+	return {
+		videoId,
+		title: info.video_details.title,
+		url: info.video_details.url,
+		durationMs: seconds > 0 ? seconds * 1000 : null,
+		...(startMs ? { startMs } : {}),
+	};
+}
+
+export type QueueOnTrackResult =
+	| { track: MixTrack; song: MixSong; created: boolean }
+	| { error: "not_found" | "full" | "queue_full" };
+
+/**
+ * Queue a video on a track, or on a new one made for it with `options`.
  *
  * Shared by `/mix add` and the dashboard, which differ only in how they find
  * the URL and how they report the outcome. The caller is responsible for the
  * bot being in voice: this only needs the sidecar to know the guild.
  */
-export async function addLayerFromInput(
+export async function queueOnTrack(
 	guildId: string,
 	url: string,
-	volume: number,
-	startMs = 0,
-): Promise<AddLayerResult> {
-	// Checked before the download as well as after, so a full mix does not
-	// cost a fetch it will then refuse.
-	if (getMix(guildId).isFull()) return { error: "full" };
-	const track = await fetchLayerTrack(url);
-	if ("error" in track) return track;
+	{
+		track,
+		index,
+		startMs,
+		...options
+	}: TrackOptions & { track?: MixTrack; index?: number; startMs?: number } = {},
+): Promise<QueueOnTrackResult> {
+	const mix = getMix(guildId);
+	// Checked before the lookup as well as after, so a full mix does not cost
+	// one it will then refuse.
+	if (!track && mix.isFull()) return { error: "full" };
+	const song = await resolveSong(url, startMs);
+	if (!song) return { error: "not_found" };
 
-	const layer = nativeAddLayer(guildId, { ...track, volume }, startMs);
-	return layer ? { layer } : { error: "full" };
+	let target = track;
+	let created = false;
+	if (target) {
+		// Removed while the lookup ran
+		if (!mix.list().includes(target)) return { error: "not_found" };
+	} else {
+		const added = mix.addTrack(options);
+		if (!added) return { error: "full" };
+		target = added;
+		created = true;
+	}
+	if (!mix.enqueue(target, song, Date.now(), index)) return { error: "queue_full" };
+	prefetch(target);
+	return { track: target, song, created };
+}
+
+/** Move a track on to its next song now, without waiting out the gap. */
+export function skipTrack(guildId: string, track: MixTrack) {
+	const layerId = getMix(guildId).skip(track, Date.now());
+	if (layerId) nativeRemoveLayer(guildId, layerId);
+}
+
+/** Stop a track and drop its queue. */
+export function removeTrack(guildId: string, track: MixTrack) {
+	const layerId = getMix(guildId).removeTrack(track);
+	if (layerId) nativeRemoveLayer(guildId, layerId);
+}
+
+/** A track's volume, applied at once to whatever it is playing. */
+export function setTrackVolume(guildId: string, track: MixTrack, volume: number) {
+	track.volume = volume;
+	if (track.playing) nativeSetLayerVolume(guildId, track.playing.layerId, volume);
 }
 
 /**
- * Download a video and play it in place of `layer`, keeping its volume and
- * its number in the list. For switching to another search result after
- * `/mix add` picked the wrong one.
+ * Put another video in `song`'s place on its track, for switching to another
+ * search result after `/mix add` picked the wrong one. A queued song is swapped
+ * for the new one; a playing one is cut over to it, at the track's volume.
+ * Returns what took its place, or null when `song` has left the track.
  */
-export async function replaceLayerFromInput(
+export async function replaceTrackSong(
 	guildId: string,
-	layer: MixLayer,
+	track: MixTrack,
+	song: MixSong,
 	url: string,
-): Promise<AddLayerResult | { error: "gone" }> {
-	const track = await fetchLayerTrack(url);
-	if ("error" in track) return track;
-	// Read after the download: the layer may have been removed or have ended
-	// while it ran.
-	const replaced = nativeReplaceLayer(guildId, layer, track);
-	return replaced ? { layer: replaced } : { error: "gone" };
-}
+): Promise<MixSong | null> {
+	const next = await resolveSong(url);
+	if (!next) throw new Error(`Could not find ${url}`);
+	const mix = getMix(guildId);
+	if (!mix.list().includes(track)) return null;
 
-/** A video's details, once enough of it is cached for the sidecar to play. */
-async function fetchLayerTrack(
-	url: string,
-): Promise<Omit<MixLayer, "id" | "volume"> | { error: "not_found" | "failed" }> {
-	const trackId = isVideo(url) ? getYouTubeVideoId(url) : null;
-	if (!trackId) return { error: "not_found" };
-	const info = await getVideoInfo(url).catch(() => null);
-	if (!info) return { error: "not_found" };
-	// Streaming, the sidecar fetches the layer itself and there is no file
-	// for the cache sweep to delete.
-	if (!nativeNoCache()) {
-		try {
-			await nativeFetchReady(trackId);
-		} catch (error) {
-			globalApp.err(`Failed to fetch ${trackId} for a mix layer`, error);
-			return { error: "failed" };
-		}
-		// Marked as used so the cache sweep does not delete a file being played.
-		await updateLastUsed([trackId]).catch(() => {});
+	const queued = track.queue.indexOf(song);
+	if (queued >= 0) {
+		track.queue[queued] = next;
+		return next;
 	}
-	return { trackId, title: info.video_details.title, url: info.video_details.url };
+	if (track.playing?.videoId !== song.videoId) return null;
+	await fetchSong(next.videoId);
+	// Read after the download: the song may have ended while it ran.
+	const old = track.playing;
+	if (!old || old.videoId !== song.videoId) return null;
+	const playing = mix.replacePlaying(track, next, Date.now());
+	if (!playing) return null;
+	nativeRemoveLayer(guildId, old.layerId);
+	nativeAddLayer(guildId, playing.layerId, playing.videoId, track.volume);
+	return playing;
 }
 
 export type SwapResult =
-	/** `layer` is what the layer holds now: the queue's former song. */
-	| { layer: MixLayer; playing: MixLayer }
-	| { error: "nothing_playing" | "failed" };
+	/** `now` is what the track plays now: the queue's former song. */
+	| { now: PlayingSong; before: PlayingSong }
+	| { error: "nothing_playing" | "track_silent" | "failed" };
 
 /**
- * Make a mixed-in song the queue's song, and the queue's song a mixed-in one.
+ * Make a track's song the queue's song, and the queue's song the track's.
  *
  * Inaudible: each keeps its place and its volume. What changes is which one
  * the queue controls — skip, seek, segment skips, lyrics and now playing all
  * follow the swapped-in song, and when it ends the queue moves on as usual.
- * The swapped-out song plays on in the mix until it ends.
+ * The swapped-out song plays on in the track until it ends, and then the
+ * track moves on to its own next song.
  */
-export async function swapLayerWithMain(
+export async function swapTrackWithMain(
 	player: CustomAudioPlayer,
-	layer: MixLayer,
+	track: MixTrack,
 ): Promise<SwapResult> {
 	const guildId = player.guildId;
 	if (!player.nativePlayback || !player.isPlaying || !player.nowPlaying) {
 		return { error: "nothing_playing" };
 	}
+	const layer = track.playing;
+	if (!layer) return { error: "track_silent" };
 	// Built first, so the queue's view can change the moment the sidecar
 	// reports the swap rather than a network round trip later.
 	const resource = await createResource(layer.url).catch(() => null);
 	if (!resource) return { error: "failed" };
 
-	const swapped = await nativeSwapLayer(guildId, layer.id);
+	const swapped = await nativeSwapLayer(guildId, layer.layerId);
 	if (!swapped) return { error: "failed" };
 
 	// Read after the waits: the queue may have moved on in the meantime, and
 	// the sidecar's report says which track actually went into the mix.
 	const outgoing = player.nowPlaying;
-	const main =
+	const main: MixSong =
 		outgoing?.videoId === swapped.layerTrackId
-			? { trackId: swapped.layerTrackId, title: outgoing.title, url: outgoing.url }
+			? {
+					videoId: swapped.layerTrackId,
+					title: outgoing.title,
+					url: outgoing.url,
+					durationMs: outgoing.details.durationInSec * 1000 || null,
+				}
 			: {
-					trackId: swapped.layerTrackId,
+					videoId: swapped.layerTrackId,
 					title: swapped.layerTrackId,
 					url: `https://youtu.be/${swapped.layerTrackId}`,
+					durationMs: null,
 				};
-	const before = getMix(guildId).swap(layer.id, main);
+	const mix = getMix(guildId);
+	const before = mix.swap(track, main, swapped.layerPositionMs, Date.now());
 	player.adoptSwapped(resource, swapped.positionMs);
-	const now = getMix(guildId).list().find((l) => l.id === layer.id);
-	if (!before || !now) return { error: "failed" };
-	return { layer: now, playing: before };
+	if (!before || !track.playing) return { error: "failed" };
+	return { now: track.playing, before };
 }

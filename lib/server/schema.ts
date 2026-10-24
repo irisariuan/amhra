@@ -2,6 +2,7 @@ import z from "zod";
 import { SongEditType } from "./event";
 import { isYouTubePlaylist, isYouTubeVideo } from "../youtube";
 import { Language } from "../interaction";
+import { MAX_GAP_MS } from "../voice/mixPlan";
 
 // Queue item (from custom.ts)
 export const QueueItemSchema = z.object({
@@ -164,64 +165,114 @@ const AutoSuggestSchema = z.object({
 });
 
 /**
- * The mix: songs played on top of the queue, each at its own level. Volumes are
- * linear like SetVolume's, and a layer is named by the id `getData` reports,
- * which stays the same while others come and go.
+ * The mix: tracks played on top of the queue, each at its own level and with
+ * a queue of its own. Volumes are linear like SetVolume's, and a track is
+ * named by the id `getData` reports, which stays the same while others come
+ * and go. A song on a track's queue is named by its index there, with the URL
+ * the caller saw at it, so a queue that moved in the meantime is searched for
+ * it rather than acting on whatever took its place.
  */
 const MixVolume = z.number().nonnegative().max(5, "Volume must be <= 5");
+const MixGap = z.number().nonnegative().max(MAX_GAP_MS, `Gap must be <= ${MAX_GAP_MS}ms`);
+const TrackId = z.string().min(1);
 
-const AddLayerSchema = z.object({
-	action: z.literal(SongEditType.AddLayer),
-	guildId: z.string(),
-	detail: z.object({
-		url: z
-			.string()
-			.refine((u) => isYouTubeVideo(u), "Must be a valid YouTube video URL"),
-		volume: MixVolume.default(1),
-	}),
+const TrackSettings = z.object({
+	volume: MixVolume.optional(),
+	gapMs: MixGap.optional(),
+	loop: z.boolean().optional(),
 });
 
-const RemoveLayerSchema = z.object({
-	action: z.literal(SongEditType.RemoveLayer),
-	guildId: z.string(),
-	detail: z.object({ id: z.string().min(1) }),
-});
-
-const SetLayerVolumeSchema = z.object({
-	action: z.literal(SongEditType.SetLayerVolume),
-	guildId: z.string(),
-	detail: z.object({ id: z.string().min(1), volume: MixVolume }),
-});
-
-/** The queue track's own level within the mix, under the overall volume. */
+/** The queue's track's own level within the mix, under the overall volume. */
 const SetMainVolumeSchema = z.object({
 	action: z.literal(SongEditType.SetMainVolume),
 	guildId: z.string(),
 	detail: z.object({ volume: MixVolume }),
 });
 
-/**
- * Trade a layer with the queue's song. Inaudible: each keeps its place and
- * volume, and the queue then controls the swapped-in song.
- */
-const SwapLayerSchema = z.object({
-	action: z.literal(SongEditType.SwapLayer),
+/** A new, silent track, for songs to be queued or moved onto. */
+const AddMixTrackSchema = z.object({
+	action: z.literal(SongEditType.AddMixTrack),
 	guildId: z.string(),
-	detail: z.object({ id: z.string().min(1) }),
+	detail: TrackSettings.default({}),
+});
+
+const RemoveMixTrackSchema = z.object({
+	action: z.literal(SongEditType.RemoveMixTrack),
+	guildId: z.string(),
+	detail: z.object({ track: TrackId }),
+});
+
+/** Change any of a track's volume, gap and loop; what is left out stays. */
+const SetMixTrackSchema = z.object({
+	action: z.literal(SongEditType.SetMixTrack),
+	guildId: z.string(),
+	detail: TrackSettings.extend({ track: TrackId }),
+});
+
+/** Move a track on to its next song now, cutting short any gap. */
+const SkipMixTrackSchema = z.object({
+	action: z.literal(SongEditType.SkipMixTrack),
+	guildId: z.string(),
+	detail: z.object({ track: TrackId }),
 });
 
 /**
- * Take a queued song out of the queue and mix it in now. `url`, when given,
- * is what the caller saw at `index`; a queue reordered in the meantime is
- * searched for it instead of mixing whatever moved into that place.
+ * Trade a track's song with the queue's. Inaudible: each keeps its place and
+ * volume, and the queue then controls the swapped-in song.
  */
-const MixFromQueueSchema = z.object({
-	action: z.literal(SongEditType.MixFromQueue),
+const SwapMixTrackSchema = z.object({
+	action: z.literal(SongEditType.SwapMixTrack),
+	guildId: z.string(),
+	detail: z.object({ track: TrackId }),
+});
+
+/**
+ * Queue a video on a track, at `index` or the end, or on a new track made
+ * with the settings given when `track` is left out.
+ */
+const AddMixSongSchema = z.object({
+	action: z.literal(SongEditType.AddMixSong),
+	guildId: z.string(),
+	detail: TrackSettings.extend({
+		url: z
+			.string()
+			.refine((u) => isYouTubeVideo(u), "Must be a valid YouTube video URL"),
+		track: TrackId.optional(),
+		index: z.number().int().nonnegative().optional(),
+	}),
+});
+
+const RemoveMixSongSchema = z.object({
+	action: z.literal(SongEditType.RemoveMixSong),
 	guildId: z.string(),
 	detail: z.object({
+		track: TrackId,
 		index: z.number().int().nonnegative(),
 		url: z.string().optional(),
-		volume: MixVolume.default(1),
+	}),
+});
+
+/**
+ * Where a song is moved from or to: a track's queue by id, or `null` for the
+ * guild's own queue. As a destination, `"new"` is a track made for it.
+ */
+const MixPlace = z.object({
+	track: TrackId.nullable(),
+	index: z.number().int().nonnegative(),
+});
+
+/**
+ * Drag a queued song anywhere: along its track, onto another, into the
+ * guild's queue, or out of it onto a track. `url` is what the caller saw at
+ * `from`.
+ */
+const MoveMixSongSchema = z.object({
+	action: z.literal(SongEditType.MoveMixSong),
+	guildId: z.string(),
+	detail: z.object({
+		from: MixPlace,
+		to: MixPlace.extend({ index: z.number().int().nonnegative().optional() }),
+		url: z.string().optional(),
 	}),
 });
 
@@ -244,12 +295,15 @@ export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	LoopSchema,
 	AutoSuggestSchema,
 	SkipSegmentSchema,
-	AddLayerSchema,
-	RemoveLayerSchema,
-	SetLayerVolumeSchema,
 	SetMainVolumeSchema,
-	SwapLayerSchema,
-	MixFromQueueSchema,
+	AddMixTrackSchema,
+	RemoveMixTrackSchema,
+	SetMixTrackSchema,
+	SkipMixTrackSchema,
+	SwapMixTrackSchema,
+	AddMixSongSchema,
+	RemoveMixSongSchema,
+	MoveMixSongSchema,
 ]);
 
 // Inferred Type

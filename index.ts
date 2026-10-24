@@ -9,6 +9,7 @@ import { readSetting } from "./lib/setting";
 import { watch } from "node:fs";
 import { updateYtdlpVersion } from "./lib/voice/ytdlp";
 import { bindNativeVoice, nativeVoiceActive } from "./lib/voice/native";
+import { bindMixTracks } from "./lib/voice/mix";
 import { startLeaveSweeper } from "./lib/voice/leave";
 import { bindSchedules } from "./lib/voice/schedule";
 import { bindAutoJoin } from "./lib/voice/autoJoin";
@@ -79,6 +80,7 @@ const setting = readSetting();
 	if (nativeVoiceActive()) {
 		console.log(chalk.bgBlue.whiteBright("Voice runs through the Rust sidecar"));
 		bindNativeVoice(client);
+		bindMixTracks();
 		if (voiceCommandsAllowed()) {
 			console.log(chalk.bgBlue.whiteBright("Voice commands can be turned on per server"));
 			bindVoiceCommands(client, slashCommand);

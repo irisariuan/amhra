@@ -1,6 +1,6 @@
 /**
  * Suggestions for options that name an item by its place in a list, such as
- * `/mix remove layer` or `/remove index`. Users still get the 1-based number
+ * `/mix remove track` or `/remove index`. Users still get the 1-based number
  * they would have typed; the suggestion just shows what each number is.
  *
  * Kept free of imports, like `mixPlan.ts`, so the matching is testable without

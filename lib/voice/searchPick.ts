@@ -10,8 +10,8 @@ import type { Language } from "../interaction";
 import { languageText } from "../language";
 import { dcb, globalApp } from "../misc";
 import { createResource, timeFormat } from "./core";
-import { replaceLayerFromInput } from "./mix";
-import type { MixLayer } from "./mixPlan";
+import { replaceTrackSong } from "./mix";
+import type { MixSong, MixTrack } from "./mixPlan";
 import type { YouTubeVideo } from "../youtube";
 
 /** Alternatives offered besides the one already queued */
@@ -34,7 +34,7 @@ function trim(text: string, max: number) {
  * Searching plays something immediately rather than making everyone wait on a
  * menu, so this is the escape hatch for when the top hit was the wrong song:
  * picking here hands the old and new URL to `swap`, which puts the new one in
- * the old one's place — the queue's track for /play, a mix layer for /mix.
+ * the old one's place — the queue's track for /play, a mix track's song for /mix.
  * `swap` resolves false when the old one is gone, and throws when the switch
  * failed. Ephemeral, so only the person who ran the command sees or can use it.
  */
@@ -188,25 +188,23 @@ export function offerQueueAlternatives({
 	});
 }
 
-/** For /mix add: a pick replaces the mixed-in song, at its volume and place. */
-export function offerLayerAlternatives({
+/** For /mix add: a pick replaces the song on its track, playing or queued. */
+export function offerTrackAlternatives({
 	guildId,
-	layer,
+	track,
+	song,
 	language,
 	...alternatives
-}: Alternatives & { guildId: string; layer: MixLayer; language: Language }) {
-	// Follows the replacements, since each one is a new layer
-	let current = layer;
+}: Alternatives & { guildId: string; track: MixTrack; song: MixSong; language: Language }) {
+	// Follows the replacements, since each one is a new song
+	let current = song;
 	return sendSearchAlternatives({
 		...alternatives,
 		language,
 		swap: async (_currentUrl, nextUrl) => {
-			const replaced = await replaceLayerFromInput(guildId, current, nextUrl);
-			if ("error" in replaced) {
-				if (replaced.error === "gone") return false;
-				throw new Error(`Could not replace mix layer: ${replaced.error}`);
-			}
-			current = replaced.layer;
+			const replaced = await replaceTrackSong(guildId, track, current, nextUrl);
+			if (!replaced) return false;
+			current = replaced;
 			return true;
 		},
 	});

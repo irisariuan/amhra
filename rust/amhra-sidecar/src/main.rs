@@ -433,9 +433,9 @@ async fn dispatch(
 		Command::Skip { guild_id } => with_guild(guilds, events, &guild_id, |session| {
 			session.worker.send(WorkerCommand::Skip)
 		}),
-		Command::Stop { guild_id } => with_guild(guilds, events, &guild_id, |session| {
+		Command::Stop { guild_id, keep_layers } => with_guild(guilds, events, &guild_id, |session| {
 			session.track_id = None;
-			session.worker.send(WorkerCommand::Stop);
+			session.worker.send(WorkerCommand::Stop { keep_layers });
 		}),
 		Command::Pause { guild_id } => with_guild(guilds, events, &guild_id, |session| {
 			session.paused = true;

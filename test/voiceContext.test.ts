@@ -27,7 +27,10 @@ const STATE: PlaybackState = {
 	autoSuggest: false,
 	autoSkipNonMusic: true,
 	crossfadeMs: 3000,
-	mix: [{ title: "Rain sounds", volume: 30 }],
+	mix: [
+		{ playing: "Rain sounds", volume: 30, queued: 0, gapMs: 0, loop: true },
+		{ playing: null, volume: 100, queued: 2, gapMs: 5000, loop: false },
+	],
 	mixMainVolume: 100,
 };
 
@@ -41,8 +44,9 @@ describe("the state as the model reads it", () => {
 			"…and 10 more",
 			"Volume: 80%",
 			"Loop: on. Suggesting songs when the queue runs out: off. Skipping non-music parts automatically: on. Crossfade: 3s.",
-			"Mixed in over the queue's song (at 100%):",
-			'1. "Rain sounds" at 30%',
+			"Mix tracks over the queue's song (at 100%):",
+			'1. "Rain sounds" at 30%, looping',
+			"2. nothing playing at 100%, 2 queued, 5s between songs",
 		]);
 	});
 
@@ -50,7 +54,7 @@ describe("the state as the model reads it", () => {
 		expect(describePlayback(null)).toBe("Nothing is playing and the queue is empty.");
 		const idle = describePlayback({ ...STATE, nowPlaying: null, queueLength: 0, queue: [], mix: [], muted: true });
 		expect(idle).toContain("Now playing: nothing\nQueue: empty\nVolume: 80% (muted)");
-		expect(idle).not.toContain("Mixed in");
+		expect(idle).not.toContain("Mix tracks");
 	});
 });
 

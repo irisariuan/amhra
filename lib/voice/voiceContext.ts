@@ -40,8 +40,8 @@ export interface PlaybackState {
 	autoSuggest: boolean;
 	autoSkipNonMusic: boolean;
 	crossfadeMs: number;
-	/** Songs mixed in over the queue's, in their numbered order. */
-	mix: { title: string; volume: number }[];
+	/** Tracks mixed in over the queue's song, in their numbered order. */
+	mix: { playing: string | null; volume: number; queued: number; gapMs: number; loop: boolean }[];
 	/** Percent, the queue's song in the mix. */
 	mixMainVolume: number;
 }
@@ -94,9 +94,14 @@ export function describePlayback(state: PlaybackState | null): string {
 		`Loop: ${onOff(state.loop)}. Suggesting songs when the queue runs out: ${onOff(state.autoSuggest)}. Skipping non-music parts automatically: ${onOff(state.autoSkipNonMusic)}. Crossfade: ${state.crossfadeMs ? `${state.crossfadeMs / 1000}s` : "off"}.`,
 	);
 	if (state.mix.length) {
-		lines.push(`Mixed in over the queue's song (at ${Math.round(state.mixMainVolume)}%):`);
-		state.mix.forEach((layer, index) => {
-			lines.push(`${index + 1}. "${layer.title}" at ${Math.round(layer.volume)}%`);
+		lines.push(`Mix tracks over the queue's song (at ${Math.round(state.mixMainVolume)}%):`);
+		state.mix.forEach((track, index) => {
+			const playing = track.playing ? `"${track.playing}"` : "nothing playing";
+			const queued = track.queued ? `, ${track.queued} queued` : "";
+			const gap = track.gapMs ? `, ${track.gapMs / 1000}s between songs` : "";
+			lines.push(
+				`${index + 1}. ${playing} at ${Math.round(track.volume)}%${queued}${gap}${track.loop ? ", looping" : ""}`,
+			);
 		});
 	}
 	return lines.join("\n");
@@ -171,7 +176,13 @@ export async function playbackState(
 			autoSuggest: player.customSetting.autoSuggest ?? false,
 			autoSkipNonMusic: player.customSetting.autoSkipSegment ?? false,
 			crossfadeMs: player.native ? player.crossfadeMs : 0,
-			mix: (mix?.list() ?? []).map((layer) => ({ title: layer.title, volume: layer.volume })),
+			mix: (mix?.list() ?? []).map((track) => ({
+				playing: (track.playing ?? track.loading)?.title ?? null,
+				volume: track.volume,
+				queued: track.queue.length,
+				gapMs: track.gapMs,
+				loop: track.loop,
+			})),
 			mixMainVolume: mix?.mainVolume ?? 100,
 		};
 	} finally {

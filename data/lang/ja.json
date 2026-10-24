@@ -270,19 +270,35 @@
 		},
 		"mix": {
 			"name": "ミックス",
-			"description": "キューの上に曲を重ねて再生し、それぞれの音量を設定します",
+			"description": "キューの上にトラックを重ねて再生します。トラックごとにキューと音量があります",
 			"options": {
 				"add": {
 					"name": "追加",
-					"description": "再生中の曲と同時に曲を再生します"
+					"description": "ミックストラックに曲を追加するか、その曲で新しいトラックを作ります"
 				},
 				"remove": {
 					"name": "削除",
-					"description": "ミックス中の曲を停止します"
+					"description": "ミックストラック、またはそのキューの曲を1曲削除します"
+				},
+				"skip": {
+					"name": "スキップ",
+					"description": "ミックストラックを今すぐ次の曲へ進めます"
 				},
 				"volume": {
 					"name": "音量",
-					"description": "ミックス中の曲の音量を設定します"
+					"description": "ミックストラックの音量を設定します"
+				},
+				"gap": {
+					"name": "間隔",
+					"description": "ミックストラックの曲と曲の間隔を設定します"
+				},
+				"loop": {
+					"name": "ループ",
+					"description": "ミックストラックのキューを繰り返し再生します"
+				},
+				"swap": {
+					"name": "入れ替え",
+					"description": "ミックストラックの曲をキューの曲と入れ替えます"
 				},
 				"main": {
 					"name": "メイン",
@@ -290,11 +306,7 @@
 				},
 				"list": {
 					"name": "一覧",
-					"description": "ミックス中の曲を表示します"
-				},
-				"swap": {
-					"name": "入れ替え",
-					"description": "ミックス中の曲をキューの曲と入れ替えます"
+					"description": "ミックスのトラックとそれぞれのキューを表示します"
 				}
 			}
 		},
@@ -359,19 +371,36 @@
 	"SCHEDULE_FROM_DASHBOARD": "ダッシュボードから",
 	"MIX_NATIVE_ONLY": "曲のミックスには Rust 音声バックエンド（`USE_RUST_VOICE`）が必要です",
 	"MIX_MAIN_VOLUME": "キューの曲の音量: {volume}%",
-	"MIX_LIST_HEADER": "ミックス中:",
-	"MIX_EMPTY": "ミックス中の曲はありません",
-	"MIX_LIST_ITEM": "`{index}.` **[{title}]({url})** · {volume}%",
+	"MIX_EMPTY": "ミックス中のトラックはありません",
+	"MIX_TRACK_HEADER": "**トラック {index}** · {volume}% · 曲間 {gap}秒",
+	"MIX_TRACK_LOOPING": " · ループ中",
+	"MIX_TRACK_PLAYING": "▶ **[{title}]({url})** `{time}`",
+	"MIX_TRACK_LOADING": "**[{title}]({url})** を読み込み中",
+	"MIX_TRACK_WAITING": "{seconds}秒後に次の曲",
+	"MIX_TRACK_SILENT": "再生中の曲はありません",
+	"MIX_TRACK_QUEUE_ITEM": "`{index}.` [{title}]({url})",
+	"MIX_TRACK_QUEUE_MORE": "…ほか {count} 曲",
 	"MIX_VIDEO_ONLY": "ミックスできるのは単一の動画のみで、プレイリストはできません",
-	"MIX_FULL": "ミックスがいっぱいです。先に曲を削除してください",
+	"MIX_FULL": "これ以上トラックを追加できません。既存のトラックに追加するか、トラックを削除してください",
+	"MIX_QUEUE_FULL": "そのトラックのキューはいっぱいです",
 	"MIX_NOT_FOUND": "動画が見つかりませんでした",
-	"MIX_ADDED": "**[{title}]({url})** を {volume}% でミックスしました",
+	"MIX_ADDED_TRACK": "**[{title}]({url})** を新しいトラック {track} に {volume}% でミックスしました",
+	"MIX_PLAYING_ON": "トラック {track} で **[{title}]({url})** を再生します",
+	"MIX_QUEUED": "**[{title}]({url})** をトラック {track} の {position} 番目に追加しました",
 	"MIX_MAIN_SET": "ミックス内のキューの曲の音量を {volume}% に設定しました",
-	"MIX_NO_LAYER": "ミックス中の曲 #{index} はありません",
-	"MIX_REMOVED": "**[{title}]({url})** のミックスを停止しました",
-	"MIX_VOLUME_SET": "**[{title}]({url})** の音量を {volume}% に設定しました",
-	"MIX_SWAPPED": "入れ替えました: **[{title}]({url})** がキューの曲になり、**[{mixed}]({mixedUrl})** はミックスで再生を続けます",
+	"MIX_NO_TRACK": "ミックストラック #{index} はありません",
+	"MIX_NO_SONG": "トラック {track} のキューに #{index} の曲はありません",
+	"MIX_TRACK_REMOVED": "ミックストラック {track} を削除しました",
+	"MIX_SONG_REMOVED": "**[{title}]({url})** をトラック {track} から外しました",
+	"MIX_SKIPPED": "トラック {track} を次の曲へ進めました",
+	"MIX_SKIP_NOTHING": "トラック {track} にスキップできる曲はありません",
+	"MIX_VOLUME_SET": "トラック {track} の音量を {volume}% に設定しました",
+	"MIX_GAP_SET": "トラック {track} の曲間を {seconds}秒にしました",
+	"MIX_LOOP_ON": "トラック {track} はキューを繰り返し再生します",
+	"MIX_LOOP_OFF": "トラック {track} のループを止めました",
+	"MIX_SWAPPED": "入れ替えました: **[{title}]({url})** がキューの曲になり、**[{mixed}]({mixedUrl})** はトラック {track} で再生を続けます",
 	"MIX_SWAP_NOTHING_PLAYING": "入れ替えるキューの曲が再生されていません",
+	"MIX_SWAP_SILENT": "トラック {track} には入れ替える曲が再生されていません",
 	"MIX_SWAP_FAILED": "入れ替えできませんでした。少し待ってからもう一度お試しください",
 	"VOICE_COMMANDS_ON": "音声コマンドをオンにしました。「エムハラ」と呼んでからコマンドを言ってください。例:「エムハラ、スキップ」",
 	"VOICE_COMMANDS_OFF": "音声コマンドをオフにしました。このサーバーでは聞き取りをやめます。",
@@ -429,9 +458,12 @@
 	"VOICE_SAY_LYRICS": "歌詞を探します。",
 	"VOICE_SAY_RELOCATE": "{position}に移動します。",
 	"VOICE_SAY_MIX_ADD": "ミックスに追加します。",
-	"VOICE_SAY_MIX_REMOVE": "ミックスの{layer}曲目を止めます。",
-	"VOICE_SAY_MIX_VOLUME": "ミックスの{layer}曲目を{volume}パーセントにします。",
+	"VOICE_SAY_MIX_REMOVE": "ミックスのトラック{track}を削除します。",
+	"VOICE_SAY_MIX_SKIP": "ミックスのトラック{track}をスキップします。",
+	"VOICE_SAY_MIX_VOLUME": "ミックスのトラック{track}を{volume}パーセントにします。",
+	"VOICE_SAY_MIX_GAP": "ミックスのトラック{track}の曲間を{seconds}秒にします。",
+	"VOICE_SAY_MIX_LOOP": "ミックスのトラック{track}のループを切り替えます。",
 	"VOICE_SAY_MIX_MAIN": "キューの曲を{volume}パーセントにします。",
-	"VOICE_SAY_MIX_SWAP": "ミックスの{layer}曲目と入れ替えます。",
+	"VOICE_SAY_MIX_SWAP": "ミックスのトラック{track}と入れ替えます。",
 	"VOICE_SAY_MIX_LIST": "ミックスを表示します。"
 }

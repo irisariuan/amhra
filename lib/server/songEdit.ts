@@ -1,4 +1,4 @@
-import { CustomClient } from "../custom";
+import { CustomClient, type CustomAudioPlayer } from "../custom";
 import { languageText } from "../language";
 import { globalApp, dcb } from "../misc";
 import {
@@ -11,13 +11,15 @@ import { deleteSkipMessage, sendSkipMessage } from "../voice/segment";
 import { getYouTubePlaylist } from "../youtube";
 import { readSetting } from "../setting";
 import { findUpcoming, requestSchedule } from "../voice/schedule";
-import { addLayerFromInput, swapLayerWithMain } from "../voice/mix";
 import {
-	getMix,
-	nativeRemoveLayer,
-	nativeSetLayerVolume,
-	nativeSetMainVolume,
-} from "../voice/native";
+	queueOnTrack,
+	removeTrack,
+	setTrackVolume,
+	skipTrack,
+	swapTrackWithMain,
+} from "../voice/mix";
+import type { MixTrack } from "../voice/mixPlan";
+import { getMix, nativeSetMainVolume } from "../voice/native";
 import { SongEditType } from "./event";
 import { SongEditRequest } from "./schema";
 
@@ -263,77 +265,95 @@ export async function handleSongInterruption(
 			}
 			break;
 		}
-		case SongEditType.AddLayer: {
+		case SongEditType.AddMixTrack: {
+			if (!player.native) return 501;
+			const track = getMix(guildId).addTrack({
+				...data.detail,
+				volume: data.detail.volume === undefined ? undefined : percent(data.detail.volume),
+			});
+			if (!track) return 422;
+			dcb.log(`Added mix track ${track.id} in ${guildId} from dashboard`);
+			break;
+		}
+		case SongEditType.RemoveMixTrack: {
+			const track = getMix(guildId).find(data.detail.track);
+			if (!track) return 404;
+			dcb.log(`Removing mix track ${track.id} from dashboard`);
+			removeTrack(guildId, track);
+			break;
+		}
+		case SongEditType.SetMixTrack: {
+			const mix = getMix(guildId);
+			const track = mix.find(data.detail.track);
+			if (!track) return 404;
+			const { volume, gapMs, loop } = data.detail;
+			if (volume !== undefined) setTrackVolume(guildId, track, percent(volume));
+			if (gapMs !== undefined) mix.setGap(track, gapMs);
+			if (loop !== undefined) track.loop = loop;
+			dcb.log(`Set mix track ${track.id} from dashboard: ${JSON.stringify({ volume, gapMs, loop })}`);
+			break;
+		}
+		case SongEditType.SkipMixTrack: {
+			const track = getMix(guildId).find(data.detail.track);
+			if (!track) return 404;
+			dcb.log(`Skipping on mix track ${track.id} from dashboard`);
+			skipTrack(guildId, track);
+			break;
+		}
+		case SongEditType.SwapMixTrack: {
+			const track = getMix(guildId).find(data.detail.track);
+			if (!track) return 404;
+			const result = await swapTrackWithMain(player, track);
+			if ("error" in result) {
+				globalApp.err(`Failed to swap mix track ${track.id} in: ${result.error}`);
+				return result.error === "failed" ? 502 : 409;
+			}
+			dcb.log(`Swapped ${result.before.url} in from mix track ${track.id} from dashboard`);
+			break;
+		}
+		case SongEditType.AddMixSong: {
 			// Only the sidecar can play two things at once
 			if (!player.native) return 501;
 			if (!getConnection(guildId)) return 409;
-			const result = await addLayerFromInput(
-				guildId,
-				data.detail.url,
-				Math.round(data.detail.volume * 100),
-			);
-			if ("error" in result) {
-				globalApp.err(`Failed to mix in ${data.detail.url}: ${result.error}`);
-				return { not_found: 404, full: 422, failed: 502 }[result.error];
+			const { url, index, volume, gapMs, loop } = data.detail;
+			let track: MixTrack | undefined;
+			if (data.detail.track !== undefined) {
+				track = getMix(guildId).find(data.detail.track);
+				if (!track) return 404;
 			}
-			dcb.log(`Mixed ${result.layer.url} into ${guildId} from dashboard`);
-			break;
-		}
-		case SongEditType.RemoveLayer: {
-			const layer = getMix(guildId).list().find((l) => l.id === data.detail.id);
-			if (!layer) return 404;
-			dcb.log(`Removing mixed-in ${layer.url} from dashboard`);
-			nativeRemoveLayer(guildId, layer);
-			break;
-		}
-		case SongEditType.SetLayerVolume: {
-			const layer = getMix(guildId).list().find((l) => l.id === data.detail.id);
-			if (!layer) return 404;
-			const volume = Math.round(data.detail.volume * 100);
-			dcb.log(`Setting mixed-in ${layer.url} to ${volume}% from dashboard`);
-			nativeSetLayerVolume(guildId, layer, volume);
-			break;
-		}
-		case SongEditType.SwapLayer: {
-			const layer = getMix(guildId).list().find((l) => l.id === data.detail.id);
-			if (!layer) return 404;
-			const result = await swapLayerWithMain(player, layer);
+			const result = await queueOnTrack(guildId, url, {
+				track,
+				index,
+				volume: volume === undefined ? undefined : percent(volume),
+				gapMs,
+				loop,
+			});
 			if ("error" in result) {
-				globalApp.err(`Failed to swap ${layer.url} in from the mix: ${result.error}`);
-				return result.error === "nothing_playing" ? 409 : 502;
+				globalApp.err(`Failed to queue ${url} on the mix: ${result.error}`);
+				return { not_found: 404, full: 422, queue_full: 422 }[result.error];
 			}
-			dcb.log(`Swapped ${layer.url} in from the mix from dashboard`);
+			dcb.log(`Queued ${result.song.url} on mix track ${result.track.id} from dashboard`);
 			break;
 		}
-		case SongEditType.MixFromQueue: {
+		case SongEditType.RemoveMixSong: {
+			const mix = getMix(guildId);
+			const track = mix.find(data.detail.track);
+			if (!track) return 404;
+			const at = locate(track.queue, data.detail.index, data.detail.url);
+			if (at < 0) return 404;
+			const removed = mix.removeSong(track, at);
+			dcb.log(`Took ${removed?.url} off mix track ${track.id} from dashboard`);
+			break;
+		}
+		case SongEditType.MoveMixSong: {
 			if (!player.native) return 501;
-			if (!getConnection(guildId)) return 409;
-			const { url } = data.detail;
-			let item: (typeof player.queue)[number] | undefined = player.queue[data.detail.index];
-			if (url && item?.url !== url) item = player.queue.find((queued) => queued.url === url);
-			if (!item) return 404;
-			const result = await addLayerFromInput(
-				guildId,
-				item.url,
-				Math.round(data.detail.volume * 100),
-				(item.seek ?? 0) * 1000,
-			);
-			if ("error" in result) {
-				globalApp.err(`Failed to mix in queued ${item.url}: ${result.error}`);
-				return { not_found: 404, full: 422, failed: 502 }[result.error];
-			}
-			// Taken out only once it is playing, so a failed mix leaves the
-			// queue as it was. The queue may have moved during the download,
-			// so the entry is found again rather than trusted to its index.
-			let at = player.queue.indexOf(item);
-			if (at < 0) at = player.queue.findIndex((queued) => queued.url === item.url);
-			if (at >= 0) player.queue.splice(at, 1);
-			dcb.log(`Mixed queued ${item.url} into ${guildId} from dashboard`);
+			const status = await moveMixSong(guildId, player, data.detail);
+			if (status !== 200) return status;
 			break;
 		}
 		case SongEditType.SetMainVolume: {
 			if (!player.native) return 501;
-			const volume = Math.round(data.detail.volume * 100);
+			const volume = percent(data.detail.volume);
 			dcb.log(`Setting the queue song's mix volume to ${volume}% from dashboard`);
 			nativeSetMainVolume(guildId, volume);
 			break;
@@ -341,5 +361,96 @@ export async function handleSongInterruption(
 		default:
 			return 400;
 	}
+	return 200;
+}
+
+/** A linear volume from the dashboard as the whole percent `/mix` shows. */
+function percent(volume: number) {
+	return Math.round(volume * 100);
+}
+
+/**
+ * Where a song the caller saw at `index` is now: there if it still is, found
+ * by URL if the list moved, and -1 if it is gone.
+ */
+function locate(list: readonly { url: string }[], index: number, url?: string) {
+	if (!url || list[index]?.url === url) return list[index] ? index : -1;
+	return list.findIndex((item) => item.url === url);
+}
+
+type MoveDetail = Extract<SongEditRequest, { action: SongEditType.MoveMixSong }>["detail"];
+
+/**
+ * Move a queued song between the guild's queue and the mix's tracks, or along
+ * either. Taken from where it was only once it has a place to go, so a move
+ * that fails leaves everything as it was.
+ */
+async function moveMixSong(
+	guildId: string,
+	player: CustomAudioPlayer,
+	{ from, to, url }: MoveDetail,
+): Promise<number> {
+	const mix = getMix(guildId);
+	const now = Date.now();
+
+	if (from.track === null) {
+		const at = locate(player.queue, from.index, url);
+		const item = player.queue[at];
+		if (!item) return 404;
+		if (to.track === null) {
+			player.queue.splice(at, 1);
+			player.queue.splice(Math.min(to.index ?? player.queue.length, player.queue.length), 0, item);
+			return 200;
+		}
+		if (!getConnection(guildId)) return 409;
+		const target = to.track === "new" ? undefined : mix.find(to.track);
+		if (to.track !== "new" && !target) return 404;
+		const result = await queueOnTrack(guildId, item.url, {
+			track: target,
+			index: to.index,
+			startMs: (item.seek ?? 0) * 1000,
+		});
+		if ("error" in result) {
+			globalApp.err(`Failed to move queued ${item.url} onto the mix: ${result.error}`);
+			return { not_found: 404, full: 422, queue_full: 422 }[result.error];
+		}
+		// Found again, not trusted to its index: the queue may have moved
+		// during the lookup.
+		let still = player.queue.indexOf(item);
+		if (still < 0) still = player.queue.findIndex((queued) => queued.url === item.url);
+		if (still >= 0) player.queue.splice(still, 1);
+		dcb.log(`Moved queued ${item.url} onto mix track ${result.track.id} from dashboard`);
+		return 200;
+	}
+
+	const source = mix.find(from.track);
+	if (!source) return 404;
+	const at = locate(source.queue, from.index, url);
+	const song = source.queue[at];
+	if (!song) return 404;
+
+	if (to.track === null) {
+		mix.removeSong(source, at);
+		const index = Math.min(to.index ?? player.queue.length, player.queue.length);
+		player.queue.splice(index, 0, { url: song.url, repeating: false });
+		if (!player.isPlaying) {
+			const nextUrl = player.getNextQueueItem();
+			const res = nextUrl ? await createResource(nextUrl) : null;
+			if (res) player.playResource(res);
+		}
+		dcb.log(`Moved ${song.url} off mix track ${source.id} into the queue from dashboard`);
+		return 200;
+	}
+
+	let target = to.track === "new" ? undefined : mix.find(to.track);
+	if (to.track === "new") {
+		// Made in the source's image, so dragging a song out to a lane of its
+		// own does not also reset its volume
+		target = mix.addTrack({ volume: source.volume, gapMs: source.gapMs }) ?? undefined;
+		if (!target) return 422;
+	}
+	if (!target) return 404;
+	if (!mix.moveSong(source, at, target, to.index ?? target.queue.length, now)) return 422;
+	dcb.log(`Moved ${song.url} from mix track ${source.id} to ${target.id} from dashboard`);
 	return 200;
 }
