@@ -205,6 +205,13 @@ export class CustomAudioPlayer extends AudioPlayer {
 	customSetting: Partial<AudioPlayerSetting>;
 
 	activeSkipMessage: Message | null;
+	/**
+	 * The segment a skip message is being shown for, claimed before the
+	 * message is sent, so two callers reaching the same segment at once (the
+	 * segment timer and the play command, for a track opening with an intro)
+	 * send one message between them.
+	 */
+	skipMessageFor: string | null;
 	currentLanguage: Language;
 
 	/**
@@ -274,6 +281,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		this.songSegmentsTimeoutArray = [];
 		this.channel = channel;
 		this.activeSkipMessage = null;
+		this.skipMessageFor = null;
 		this.currentLanguage = Language.English;
 		this.customSetting = {};
 	}

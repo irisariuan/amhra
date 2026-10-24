@@ -103,6 +103,26 @@ export async function deleteSkipMessage(player: CustomAudioPlayer) {
 	return false;
 }
 
+/**
+ * Claim the skip message for `segment` of the current song, or null when
+ * another caller already has it.
+ *
+ * Synchronous on purpose: callers race on the awaits that follow (deleting the
+ * previous message, sending this one), so the claim has to land before any of
+ * them for the second caller to see it.
+ */
+function claimSkipMessage(player: CustomAudioPlayer, segment: Segment) {
+	const key = `${player.playCounter}:${segment.UUID}`;
+	if (player.skipMessageFor === key) return null;
+	player.skipMessageFor = key;
+	return key;
+}
+
+/** Let the segment be announced again, e.g. after seeking back into it. */
+function releaseSkipMessage(player: CustomAudioPlayer, key: string) {
+	if (player.skipMessageFor === key) player.skipMessageFor = null;
+}
+
 export async function sendInteractionSkipMessage(
 	interaction: ChatInputCommandInteraction,
 	player: CustomAudioPlayer,
@@ -117,6 +137,28 @@ export async function sendInteractionSkipMessage(
 	) {
 		return false;
 	}
+	if (
+		cancelThreshold > 0 &&
+		Math.abs(skipTo.segment[1] - skipTo.segment[0]) <= cancelThreshold
+	) {
+		dcb.log("Skipping message cancelled due to short segment");
+		return false;
+	}
+	const key = claimSkipMessage(player, skipTo);
+	if (!key) return false;
+	try {
+		return await promptInteractionSkip(interaction, player, skipTo, force);
+	} finally {
+		releaseSkipMessage(player, key);
+	}
+}
+
+async function promptInteractionSkip(
+	interaction: ChatInputCommandInteraction,
+	player: CustomAudioPlayer,
+	skipTo: Segment,
+	force: boolean,
+) {
 	if (player.activeSkipMessage) {
 		if (force) {
 			if (!(await deleteSkipMessage(player))) {
@@ -125,13 +167,6 @@ export async function sendInteractionSkipMessage(
 		} else {
 			return false;
 		}
-	}
-	if (
-		cancelThreshold > 0 &&
-		Math.abs(skipTo.segment[1] - skipTo.segment[0]) <= cancelThreshold
-	) {
-		dcb.log("Skipping message cancelled due to short segment");
-		return false;
 	}
 	const count = player.playCounter;
 	const response = await interaction.followUp({
@@ -232,6 +267,30 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 		return false;
 	}
 
+	const segment = player.currentSegment();
+	if (!segment) return false;
+	if (
+		cancelThreshold > 0 &&
+		Math.abs(segment.segment[1] - segment.segment[0]) <= cancelThreshold
+	) {
+		dcb.log("Skipping message cancelled due to short segment");
+		return false;
+	}
+	const key = claimSkipMessage(player, segment);
+	if (!key) return false;
+	try {
+		return await promptSkip(player, segment, force);
+	} finally {
+		releaseSkipMessage(player, key);
+	}
+}
+
+async function promptSkip(
+	player: CustomAudioPlayer,
+	segment: Segment,
+	force: boolean,
+) {
+	if (!player.nowPlaying || !player.channel?.isSendable()) return false;
 	if (player.activeSkipMessage) {
 		if (force) {
 			if (!(await deleteSkipMessage(player))) {
@@ -243,15 +302,6 @@ export async function sendSkipMessage(player: CustomAudioPlayer, force = true) {
 	}
 
 	const count = player.playCounter;
-	const segment = player.currentSegment();
-	if (!segment) return false;
-	if (
-		cancelThreshold > 0 &&
-		Math.abs(segment.segment[1] - segment.segment[0]) <= cancelThreshold
-	) {
-		dcb.log("Skipping message cancelled due to short segment");
-		return false;
-	}
 	const skipTo = segment.segment[1];
 	const isSkippingSong =
 		Math.abs(skipTo - player.nowPlaying.details.durationInSec) <= 1;
