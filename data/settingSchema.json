@@ -106,7 +106,7 @@
   },
   "AUTO_LEAVE": {
    "type": "number",
-   "description": "Time in ms before auto leave"
+   "description": "Time in ms an idle bot waits before leaving a channel with no users left in it (bots excluded)"
   },
   "AUTO_LEAVE_ALONE": {
    "type": "number",
