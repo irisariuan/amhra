@@ -329,7 +329,7 @@ impl Session {
 			.build();
 
 		// The welcome is for the group id the pending group was made under, and
-		// openmls 0.8 refuses to join over an existing group unless told to.
+		// openmls refuses to join over an existing group unless told to.
 		// The pending group was only ever a placeholder for this.
 		let staged = StagedWelcome::build_from_welcome(&self.provider, &join_config, welcome)
 			.and_then(|builder| builder.replace_old_group().build())
@@ -375,13 +375,13 @@ impl Session {
 				ProcessedMessageContent::StagedCommitMessage(staged) => group
 					.merge_staged_commit(&self.provider, *staged)
 					.map_err(|error| SessionError::Mls(format!("{error:?}")))?,
+				// Our own commit comes back to us; merging the pending one is
+				// the same state change, reached the other way round.
+				ProcessedMessageContent::OwnPendingCommit => group
+					.merge_pending_commit(&self.provider)
+					.map_err(|error| SessionError::Mls(format!("{error:?}")))?,
 				_ => return Err(SessionError::Mls("expected a commit".to_owned())),
 			},
-			// Our own commit comes back to us; merging the pending one is the
-			// same state change, reached the other way round.
-			Err(ProcessMessageError::InvalidCommit(StageCommitError::OwnCommit)) => group
-				.merge_pending_commit(&self.provider)
-				.map_err(|error| SessionError::Mls(format!("{error:?}")))?,
 			Err(error) => return Err(SessionError::Mls(format!("{error:?}"))),
 		}
 
@@ -659,6 +659,65 @@ mod tests {
 		// A frame attributed to the wrong sender is under the wrong key.
 		first.encrypt_opus(&[0xfc, 4], &mut frame).unwrap();
 		assert_eq!(second.decrypt(7, &frame, &mut out, now, false), Err(DecryptError::NoDecryptor(7)));
+	}
+
+	/// The server sends our own commit back to everyone, us included, and
+	/// that echo is what moves our epoch: the pending commit is merged, not
+	/// the echo staged, which openmls could not do with its own update path.
+	#[test]
+	fn our_own_commit_coming_back_moves_us_on() {
+		let mut first = Session::new(1, USER, CHANNEL).unwrap();
+		let mut second = Session::new(1, 42, CHANNEL).unwrap();
+		first.set_external_sender(&external_sender()).unwrap();
+		second.set_external_sender(&external_sender()).unwrap();
+
+		let key_package = KeyPackageIn::tls_deserialize_exact_bytes(&second.key_package().unwrap())
+			.unwrap()
+			.validate(first.provider.crypto(), ProtocolVersion::Mls10)
+			.unwrap();
+		let (commit, welcome, _info) = first
+			.group
+			.as_mut()
+			.unwrap()
+			.add_members(&first.provider, &first.signer, &[key_package])
+			.unwrap();
+		// Where `process_proposals` leaves it: committed, waiting for the echo
+		first.status = Status::AwaitingResponse;
+		let epoch = first.epoch();
+
+		first.process_commit(&commit.tls_serialize_detached().unwrap()).unwrap();
+		assert_eq!(first.status(), Status::Active);
+		assert_ne!(first.epoch(), epoch, "the echo moves the epoch");
+
+		// And it is the same epoch the new member joins at.
+		let MlsMessageBodyOut::Welcome(welcome) = welcome.body() else { panic!("a welcome") };
+		second.process_welcome(&welcome.tls_serialize_detached().unwrap()).unwrap();
+		let mut frame = Vec::new();
+		let mut out = Vec::new();
+		first.encrypt_opus(&[0xfc, 5], &mut frame).unwrap();
+		assert_eq!(second.decrypt(USER, &frame, &mut out, Instant::now(), false), Ok(Decrypted::Opened));
+	}
+
+	/// Another member's commit is staged and merged like any other.
+	#[test]
+	fn another_members_commit_moves_us_on() {
+		let (mut first, mut second) = two_members(USER, 42);
+		let group = second.group.as_mut().unwrap();
+		let bundle = group
+			.self_update(&second.provider, &second.signer, LeafNodeParameters::default())
+			.unwrap();
+		group.merge_pending_commit(&second.provider).unwrap();
+		second.refresh_keys().unwrap();
+		let epoch = first.epoch();
+
+		first.process_commit(&bundle.into_commit().tls_serialize_detached().unwrap()).unwrap();
+		assert_ne!(first.epoch(), epoch);
+		assert_eq!(first.epoch(), second.epoch());
+
+		let mut frame = Vec::new();
+		let mut out = Vec::new();
+		second.encrypt_opus(&[0xfc, 6], &mut frame).unwrap();
+		assert_eq!(first.decrypt(42, &frame, &mut out, Instant::now(), false), Ok(Decrypted::Opened));
 	}
 
 	#[test]
