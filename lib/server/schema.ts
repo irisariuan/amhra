@@ -211,7 +211,8 @@ const RemoveMixTrackSchema = z.object({
 const SetMixTrackSchema = z.object({
 	action: z.literal(SongEditType.SetMixTrack),
 	guildId: z.string(),
-	detail: TrackSettings.extend({ track: TrackId }),
+	/** Any queue, "1" included; `paused` holds or releases just that one. */
+	detail: TrackSettings.extend({ track: TrackId, paused: z.boolean().optional() }),
 });
 
 /** Move a track on to its next song now, cutting short any gap. */

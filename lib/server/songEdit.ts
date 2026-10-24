@@ -281,24 +281,34 @@ export async function handleSongInterruption(
 			break;
 		}
 		case SongEditType.RemoveMixTrack: {
-			const track = trackById(guildId, data.detail.track);
+			const track = laneById(player, data.detail.track);
 			if (!track) return 404;
+			// Queue 1 is the guild's own, and stays
+			if (track === player) return 409;
 			dcb.log(`Removing queue ${track.queueId} from dashboard`);
 			removeTrack(track);
 			break;
 		}
 		case SongEditType.SetMixTrack: {
-			const track = trackById(guildId, data.detail.track);
+			const track = laneById(player, data.detail.track);
 			if (!track) return 404;
-			const { volume, gapMs, loop } = data.detail;
-			if (volume !== undefined) setTrackVolume(track, percent(volume));
+			const { volume, gapMs, loop, paused } = data.detail;
+			if (volume !== undefined) {
+				// Queue 1's own level; its `volume` is the bot's
+				if (track === player) player.setMainVolume(percent(volume));
+				else setTrackVolume(track, percent(volume));
+			}
 			if (gapMs !== undefined) setTrackGap(track, gapMs);
 			if (loop !== undefined) setTrackLoop(track, loop);
-			dcb.log(`Set queue ${track.queueId} from dashboard: ${JSON.stringify({ volume, gapMs, loop })}`);
+			if (paused === true) track.pause();
+			if (paused === false) track.unpause();
+			dcb.log(
+				`Set queue ${track.queueId} from dashboard: ${JSON.stringify({ volume, gapMs, loop, paused })}`,
+			);
 			break;
 		}
 		case SongEditType.SkipMixTrack: {
-			const track = trackById(guildId, data.detail.track);
+			const track = laneById(player, data.detail.track);
 			if (!track) return 404;
 			dcb.log(`Skipping on queue ${track.queueId} from dashboard`);
 			skipTrack(track);
@@ -311,7 +321,7 @@ export async function handleSongInterruption(
 			const { url, index, volume, gapMs, loop } = data.detail;
 			let track: CustomAudioPlayer | undefined;
 			if (data.detail.track !== undefined) {
-				track = trackById(guildId, data.detail.track);
+				track = laneById(player, data.detail.track);
 				if (!track) return 404;
 			}
 			const result = await queueOnTrack(guildId, url, {
@@ -330,7 +340,7 @@ export async function handleSongInterruption(
 			break;
 		}
 		case SongEditType.RemoveMixSong: {
-			const track = trackById(guildId, data.detail.track);
+			const track = laneById(player, data.detail.track);
 			if (!track) return 404;
 			const at = locate(track.queue, data.detail.index, data.detail.url);
 			if (at < 0) return 404;
@@ -383,70 +393,33 @@ async function moveMixSong(
 	player: CustomAudioPlayer,
 	{ from, to, url }: MoveDetail,
 ): Promise<number> {
-	if (from.track === null) {
-		const at = locate(player.queue, from.index, url);
-		const item = player.queue[at];
-		if (!item) return 404;
-		if (to.track === null) {
-			player.queue.splice(at, 1);
-			player.queue.splice(Math.min(to.index ?? player.queue.length, player.queue.length), 0, item);
-			return 200;
-		}
-		if (!getConnection(guildId)) return 409;
-		const target = to.track === "new" ? undefined : trackById(guildId, to.track);
-		if (to.track !== "new" && !target) return 404;
-		const result = await queueOnTrack(guildId, item.url, {
-			track: target,
-			index: to.index,
-			startMs: (item.seek ?? 0) * 1000,
-			gapBeforeMs: to.gapMs,
-			channel: player.channel,
-		});
-		if ("error" in result) {
-			globalApp.err(`Failed to move queued ${item.url} onto the mix: ${result.error}`);
-			return { not_found: 404, full: 422, queue_full: 422 }[result.error];
-		}
-		// Found again, not trusted to its index: the queue may have moved
-		// during the lookup.
-		let still = player.queue.indexOf(item);
-		if (still < 0) still = player.queue.findIndex((queued) => queued.url === item.url);
-		if (still >= 0) player.queue.splice(still, 1);
-		dcb.log(`Moved queued ${item.url} onto queue ${result.track.queueId} from dashboard`);
-		return 200;
-	}
-
-	const source = trackById(guildId, from.track);
+	// `null` is queue 1, as older dashboards name it
+	const source = laneById(player, from.track ?? "1");
 	if (!source) return 404;
 	const at = locate(source.queue, from.index, url);
 	const song = source.queue[at];
 	if (!song) return 404;
 
-	if (to.track === null) {
-		removeSong(source, at);
-		const index = Math.min(to.index ?? player.queue.length, player.queue.length);
-		player.queue.splice(index, 0, { url: song.url, repeating: false });
-		if (!player.isPlaying) {
-			const nextUrl = player.getNextQueueItem();
-			const res = nextUrl ? await createResource(nextUrl) : null;
-			if (res) player.playResource(res);
-		}
-		dcb.log(`Moved ${song.url} off queue ${source.queueId} into queue 1 from dashboard`);
-		return 200;
-	}
-
-	let target = to.track === "new" ? undefined : trackById(guildId, to.track);
+	let target = to.track === "new" ? undefined : laneById(player, to.track ?? "1");
 	if (to.track === "new") {
 		// Made in the source's image, so dragging a song out to a lane of its
 		// own does not also reset its volume
 		target =
 			addTrack(guildId, player.channel, {
-				volume: Math.round(source.volume * 100),
+				volume: source === player ? player.mainVolume : Math.round(source.volume * 100),
 				gapMs: source.gapMs,
 			}) ?? undefined;
 		if (!target) return 422;
 	}
 	if (!target) return 404;
+	// Queues past the first play in the sidecar's voice session
+	if (target !== player && !getConnection(guildId)) return 409;
 	if (!moveSong(source, at, target, to.index ?? target.queue.length, to.gapMs)) return 422;
 	dcb.log(`Moved ${song.url} from queue ${source.queueId} to ${target.queueId} from dashboard`);
 	return 200;
+}
+
+/** A queue by the id the dashboard gives it: "1" is the player itself. */
+function laneById(player: CustomAudioPlayer, id: string) {
+	return id === "1" ? player : trackById(player.guildId, id);
 }

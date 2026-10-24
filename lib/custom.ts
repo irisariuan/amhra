@@ -110,6 +110,12 @@ export interface SongDataPacket {
 	/** Silence the queue leaves between its songs, in milliseconds. */
 	gapMs: number;
 	/**
+	 * Every queue the guild has, queue 1 first, each as one lane of the
+	 * dashboard's editor and all in the same shape. Queue 1's `volume` here is
+	 * its own level, like `mix.mainVolume`; `volume` above is the bot's.
+	 */
+	queues: QueueLane[];
+	/**
 	 * Tracks playing on top of the queue, each with a queue of its own.
 	 * Volumes are linear, like `volume`; times are milliseconds, measured as
 	 * the packet was made.
@@ -118,23 +124,30 @@ export interface SongDataPacket {
 		/** The queue track's own level, under `volume`. */
 		mainVolume: number;
 		maxTracks: number;
-		tracks: {
-			id: string;
-			volume: number;
-			gapMs: number;
-			loop: boolean;
-			playing: (MixSongData & { positionMs: number }) | null;
-			/** Being fetched to play next. */
-			loading: MixSongData | null;
-			queue: MixSongData[];
-			/** Until the next song starts, while the track waits out its gap. */
-			dueInMs: number | null;
-		}[];
+		tracks: QueueLane[];
 	};
 }
 
+/** One queue as a lane of the dashboard's editor. */
+export interface QueueLane {
+	/** Its number, as a string: "1" and up. */
+	id: string;
+	/** Its own level, linear, under the bot's volume. */
+	volume: number;
+	gapMs: number;
+	loop: boolean;
+	paused: boolean;
+	playing: (MixSongData & { positionMs: number }) | null;
+	/** Being fetched to play next. */
+	loading: MixSongData | null;
+	queue: MixSongData[];
+	/** Until the next song starts, while the queue waits out its gap. */
+	dueInMs: number | null;
+}
+
 export interface MixSongData {
-	title: string;
+	/** Null when it was queued without being looked up, as `/play` queues do. */
+	title: string | null;
 	url: string;
 	durationMs: number | null;
 	/** Silence before it in place of the track's gap, or null for the track's. */
@@ -748,6 +761,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 			canMix: this.native,
 			mix: this.mixData(),
 			gapMs: this.gapMs,
+			queues: [this.laneData(), ...extraQueues(this.guildId).map((queue) => queue.laneData())],
 		};
 	}
 
@@ -761,17 +775,19 @@ export class CustomAudioPlayer extends AudioPlayer {
 	}
 
 	/** This queue as one lane of the mix. */
-	private laneData(): SongDataPacket["mix"]["tracks"][number] {
+	private laneData(): QueueLane {
 		const now = this.nowPlaying;
 		const song = (item: QueueItem): MixSongData => ({
-			title: item.title ?? item.url,
+			title: item.title ?? null,
 			url: item.url,
 			durationMs: item.durationMs ?? null,
 			gapBeforeMs: item.gapBeforeMs ?? null,
 		});
 		return {
 			id: this.sidecarQueue,
-			volume: this.volume,
+			// Queue 1's `volume` is the bot's; its own level is `mainVolume`
+			volume: this.queueId === 1 ? this.mainVolume / 100 : this.volume,
+			paused: this.isPaused,
 			gapMs: this.gapMs,
 			loop: this.customSetting.looping ?? false,
 			playing:

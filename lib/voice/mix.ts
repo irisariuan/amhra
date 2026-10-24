@@ -145,11 +145,19 @@ export function isFull(guildId: string) {
  * after its own lead-in, or straight away. False when the queue is full.
  */
 export function enqueue(track: CustomAudioPlayer, song: QueueItem, index?: number) {
-	if (track.queue.length >= MAX_QUEUE_LENGTH) return false;
+	if (isFullQueue(track)) return false;
 	const at = clampIndex(index, track.queue.length);
 	track.queue.splice(at, 0, song);
 	track.placed(at);
 	return true;
+}
+
+/**
+ * Whether a queue can take no more songs. Queue 1 takes whole playlists, as
+ * it always has; the cap is on the queues mixed in over it.
+ */
+function isFullQueue(track: CustomAudioPlayer) {
+	return track.queueId !== 1 && track.queue.length >= MAX_QUEUE_LENGTH;
 }
 
 /** Take the song at `index` off a track's queue. */
@@ -175,7 +183,7 @@ export function moveSong(
 ) {
 	const song = from.queue[fromIndex];
 	if (!song) return false;
-	if (from !== to && to.queue.length >= MAX_QUEUE_LENGTH) return false;
+	if (from !== to && isFullQueue(to)) return false;
 	removeSong(from, fromIndex);
 	const moved = gapBeforeMs === undefined ? song : { ...song, gapBeforeMs: clampLeadIn(gapBeforeMs) };
 	return enqueue(to, moved, toIndex);
