@@ -3,7 +3,14 @@ import { globalApp } from "../misc";
 import { getYouTubeVideoId } from "../youtube";
 import { updateLastUsed } from "./cache";
 import { createResource, getVideoInfo, isVideo } from "./core";
-import type { GuildMix, MixSong, MixTrack, PlayingSong, TrackOptions } from "./mixPlan";
+import {
+	clampGap,
+	type GuildMix,
+	type MixSong,
+	type MixTrack,
+	type PlayingSong,
+	type TrackOptions,
+} from "./mixPlan";
 import {
 	allMixes,
 	findMix,
@@ -25,8 +32,8 @@ let sweeper: ReturnType<typeof setInterval> | null = null;
  * Start the songs that tracks are waiting on, as their gaps run out.
  *
  * One sweep for every guild, rather than a timer per track: a pause, a skip
- * or a removed track then only has to change `dueAt`, and there is never a
- * timer left over to fire into a mix that has gone.
+ * or a removed track then only has to change what the track waits on, and
+ * there is never a timer left over to fire into a mix that has gone.
  */
 export function bindMixTracks() {
 	if (sweeper) return;
@@ -76,7 +83,11 @@ function prefetch(track: MixTrack) {
 }
 
 /** A video as a track can queue it: its title and length, nothing downloaded yet. */
-export async function resolveSong(url: string, startMs?: number): Promise<MixSong | null> {
+export async function resolveSong(
+	url: string,
+	startMs?: number,
+	gapBeforeMs?: number,
+): Promise<MixSong | null> {
 	const videoId = isVideo(url) ? getYouTubeVideoId(url) : null;
 	if (!videoId) return null;
 	const info = await getVideoInfo(url).catch(() => null);
@@ -88,6 +99,7 @@ export async function resolveSong(url: string, startMs?: number): Promise<MixSon
 		url: info.video_details.url,
 		durationMs: seconds > 0 ? seconds * 1000 : null,
 		...(startMs ? { startMs } : {}),
+		...(gapBeforeMs === undefined ? {} : { gapBeforeMs: clampGap(gapBeforeMs) }),
 	};
 }
 
@@ -109,14 +121,21 @@ export async function queueOnTrack(
 		track,
 		index,
 		startMs,
+		gapBeforeMs,
 		...options
-	}: TrackOptions & { track?: MixTrack; index?: number; startMs?: number } = {},
+	}: TrackOptions & {
+		track?: MixTrack;
+		index?: number;
+		startMs?: number;
+		/** Silence before it, in place of the track's gap */
+		gapBeforeMs?: number;
+	} = {},
 ): Promise<QueueOnTrackResult> {
 	const mix = getMix(guildId);
 	// Checked before the lookup as well as after, so a full mix does not cost
 	// one it will then refuse.
 	if (!track && mix.isFull()) return { error: "full" };
-	const song = await resolveSong(url, startMs);
+	const song = await resolveSong(url, startMs, gapBeforeMs);
 	if (!song) return { error: "not_found" };
 
 	let target = track;
@@ -172,8 +191,10 @@ export async function replaceTrackSong(
 
 	const queued = track.queue.indexOf(song);
 	if (queued >= 0) {
-		track.queue[queued] = next;
-		return next;
+		// Where it was put on the timeline stays where it was put
+		const placed = song.gapBeforeMs === undefined ? next : { ...next, gapBeforeMs: song.gapBeforeMs };
+		track.queue[queued] = placed;
+		return placed;
 	}
 	if (track.playing?.videoId !== song.videoId) return null;
 	await fetchSong(next.videoId);

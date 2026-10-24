@@ -409,6 +409,7 @@ async function moveMixSong(
 			track: target,
 			index: to.index,
 			startMs: (item.seek ?? 0) * 1000,
+			gapBeforeMs: to.gapMs,
 		});
 		if ("error" in result) {
 			globalApp.err(`Failed to move queued ${item.url} onto the mix: ${result.error}`);
@@ -450,7 +451,7 @@ async function moveMixSong(
 		if (!target) return 422;
 	}
 	if (!target) return 404;
-	if (!mix.moveSong(source, at, target, to.index ?? target.queue.length, now)) return 422;
+	if (!mix.moveSong(source, at, target, to.index ?? target.queue.length, now, to.gapMs)) return 422;
 	dcb.log(`Moved ${song.url} from mix track ${source.id} to ${target.id} from dashboard`);
 	return 200;
 }

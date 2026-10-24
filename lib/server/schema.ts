@@ -264,14 +264,23 @@ const MixPlace = z.object({
 /**
  * Drag a queued song anywhere: along its track, onto another, into the
  * guild's queue, or out of it onto a track. `url` is what the caller saw at
- * `from`.
+ * `from`. On a track, `to.gapMs` sets where it starts, as silence after what
+ * comes before it.
  */
 const MoveMixSongSchema = z.object({
 	action: z.literal(SongEditType.MoveMixSong),
 	guildId: z.string(),
 	detail: z.object({
 		from: MixPlace,
-		to: MixPlace.extend({ index: z.number().int().nonnegative().optional() }),
+		to: MixPlace.extend({
+			index: z.number().int().nonnegative().optional(),
+			/**
+			 * Silence before it at its new place, in place of the track's gap:
+			 * how the editor lines a song up on its timeline. Ignored for the
+			 * guild's queue, which plays back to back.
+			 */
+			gapMs: MixGap.optional(),
+		}),
 		url: z.string().optional(),
 	}),
 });

@@ -128,6 +128,8 @@ export interface MixSongData {
 	title: string;
 	url: string;
 	durationMs: number | null;
+	/** Silence before it in place of the track's gap, or null for the track's. */
+	gapBeforeMs?: number | null;
 }
 
 export class CustomClient extends Client {
@@ -695,7 +697,12 @@ export class CustomAudioPlayer extends AudioPlayer {
 	private mixData(): SongDataPacket["mix"] {
 		const mix = findMix(this.guildId);
 		const now = Date.now();
-		const song = ({ title, url, durationMs }: MixSongData) => ({ title, url, durationMs });
+		const song = ({ title, url, durationMs, gapBeforeMs }: MixSongData) => ({
+			title,
+			url,
+			durationMs,
+			gapBeforeMs: gapBeforeMs ?? null,
+		});
 		return {
 			mainVolume: (mix?.mainVolume ?? 100) / 100,
 			maxTracks: MAX_TRACKS,

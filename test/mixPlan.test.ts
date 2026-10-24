@@ -97,7 +97,7 @@ describe("a track's queue", () => {
 		mix.enqueue(track, song(1), 0);
 		const first = play(mix, track, 0);
 		mix.finish(first.layerId, 10);
-		expect(track.dueAt).toBeNull();
+		expect(track.wait).toBeNull();
 		expect(mix.busy()).toBe(false);
 
 		// And wakes when something is queued again
@@ -246,8 +246,90 @@ describe("moving songs", () => {
 		const first = play(mix, track, 0);
 		mix.finish(first.layerId, 1);
 		expect(mix.removeSong(track, 0)?.title).toBe("Song 2");
-		expect(track.dueAt).toBeNull();
+		expect(track.wait).toBeNull();
+		expect(mix.busy()).toBe(false);
 		expect(mix.removeSong(track, 0)).toBeNull();
+	});
+});
+
+describe("a song's own gap", () => {
+	// Set by where the song was dropped on the editor's timeline, so it lines
+	// up with a song on another lane.
+	test("waits its own gap after the song before, in place of the track's", () => {
+		const mix = new GuildMix();
+		const track = mix.addTrack({ gapMs: 5_000 })!;
+		mix.enqueue(track, song(1), 0);
+		mix.enqueue(track, { ...song(2), gapBeforeMs: 20_000 }, 0);
+		mix.enqueue(track, song(3), 0);
+		const first = play(mix, track, 0);
+		mix.finish(first.layerId, 60_000);
+		expect(mix.dueIn(track, 60_000)).toBe(20_000);
+
+		const second = play(mix, track, 80_000);
+		mix.finish(second.layerId, 140_000);
+		// The next one is back to the track's gap
+		expect(mix.dueIn(track, 140_000)).toBe(5_000);
+	});
+
+	test("on a silent track, it is how long to wait from now", () => {
+		const mix = new GuildMix();
+		const track = mix.addTrack({ gapMs: 5_000 })!;
+		mix.enqueue(track, { ...song(1), gapBeforeMs: 30_000 }, 1_000);
+		expect(mix.due(30_999)).toEqual([]);
+		expect(mix.due(31_000)).toEqual([track]);
+		expect(mix.busy()).toBe(true);
+	});
+
+	test("a move sets it, counted from now when it lands first on a quiet track", () => {
+		// The editor measures a drop on a quiet lane from the playhead, not
+		// from whenever the lane last played.
+		const mix = new GuildMix();
+		const from = mix.addTrack()!;
+		const to = mix.addTrack({ gapMs: 8_000 })!;
+		mix.enqueue(from, song(0), 0);
+		play(mix, from, 0);
+		mix.enqueue(from, song(1), 0);
+		mix.enqueue(to, song(2), 0);
+		const layer = play(mix, to, 0);
+		mix.enqueue(to, song(3), 0);
+		mix.finish(layer.layerId, 10_000);
+
+		expect(mix.moveSong(from, 0, to, 0, 12_000, 4_000)).toBe(true);
+		expect(to.queue[0]).toEqual({ ...song(1), gapBeforeMs: 4_000 });
+		expect(mix.dueIn(to, 12_000)).toBe(4_000);
+	});
+
+	test("a move without one keeps the song's own", () => {
+		const mix = new GuildMix();
+		const track = mix.addTrack()!;
+		mix.enqueue(track, song(0), 0);
+		play(mix, track, 0);
+		mix.enqueue(track, { ...song(1), gapBeforeMs: 2_000 }, 0);
+		mix.enqueue(track, song(2), 0);
+		mix.moveSong(track, 0, track, 1, 0);
+		expect(track.queue[1].gapBeforeMs).toBe(2_000);
+	});
+
+	test("a skip ignores it, and a loop keeps it", () => {
+		const mix = new GuildMix();
+		const track = mix.addTrack({ loop: true })!;
+		mix.enqueue(track, { ...song(1), gapBeforeMs: 9_000 }, 0);
+		mix.enqueue(track, { ...song(2), gapBeforeMs: 9_000 }, 0);
+		const first = play(mix, track, 9_000);
+		mix.skip(track, 10_000);
+		expect(mix.due(10_000)).toEqual([track]);
+		expect(track.queue.at(-1)?.gapBeforeMs).toBe(9_000);
+		expect(first.title).toBe("Song 1");
+	});
+
+	test("a track's gap change applies to a wait already under way", () => {
+		const mix = new GuildMix();
+		const track = mix.addTrack({ gapMs: 10_000 })!;
+		mix.enqueue(track, song(1), 0);
+		mix.enqueue(track, song(2), 0);
+		mix.finish(play(mix, track, 0).layerId, 0);
+		mix.setGap(track, 2_000);
+		expect(mix.dueIn(track, 0)).toBe(2_000);
 	});
 });
 

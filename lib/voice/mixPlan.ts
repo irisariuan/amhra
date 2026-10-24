@@ -11,8 +11,9 @@
  * playing a song. This is the bookkeeping that turns those layers into tracks,
  * and it is kept free of imports for the same reason as `nativePlan.ts`: the
  * rules are testable without loading the player. Nothing here sets a timer.
- * A track waiting out its gap records when its next song is due, and the
- * caller polls `due()`, which keeps pausing a matter of arithmetic.
+ * A waiting track records when it started waiting and why; when its next
+ * song is due follows from that song's gap, and the caller polls `due()`.
+ * That keeps pausing, reordering and changing a gap a matter of arithmetic.
  *
  * Ids are never reused, for layers or for tracks. Removing a layer fades it
  * out, and its `layerFinished` lands a frame later; had its id been handed to
@@ -40,6 +41,11 @@ export interface MixSong {
 	 * through. A looping track plays it from the top the next time round.
 	 */
 	startMs?: number;
+	/**
+	 * Silence before it, in place of the track's gap: set by where it was
+	 * put on the editor's timeline, to line it up with another lane.
+	 */
+	gapBeforeMs?: number;
 }
 
 export interface PlayingSong extends MixSong {
@@ -68,8 +74,18 @@ export interface MixTrack {
 	loading: MixSong | null;
 	/** Up next, in order. */
 	queue: MixSong[];
-	/** While waiting out the gap, when the next song is due. Null otherwise. */
-	dueAt: number | null;
+	/** Since when, and after what, the track has been waiting for its next song. */
+	wait: Wait | null;
+}
+
+/**
+ * A wait for a track's next song, counted from `from`: after a song ended
+ * it is the song's gap, or the track's; on a silent track it is the song's
+ * own gap or none; after a skip or a failed fetch it is none at all.
+ */
+export interface Wait {
+	from: number;
+	after: "song" | "silence" | "skip";
 }
 
 export interface TrackOptions {
@@ -121,7 +137,7 @@ export class GuildMix {
 	/** Whether anything in the mix is playing, or will without being asked. */
 	busy() {
 		return this.tracks.some(
-			(track) => track.playing || track.loading || track.dueAt !== null,
+			(track) => track.playing || track.loading || this.dueAt(track) !== null,
 		);
 	}
 
@@ -136,7 +152,7 @@ export class GuildMix {
 			playing: null,
 			loading: null,
 			queue: [],
-			dueAt: null,
+			wait: null,
 		};
 		this.tracks.push(track);
 		return track;
@@ -152,7 +168,7 @@ export class GuildMix {
 		// Cleared so a fetch still running for it finds it gone.
 		track.playing = null;
 		track.loading = null;
-		track.dueAt = null;
+		track.wait = null;
 		return layerId;
 	}
 
@@ -163,14 +179,14 @@ export class GuildMix {
 
 	/**
 	 * Queue a song on a track, at `index` in its queue or at the end. A silent
-	 * track starts it straight away: the gap is only between songs. False when
-	 * the track's queue is full.
+	 * track starts it after its own gap, or straight away: the track's gap is
+	 * only between songs. False when the track's queue is full.
 	 */
 	enqueue(track: MixTrack, song: MixSong, now: number, index?: number): boolean {
 		if (track.queue.length >= MAX_TRACK_QUEUE) return false;
 		const at = index === undefined ? track.queue.length : clampIndex(index, track.queue.length);
 		track.queue.splice(at, 0, song);
-		this.wake(track, now);
+		this.placed(track, at, now);
 		return true;
 	}
 
@@ -178,14 +194,15 @@ export class GuildMix {
 	removeSong(track: MixTrack, index: number): MixSong | null {
 		if (!Number.isInteger(index) || index < 0 || index >= track.queue.length) return null;
 		const [removed] = track.queue.splice(index, 1);
-		if (!track.queue.length && !track.playing) track.dueAt = null;
+		if (!track.queue.length) track.wait = null;
 		return removed ?? null;
 	}
 
 	/**
 	 * Move a queued song within a track or onto another. `toIndex` is where it
-	 * lands in the target's queue as it is after the song left. False when
-	 * there is no song at `fromIndex`, or the target is full.
+	 * lands in the target's queue as it is after the song left. `gapBeforeMs`,
+	 * when given, is the silence it now waits for after whatever comes before
+	 * it. False when there is no song at `fromIndex`, or the target is full.
 	 */
 	moveSong(
 		from: MixTrack,
@@ -193,34 +210,52 @@ export class GuildMix {
 		to: MixTrack,
 		toIndex: number,
 		now: number,
+		gapBeforeMs?: number,
 	): boolean {
 		const song = from.queue[fromIndex];
 		if (!song) return false;
 		if (from !== to && to.queue.length >= MAX_TRACK_QUEUE) return false;
 		this.removeSong(from, fromIndex);
-		to.queue.splice(clampIndex(toIndex, to.queue.length), 0, song);
-		this.wake(to, now);
+		const moved = gapBeforeMs === undefined ? song : { ...song, gapBeforeMs: clampGap(gapBeforeMs) };
+		const at = clampIndex(toIndex, to.queue.length);
+		to.queue.splice(at, 0, moved);
+		this.placed(to, at, now);
 		return true;
 	}
 
-	/** A silent track with something queued plays it now. */
-	private wake(track: MixTrack, now: number) {
-		if (!track.playing && !track.loading && track.dueAt === null && track.queue.length) {
-			track.dueAt = now;
-		}
+	/**
+	 * A song was put at `index`. On a track with nothing playing, the first
+	 * song's gap counts from now — which is where the editor measures it
+	 * from — rather than from whenever the track went quiet.
+	 */
+	private placed(track: MixTrack, index: number, now: number) {
+		if (track.playing || track.loading) return;
+		if (index === 0 || !track.wait) track.wait = { from: this.heldAt ?? now, after: "silence" };
+	}
+
+	/** When a track's next song is due, or null when it is not waiting on one. */
+	private dueAt(track: MixTrack): number | null {
+		const next = track.queue[0];
+		if (!track.wait || !next || track.playing || track.loading) return null;
+		const gap =
+			track.wait.after === "skip"
+				? 0
+				: (next.gapBeforeMs ?? (track.wait.after === "song" ? track.gapMs : 0));
+		return track.wait.from + gap;
 	}
 
 	/** Tracks whose next song is due, held while the guild is paused. */
 	due(now: number): MixTrack[] {
 		if (this.held) return [];
-		return this.tracks.filter(
-			(track) => track.dueAt !== null && track.dueAt <= now && !track.loading,
-		);
+		return this.tracks.filter((track) => {
+			const dueAt = this.dueAt(track);
+			return dueAt !== null && dueAt <= now;
+		});
 	}
 
 	/** Take a due track's next song off its queue to fetch. Null when it has none. */
 	begin(track: MixTrack): MixSong | null {
-		track.dueAt = null;
+		track.wait = null;
 		const song = track.queue.shift();
 		if (!song) return null;
 		track.loading = song;
@@ -253,7 +288,7 @@ export class GuildMix {
 	/** The fetch failed: the song is dropped and the next one is tried. */
 	failed(track: MixTrack, now: number) {
 		track.loading = null;
-		this.wake(track, now);
+		track.wait = track.queue.length ? { from: this.heldAt ?? now, after: "skip" } : null;
 	}
 
 	/** The sidecar says the layer's audio has begun: the clock starts from now. */
@@ -275,7 +310,7 @@ export class GuildMix {
 		const track = this.trackOfLayer(layerId);
 		if (!track) return undefined;
 		this.retire(track);
-		track.dueAt = track.queue.length ? (this.heldAt ?? now) + track.gapMs : null;
+		track.wait = track.queue.length ? { from: this.heldAt ?? now, after: "song" } : null;
 		return track;
 	}
 
@@ -287,7 +322,8 @@ export class GuildMix {
 		const layerId = track.playing?.layerId ?? null;
 		this.retire(track);
 		// A skip during the gap cuts the gap short.
-		track.dueAt = track.queue.length && !track.loading ? (this.heldAt ?? now) : null;
+		track.wait =
+			track.queue.length && !track.loading ? { from: this.heldAt ?? now, after: "skip" } : null;
 		return layerId;
 	}
 
@@ -331,11 +367,12 @@ export class GuildMix {
 		return before;
 	}
 
-	/** Change the gap. One being waited out is stretched or cut to match. */
+	/**
+	 * Change the track's gap. One being waited out is stretched or cut to
+	 * match, unless the next song has a gap of its own.
+	 */
 	setGap(track: MixTrack, gapMs: number) {
-		const gap = clampGap(gapMs);
-		if (track.dueAt !== null && track.queue.length) track.dueAt += gap - track.gapMs;
-		track.gapMs = gap;
+		track.gapMs = clampGap(gapMs);
 	}
 
 	/** How far into its song a track is, in milliseconds. */
@@ -346,8 +383,9 @@ export class GuildMix {
 
 	/** How long until a waiting track's next song, frozen while paused. */
 	dueIn(track: MixTrack, now: number): number | null {
-		if (track.dueAt === null || !track.queue.length) return null;
-		return Math.max(0, track.dueAt - (this.heldAt ?? now));
+		const dueAt = this.dueAt(track);
+		if (dueAt === null) return null;
+		return Math.max(0, dueAt - (this.heldAt ?? now));
 	}
 
 	/** The guild paused: songs stop advancing and gaps stop counting down. */
@@ -361,7 +399,7 @@ export class GuildMix {
 		this.heldAt = null;
 		for (const track of this.tracks) {
 			if (track.playing) track.playing.startedAt += paused;
-			if (track.dueAt !== null) track.dueAt += paused;
+			if (track.wait) track.wait.from += paused;
 		}
 	}
 
@@ -370,12 +408,13 @@ export class GuildMix {
 	}
 }
 
-/** A playing song as a queue entry again. */
-export function songOf({ videoId, title, url, durationMs }: MixSong): MixSong {
-	return { videoId, title, url, durationMs };
+/** A playing song as a queue entry again, keeping its place on the timeline. */
+export function songOf({ videoId, title, url, durationMs, gapBeforeMs }: MixSong): MixSong {
+	return { videoId, title, url, durationMs, ...(gapBeforeMs === undefined ? {} : { gapBeforeMs }) };
 }
 
-function clampGap(gapMs: number) {
+/** A gap as the mix allows it: whole milliseconds, from none to `MAX_GAP_MS`. */
+export function clampGap(gapMs: number) {
 	return Number.isFinite(gapMs) ? Math.min(Math.max(0, Math.round(gapMs)), MAX_GAP_MS) : 0;
 }
 
