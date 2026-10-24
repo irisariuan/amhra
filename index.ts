@@ -11,6 +11,7 @@ import { updateYtdlpVersion } from "./lib/voice/ytdlp";
 import { bindNativeVoice, nativeVoiceActive } from "./lib/voice/native";
 import { startLeaveSweeper } from "./lib/voice/leave";
 import { bindSchedules } from "./lib/voice/schedule";
+import { bindAutoJoin } from "./lib/voice/autoJoin";
 import { bindVoiceCommands } from "./lib/voice/voiceCommands";
 import { voiceCommandsAllowed } from "./lib/voice/voiceSetting";
 
@@ -90,6 +91,8 @@ const setting = readSetting();
 	// Before login too: the voice state that clears a guild's schedules can
 	// arrive as soon as the gateway is up.
 	bindSchedules(client);
+	// Likewise: a member joining voice can be the first event after login.
+	bindAutoJoin(client);
 	const app = await initServer(client);
 	app.listen(setting.PORT, () =>
 		exp.log(

@@ -453,7 +453,7 @@ function newcomer(before: VoiceState, after: VoiceState) {
 }
 
 /** Notices go to everyone, so they are in the guild's language. */
-function guildLanguage(guild: Guild) {
+export function guildLanguage(guild: Guild) {
 	const language = parseLocale(guild.preferredLocale);
 	return language === Language.Unsupported ? Language.English : language;
 }
