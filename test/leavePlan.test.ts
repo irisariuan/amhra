@@ -45,14 +45,42 @@ describe("leaving for inactivity", () => {
 		).toEqual({ action: "wait", idleSince: now - 60_000, aloneSince: null });
 	});
 
-	test("leaves once the idle time is up", () => {
+	test("leaves once the idle time is up and nobody is left", () => {
 		expect(
 			planLeave(
-				state({ idleSince: now - limits.inactivityMs }),
-				limits,
+				state({ listeners: 0, idleSince: now - limits.inactivityMs }),
+				{ ...limits, aloneMs: -1 },
 				now,
 			),
 		).toEqual({ action: "leave", reason: "inactivity" });
+	});
+
+	test("stays idle as long as people are still in the channel", () => {
+		expect(
+			planLeave(
+				state({ idleSince: now - limits.inactivityMs * 4 }),
+				limits,
+				now,
+			),
+		).toEqual({
+			action: "wait",
+			idleSince: now - limits.inactivityMs * 4,
+			aloneSince: null,
+		});
+	});
+
+	test("stays idle when the channel cannot be read", () => {
+		expect(
+			planLeave(
+				state({ listeners: null, idleSince: now - limits.inactivityMs }),
+				limits,
+				now,
+			),
+		).toEqual({
+			action: "wait",
+			idleSince: now - limits.inactivityMs,
+			aloneSince: null,
+		});
 	});
 
 	test("drops the clock as soon as something plays", () => {
@@ -69,8 +97,12 @@ describe("leaving for inactivity", () => {
 		// The bug this whole module replaces: starting a track cleared the
 		// pending timer and pausing armed nothing, so a paused bot stayed in
 		// the channel indefinitely.
-		const paused = state({ busy: false, idleSince: now - limits.inactivityMs });
-		expect(planLeave(paused, limits, now)).toEqual({
+		const paused = state({
+			busy: false,
+			listeners: 0,
+			idleSince: now - limits.inactivityMs,
+		});
+		expect(planLeave(paused, { ...limits, aloneMs: -1 }, now)).toEqual({
 			action: "leave",
 			reason: "inactivity",
 		});
@@ -88,7 +120,13 @@ describe("leaving for inactivity", () => {
 	});
 
 	test("leaves on the first idle sweep when the limit is zero", () => {
-		expect(planLeave(state(), { ...limits, inactivityMs: 0 }, now)).toEqual({
+		expect(
+			planLeave(
+				state({ listeners: 0 }),
+				{ inactivityMs: 0, aloneMs: -1 },
+				now,
+			),
+		).toEqual({
 			action: "leave",
 			reason: "inactivity",
 		});

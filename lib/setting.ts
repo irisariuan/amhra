@@ -86,6 +86,10 @@ export interface Setting {
 	/** Override the amhra-sidecar binary path; defaults to the cargo build output */
 	NATIVE_VOICE_BIN?: string;
 	SEEK: boolean;
+	/**
+	 * Time in ms the bot may sit idle once no users are left in its voice
+	 * channel (bots don't count). Negative disables it.
+	 */
 	AUTO_LEAVE: number;
 	/**
 	 * Time in ms the bot may sit in a voice channel with nobody else in it,

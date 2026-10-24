@@ -47,8 +47,9 @@ export interface LeaveState {
 
 export interface LeaveLimits {
 	/**
-	 * How long the player may sit idle. Negative disables leaving for
-	 * inactivity; zero leaves on the first sweep that sees it idle.
+	 * How long the player may sit idle before leaving, once nobody but bots is
+	 * left in the channel. Negative disables leaving for inactivity; zero
+	 * leaves on the first sweep that sees it idle and empty.
 	 */
 	inactivityMs: number;
 	/** The same, for how long the bot may sit in a channel with nobody in it. */
@@ -86,8 +87,12 @@ export function planLeave(
 	) {
 		return { action: "leave", reason: "alone" };
 	}
+	// An idle bot is left alone while people are still in the channel with
+	// it: they may be about to queue something, and kicking it out from under
+	// them is worse than sitting there quietly.
 	if (
 		limits.inactivityMs >= 0 &&
+		state.listeners === 0 &&
 		idleSince !== null &&
 		now - idleSince >= limits.inactivityMs
 	) {
