@@ -131,14 +131,22 @@ const HINTS: Record<string, string> = {
 	"volume.volume": "a percentage, 100 being normal; only a number they said",
 	"lyrics.search": "a song to look up instead of the one playing",
 	"relocate.position": "where in the song to play from, as seconds or M:SS",
-	mix: "Play songs or sounds on top of the queue's song, each at its own volume",
+	mix: "Play tracks of songs or sounds on top of the queue's song, each track with its own queue and volume",
 	"mix.add.search": "the song or sound to mix in, as they said it",
+	"mix.add.track": "which mix track to queue it on, from 1; leave out for a new track",
 	"mix.add.volume": "a percentage, 100 being normal; only a number they said",
-	"mix.remove.layer": "which mixed-in song, from 1, in the order they were mixed in",
-	"mix.volume.layer": "which mixed-in song, from 1, in the order they were mixed in",
+	"mix.add.gap": "seconds between the track's songs; only a number they said",
+	"mix.remove.track": "which mix track, from 1, in the order they were made",
+	"mix.remove.song": "which song in that track's queue, from 1; leave out to remove the whole track",
+	"mix.skip.track": "which mix track, from 1, in the order they were made",
+	"mix.volume.track": "which mix track, from 1, in the order they were made",
 	"mix.volume.volume": "a percentage, 100 being normal; only a number they said",
+	"mix.gap.track": "which mix track, from 1, in the order they were made",
+	"mix.gap.seconds": "seconds of silence between songs; only a number they said",
+	"mix.loop.track": "which mix track, from 1, in the order they were made",
+	"mix.loop.enabled": "true for on, false for off; leave out to toggle",
 	"mix.main.volume": "a percentage, 100 being normal; only a number they said",
-	"mix.swap.layer": "which mixed-in song, from 1, in the order they were mixed in",
+	"mix.swap.track": "which mix track, from 1, in the order they were made",
 };
 
 /** Options the model is not to set: they are for fixing things by hand. */
@@ -279,7 +287,7 @@ Other examples:
 "take the third song off the queue" -> {"command": "remove", "index": 3}
 "go to one minute twenty" -> {"command": "relocate", "position": "1:20"}
 "mix in some rain sounds at 30 percent" -> {"command": "mix", "subcommand": "add", "search": "rain sounds", "volume": 30}
-"stop the second mixed in song" -> {"command": "mix", "subcommand": "remove", "layer": 2}
+"stop the second mix track" -> {"command": "mix", "subcommand": "remove", "track": 2}
 "what's in the mix" -> {"command": "mix", "subcommand": "list"}
 "Imra, leave the call" -> {"command": "disconnect"}
 "skip this and turn it down to 40" -> [{"command": "skip"}, {"command": "volume", "volume": 40}]

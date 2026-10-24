@@ -30,6 +30,7 @@ import {
 import { fadeSettings } from "./voice/sidecar";
 import { nextFades, syncedFades, type Fades } from "./voice/fades";
 import { NativePlayback, shouldSendPlay } from "./voice/nativePlan";
+import { MAX_TRACKS } from "./voice/mixPlan";
 import { prefetch } from "./voice/stream";
 import { Language } from "./interaction";
 
@@ -99,12 +100,36 @@ export interface SongDataPacket {
 	 * sidecar can do it, so a dashboard should hide the controls otherwise.
 	 */
 	canMix: boolean;
-	/** Songs playing on top of the queue. Volumes are linear, like `volume`. */
+	/**
+	 * Tracks playing on top of the queue, each with a queue of its own.
+	 * Volumes are linear, like `volume`; times are milliseconds, measured as
+	 * the packet was made.
+	 */
 	mix: {
 		/** The queue track's own level, under `volume`. */
 		mainVolume: number;
-		layers: { id: string; title: string; url: string; volume: number }[];
+		maxTracks: number;
+		tracks: {
+			id: string;
+			volume: number;
+			gapMs: number;
+			loop: boolean;
+			playing: (MixSongData & { positionMs: number }) | null;
+			/** Being fetched to play next. */
+			loading: MixSongData | null;
+			queue: MixSongData[];
+			/** Until the next song starts, while the track waits out its gap. */
+			dueInMs: number | null;
+		}[];
 	};
+}
+
+export interface MixSongData {
+	title: string;
+	url: string;
+	durationMs: number | null;
+	/** Silence before it in place of the track's gap, or null for the track's. */
+	gapBeforeMs?: number | null;
 }
 
 export class CustomClient extends Client {
@@ -324,12 +349,15 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 * and slides into whatever was armed for the seam, which is right for a
 	 * skip and wrong for a stop.
 	 */
-	private hardStop() {
+	private hardStop({ keepMix = false } = {}) {
 		if (!this.nativePlayback) return this.stop();
 		const wasPlaying = this.isPlaying;
 		this.nativePlayback.armed = null;
 		this.nativePlayback.promoted = null;
-		nativeStop(this.guildId);
+		// Forgotten before the sidecar drops the layers, so their reports find
+		// no track to move on to its next song.
+		if (!keepMix) findMix(this.guildId)?.clear();
+		nativeStop(this.guildId, { keepLayers: keepMix });
 		return wasPlaying;
 	}
 
@@ -373,7 +401,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 	 * `wasPlaying` came back false and the reset never ran.
 	 */
 	endPlayback() {
-		this.hardStop();
+		// The mix's tracks have queues of their own, and play on without this one.
+		this.hardStop({ keepMix: true });
 		this.resetPlaying();
 		this.isPaused = false;
 	}
@@ -667,13 +696,27 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	private mixData(): SongDataPacket["mix"] {
 		const mix = findMix(this.guildId);
+		const now = Date.now();
+		const song = ({ title, url, durationMs, gapBeforeMs }: MixSongData) => ({
+			title,
+			url,
+			durationMs,
+			gapBeforeMs: gapBeforeMs ?? null,
+		});
 		return {
 			mainVolume: (mix?.mainVolume ?? 100) / 100,
-			layers: (mix?.list() ?? []).map((layer) => ({
-				id: layer.id,
-				title: layer.title,
-				url: layer.url,
-				volume: layer.volume / 100,
+			maxTracks: MAX_TRACKS,
+			tracks: (mix?.list() ?? []).map((track) => ({
+				id: track.id,
+				volume: track.volume / 100,
+				gapMs: track.gapMs,
+				loop: track.loop,
+				playing: track.playing
+					? { ...song(track.playing), positionMs: mix?.position(track, now) ?? 0 }
+					: null,
+				loading: track.loading ? song(track.loading) : null,
+				queue: track.queue.map(song),
+				dueInMs: mix?.dueIn(track, now) ?? null,
 			})),
 		};
 	}

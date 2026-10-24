@@ -123,13 +123,13 @@ describe("the voice interaction", () => {
 			command: "mix",
 			subcommand: "remove",
 			language: Language.English,
-			options: { layer: 2 },
+			options: { track: 2 },
 		});
 		expect(interaction.options.getSubcommand()).toBe("remove");
-		expect(interaction.options.getInteger("layer")).toBe(2);
+		expect(interaction.options.getInteger("track")).toBe(2);
 		await interaction.reply({ content: "done" });
 		expect(sent[0].content?.split("\n")[0]).toBe(
-			languageText("voice_heard", Language.English, { user: "<@42>", command: "/mix remove layer:2" }),
+			languageText("voice_heard", Language.English, { user: "<@42>", command: "/mix remove track:2" }),
 		);
 	});
 

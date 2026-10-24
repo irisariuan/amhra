@@ -4,7 +4,7 @@ import type { CustomAudioPlayer, CustomClient } from "../custom";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { getYouTubeVideoId } from "../youtube";
-import { gainFromPercent, GuildMix, type MixLayer } from "./mixPlan";
+import { gainFromPercent, GuildMix } from "./mixPlan";
 import { nativeFetchBin } from "./nativeFetch";
 import { planArm } from "./nativePlan";
 import {
@@ -219,6 +219,8 @@ function send(guildId: string, command: SidecarCommand) {
 }
 
 export function nativePlay(guildId: string, trackId: string, startMs = 0) {
+	// The sidecar takes a play as the end of a pause, layers and all.
+	mixes.get(guildId)?.release(Date.now());
 	send(guildId, { type: "play", guildId, trackId, startMs, stream: nativeNoCache() });
 }
 
@@ -226,15 +228,22 @@ export function nativeSkip(guildId: string) {
 	send(guildId, { type: "skip", guildId });
 }
 
-export function nativeStop(guildId: string) {
-	send(guildId, { type: "stop", guildId });
+/**
+ * Silence the queue's track. `keepLayers` leaves the mix playing, for a queue
+ * that ran out rather than a listener asking for silence.
+ */
+export function nativeStop(guildId: string, { keepLayers = false } = {}) {
+	send(guildId, { type: "stop", guildId, keepLayers });
 }
 
+/** Pauses the mix along with the queue, so its clock stops too. */
 export function nativePause(guildId: string) {
+	mixes.get(guildId)?.hold(Date.now());
 	send(guildId, { type: "pause", guildId });
 }
 
 export function nativeResume(guildId: string) {
+	mixes.get(guildId)?.release(Date.now());
 	send(guildId, { type: "resume", guildId });
 }
 
@@ -271,13 +280,18 @@ export function findMix(guildId: string) {
 	return mixes.get(guildId);
 }
 
-/** Whether anything is mixed in over the queue right now. */
+/** Every guild's mix, for the sweep that starts tracks' next songs. */
+export function allMixes(): IterableIterator<[string, GuildMix]> {
+	return mixes.entries();
+}
+
+/** Whether the mix is playing anything, or is about to. */
 export function hasLayers(guildId: string) {
-	return (mixes.get(guildId)?.size ?? 0) > 0;
+	return mixes.get(guildId)?.busy() ?? false;
 }
 
 /**
- * Play a cached track alongside the queue. Null when the mix is already full.
+ * Play a cached track alongside the queue, on the layer a mix track was given.
  *
  * The file only has to have started downloading: the sidecar follows a
  * growing file, and a layer that outruns its download stalls on its own while
@@ -286,55 +300,24 @@ export function hasLayers(guildId: string) {
  */
 export function nativeAddLayer(
 	guildId: string,
-	track: Omit<MixLayer, "id">,
+	layerId: string,
+	videoId: string,
+	volume: number,
 	startMs = 0,
-): MixLayer | null {
-	const layer = getMix(guildId).add(track);
-	if (!layer) return null;
+) {
 	send(guildId, {
 		type: "addLayer",
 		guildId,
-		layerId: layer.id,
-		trackId: layer.trackId,
-		gain: gainFromPercent(layer.volume),
+		layerId,
+		trackId: videoId,
+		gain: gainFromPercent(volume),
 		startMs: Math.max(0, Math.round(startMs)),
 		stream: nativeNoCache(),
 	});
-	return layer;
 }
 
-export function nativeRemoveLayer(guildId: string, layer: MixLayer) {
-	// Forgotten now rather than on `layerFinished`, so the list a user reads
-	// next already reflects what they asked for.
-	getMix(guildId).forget(layer.id);
-	send(guildId, { type: "removeLayer", guildId, layerId: layer.id });
-}
-
-/**
- * Swap a layer's song for another, at the same volume and place in the list.
- * Null when `layer` is no longer mixed in.
- */
-export function nativeReplaceLayer(
-	guildId: string,
-	layer: MixLayer,
-	track: Omit<MixLayer, "id" | "volume">,
-): MixLayer | null {
-	const replaced = getMix(guildId).replace(layer.id, {
-		...track,
-		volume: layer.volume,
-	});
-	if (!replaced) return null;
-	send(guildId, { type: "removeLayer", guildId, layerId: layer.id });
-	send(guildId, {
-		type: "addLayer",
-		guildId,
-		layerId: replaced.id,
-		trackId: replaced.trackId,
-		gain: gainFromPercent(replaced.volume),
-		startMs: 0,
-		stream: nativeNoCache(),
-	});
-	return replaced;
+export function nativeRemoveLayer(guildId: string, layerId: string) {
+	send(guildId, { type: "removeLayer", guildId, layerId });
 }
 
 /** How long to wait for the sidecar to confirm a swap before giving up on it. */
@@ -374,12 +357,11 @@ export function nativeSwapLayer(guildId: string, layerId: string) {
 	});
 }
 
-export function nativeSetLayerVolume(guildId: string, layer: MixLayer, volume: number) {
-	getMix(guildId).setVolume(layer.id, volume);
+export function nativeSetLayerVolume(guildId: string, layerId: string, volume: number) {
 	send(guildId, {
 		type: "setLayerVolume",
 		guildId,
-		layerId: layer.id,
+		layerId,
 		gain: gainFromPercent(volume),
 	});
 }
@@ -515,12 +497,15 @@ export function bindNativeVoice(client: CustomClient) {
 
 	bus.on("layerStarted", (payload: { guildId: string; layerId: string }) => {
 		dcb.log(`Sidecar started layer ${payload.layerId} in ${payload.guildId}`);
+		// Streaming, the audio begins a fetch after it was asked for.
+		mixes.get(payload.guildId)?.layerStarted(payload.layerId, Date.now());
 	});
 
-	// Ended on its own, removed, or cleared by a stop: in every case it is no
-	// longer playing, so it leaves the list.
+	// Ended on its own, removed, or cleared by a stop. A track whose song this
+	// was waits out its gap and moves on; one already skipped or removed has
+	// moved on already, and the report is a no-op.
 	bus.on("layerFinished", (payload: { guildId: string; layerId: string }) => {
-		mixes.get(payload.guildId)?.forget(payload.layerId);
+		mixes.get(payload.guildId)?.finish(payload.layerId, Date.now());
 	});
 
 	bus.on("layerStarved", (payload: { guildId: string; layerId: string }) => {

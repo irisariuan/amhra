@@ -68,12 +68,19 @@ function phrase(intent: VoiceIntent): [string, Record<string, string | number>?]
 		case "mix":
 			switch (intent.subcommand) {
 				case "remove":
+				case "skip":
+				case "loop":
 				case "swap":
-					return [`voice_say_mix_${intent.subcommand}`, { layer: options.layer as number }];
+					return [`voice_say_mix_${intent.subcommand}`, { track: options.track as number }];
 				case "volume":
 					return [
 						"voice_say_mix_volume",
-						{ layer: options.layer as number, volume: options.volume as number },
+						{ track: options.track as number, volume: options.volume as number },
+					];
+				case "gap":
+					return [
+						"voice_say_mix_gap",
+						{ track: options.track as number, seconds: options.seconds as number },
 					];
 				case "main":
 					return ["voice_say_mix_main", { volume: options.volume as number }];

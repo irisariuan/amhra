@@ -70,8 +70,14 @@ pub enum Command {
 	ClearNext { guild_id: String },
 	#[serde(rename_all = "camelCase")]
 	Skip { guild_id: String },
+	/// Silence the queue's track, and the layers with it unless `keep_layers`:
+	/// a queue that ran out leaves the mix playing on its own.
 	#[serde(rename_all = "camelCase")]
-	Stop { guild_id: String },
+	Stop {
+		guild_id: String,
+		#[serde(default)]
+		keep_layers: bool,
+	},
 	#[serde(rename_all = "camelCase")]
 	Pause { guild_id: String },
 	#[serde(rename_all = "camelCase")]
@@ -295,7 +301,7 @@ impl Command {
 			| Self::SetNext { guild_id, .. }
 			| Self::ClearNext { guild_id }
 			| Self::Skip { guild_id }
-			| Self::Stop { guild_id }
+			| Self::Stop { guild_id, .. }
 			| Self::Pause { guild_id }
 			| Self::Resume { guild_id }
 			| Self::Seek { guild_id, .. }
@@ -382,6 +388,16 @@ mod tests {
 		let encoded = serde_json::to_string(&event).unwrap();
 		assert!(encoded.contains("\"type\":\"started\""));
 		assert!(encoded.contains("\"trackId\":\"dQw4w9WgXcQ\""));
+	}
+
+	#[test]
+	fn a_stop_takes_the_layers_unless_told_otherwise() {
+		// An older bot sends no `keepLayers`, and meant silence.
+		let command: Command = serde_json::from_str(r#"{"type":"stop","guildId":"1"}"#).unwrap();
+		assert!(matches!(command, Command::Stop { keep_layers: false, .. }));
+		let command: Command =
+			serde_json::from_str(r#"{"type":"stop","guildId":"1","keepLayers":true}"#).unwrap();
+		assert!(matches!(command, Command::Stop { keep_layers: true, .. }));
 	}
 
 	#[test]

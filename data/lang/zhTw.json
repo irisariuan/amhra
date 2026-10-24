@@ -270,19 +270,35 @@
 		},
 		"mix": {
 			"name": "混音",
-			"description": "在佇列之上同時播放歌曲，並分別設定音量",
+			"description": "在佇列之上播放多條音軌，每條都有自己的佇列和音量",
 			"options": {
 				"add": {
 					"name": "新增",
-					"description": "與正在播放的歌曲同時播放一首歌曲"
+					"description": "將歌曲加入一條混音音軌，或用它開一條新音軌"
 				},
 				"remove": {
 					"name": "移除",
-					"description": "停止一首混音中的歌曲"
+					"description": "移除一條混音音軌，或其佇列中的一首歌曲"
+				},
+				"skip": {
+					"name": "跳過",
+					"description": "讓混音音軌立即播放下一首"
 				},
 				"volume": {
 					"name": "音量",
-					"description": "設定混音中歌曲的音量"
+					"description": "設定混音音軌的音量"
+				},
+				"gap": {
+					"name": "間隔",
+					"description": "設定混音音軌歌曲之間的間隔"
+				},
+				"loop": {
+					"name": "循環",
+					"description": "讓混音音軌循環播放其佇列"
+				},
+				"swap": {
+					"name": "交換",
+					"description": "將混音音軌的歌曲與佇列歌曲交換"
 				},
 				"main": {
 					"name": "主要",
@@ -290,11 +306,7 @@
 				},
 				"list": {
 					"name": "列表",
-					"description": "顯示混音中的歌曲"
-				},
-				"swap": {
-					"name": "交換",
-					"description": "將混音中的歌曲與佇列歌曲交換"
+					"description": "顯示混音的音軌及各自的佇列"
 				}
 			}
 		},
@@ -359,19 +371,36 @@
 	"SCHEDULE_FROM_DASHBOARD": "來自控制台",
 	"MIX_NATIVE_ONLY": "混音需要 Rust 語音後端（`USE_RUST_VOICE`）",
 	"MIX_MAIN_VOLUME": "佇列歌曲音量：{volume}%",
-	"MIX_LIST_HEADER": "混音中：",
-	"MIX_EMPTY": "沒有正在混音的歌曲",
-	"MIX_LIST_ITEM": "`{index}.` **[{title}]({url})** · {volume}%",
+	"MIX_EMPTY": "沒有混音音軌",
+	"MIX_TRACK_HEADER": "**音軌 {index}** · {volume}% · 歌曲間隔 {gap} 秒",
+	"MIX_TRACK_LOOPING": " · 循環中",
+	"MIX_TRACK_PLAYING": "▶ **[{title}]({url})** `{time}`",
+	"MIX_TRACK_LOADING": "正在載入 **[{title}]({url})**",
+	"MIX_TRACK_WAITING": "{seconds} 秒後播放下一首",
+	"MIX_TRACK_SILENT": "沒有正在播放的歌曲",
+	"MIX_TRACK_QUEUE_ITEM": "`{index}.` [{title}]({url})",
+	"MIX_TRACK_QUEUE_MORE": "…還有 {count} 首",
 	"MIX_VIDEO_ONLY": "只能混入單一影片，不能混入播放清單",
-	"MIX_FULL": "混音已滿，請先移除一首歌曲",
+	"MIX_FULL": "音軌已達上限，請加入現有音軌或先移除一條",
+	"MIX_QUEUE_FULL": "該音軌的佇列已滿",
 	"MIX_NOT_FOUND": "找不到該影片",
-	"MIX_ADDED": "已以 {volume}% 混入 **[{title}]({url})**",
+	"MIX_ADDED_TRACK": "已以 {volume}% 將 **[{title}]({url})** 混入新音軌 {track}",
+	"MIX_PLAYING_ON": "正在音軌 {track} 播放 **[{title}]({url})**",
+	"MIX_QUEUED": "已將 **[{title}]({url})** 加入音軌 {track}，排在第 {position} 首",
 	"MIX_MAIN_SET": "已將混音中佇列歌曲的音量設為 {volume}%",
-	"MIX_NO_LAYER": "沒有第 {index} 首混音歌曲",
-	"MIX_REMOVED": "已停止混入 **[{title}]({url})**",
-	"MIX_VOLUME_SET": "已將 **[{title}]({url})** 的音量設為 {volume}%",
-	"MIX_SWAPPED": "已交換：**[{title}]({url})** 現在是佇列歌曲，**[{mixed}]({mixedUrl})** 繼續在混音中播放",
+	"MIX_NO_TRACK": "沒有第 {index} 條混音音軌",
+	"MIX_NO_SONG": "音軌 {track} 的佇列中沒有第 {index} 首",
+	"MIX_TRACK_REMOVED": "已移除混音音軌 {track}",
+	"MIX_SONG_REMOVED": "已將 **[{title}]({url})** 從音軌 {track} 移除",
+	"MIX_SKIPPED": "音軌 {track} 已跳到下一首",
+	"MIX_SKIP_NOTHING": "音軌 {track} 沒有可跳過的歌曲",
+	"MIX_VOLUME_SET": "已將音軌 {track} 的音量設為 {volume}%",
+	"MIX_GAP_SET": "音軌 {track} 的歌曲間隔已設為 {seconds} 秒",
+	"MIX_LOOP_ON": "音軌 {track} 現在會循環播放其佇列",
+	"MIX_LOOP_OFF": "音軌 {track} 已停止循環",
+	"MIX_SWAPPED": "已交換：**[{title}]({url})** 現在是佇列歌曲，**[{mixed}]({mixedUrl})** 繼續在音軌 {track} 播放",
 	"MIX_SWAP_NOTHING_PLAYING": "佇列中沒有正在播放的歌曲可以交換",
+	"MIX_SWAP_SILENT": "音軌 {track} 沒有正在播放的歌曲可以交換",
 	"MIX_SWAP_FAILED": "無法交換，請稍後再試",
 	"VOICE_COMMANDS_ON": "已開啟語音指令。先說「Amhra」(em-ha-ra)再說指令,例如「Amhra,跳過這首歌」。",
 	"VOICE_COMMANDS_OFF": "已關閉語音指令,我不會再在這個伺服器聆聽。",
@@ -425,10 +454,13 @@
 	"VOICE_SAY_LYRICS": "正在找歌詞。",
 	"VOICE_SAY_RELOCATE": "跳到{position}。",
 	"VOICE_SAY_MIX_ADD": "加入混音。",
-	"VOICE_SAY_MIX_REMOVE": "停止混音的第{layer}首。",
-	"VOICE_SAY_MIX_VOLUME": "混音的第{layer}首音量百分之{volume}。",
+	"VOICE_SAY_MIX_REMOVE": "移除混音音軌{track}。",
+	"VOICE_SAY_MIX_SKIP": "混音音軌{track}跳到下一首。",
+	"VOICE_SAY_MIX_VOLUME": "混音音軌{track}音量百分之{volume}。",
+	"VOICE_SAY_MIX_GAP": "混音音軌{track}歌曲間隔{seconds}秒。",
+	"VOICE_SAY_MIX_LOOP": "切換混音音軌{track}的循環。",
 	"VOICE_SAY_MIX_MAIN": "佇列的歌音量百分之{volume}。",
-	"VOICE_SAY_MIX_SWAP": "和混音的第{layer}首交換。",
+	"VOICE_SAY_MIX_SWAP": "和混音音軌{track}交換。",
 	"VOICE_SAY_MIX_LIST": "這是目前的混音。",
 	"TRANSCRIPT_ON": "從現在起,你說出我的名字後,我會把聽到的內容貼在頻道裡(在所有開啟語音指令的伺服器)。可用 `/transcript enabled:false` 關閉。",
 	"TRANSCRIPT_OFF": "我不會再貼出聽到你說的內容。",

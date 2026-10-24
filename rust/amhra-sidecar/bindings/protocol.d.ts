@@ -18,7 +18,7 @@ trackId: string, startMs: number,
  * Fetch the track straight into playback rather than read it from
  * the cache, unless the cache already holds all of it.
  */
-stream: boolean, } | { "type": "setNext", guildId: string, trackId: string, stream: boolean, } | { "type": "clearNext", guildId: string, } | { "type": "skip", guildId: string, } | { "type": "stop", guildId: string, } | { "type": "pause", guildId: string, } | { "type": "resume", guildId: string, } | { "type": "seek", guildId: string, positionMs: number, } | { "type": "setVolume", guildId: string, gain: number, } | { "type": "setMainVolume", guildId: string, gain: number, } | { "type": "addLayer", guildId: string, 
+stream: boolean, } | { "type": "setNext", guildId: string, trackId: string, stream: boolean, } | { "type": "clearNext", guildId: string, } | { "type": "skip", guildId: string, } | { "type": "stop", guildId: string, keepLayers: boolean, } | { "type": "pause", guildId: string, } | { "type": "resume", guildId: string, } | { "type": "seek", guildId: string, positionMs: number, } | { "type": "setVolume", guildId: string, gain: number, } | { "type": "setMainVolume", guildId: string, gain: number, } | { "type": "addLayer", guildId: string, 
 /**
  * Chosen by the bot, and how every later layer command and event
  * names this one.

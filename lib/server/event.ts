@@ -20,12 +20,15 @@ export enum SongEditType {
 	Loop = "loop",
 	SkipSegment = "skipSegment",
 	AutoSuggest = "autoSuggest",
-	AddLayer = "addLayer",
-	RemoveLayer = "removeLayer",
-	SetLayerVolume = "setLayerVolume",
 	SetMainVolume = "setMainVolume",
-	SwapLayer = "swapLayer",
-	MixFromQueue = "mixFromQueue",
+	AddMixTrack = "addMixTrack",
+	RemoveMixTrack = "removeMixTrack",
+	SetMixTrack = "setMixTrack",
+	SkipMixTrack = "skipMixTrack",
+	SwapMixTrack = "swapMixTrack",
+	AddMixSong = "addMixSong",
+	RemoveMixSong = "removeMixSong",
+	MoveMixSong = "moveMixSong",
 }
 
 export type ExpressEventDetail = {

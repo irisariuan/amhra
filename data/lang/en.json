@@ -231,25 +231,34 @@
 			}
 		},
 		"mix": {
-			"description": "Play songs on top of the queue, each at its own volume",
+			"description": "Play tracks on top of the queue, each with its own queue and volume",
 			"options": {
 				"add": {
-					"description": "Play a song alongside whatever is playing"
+					"description": "Queue a song on a mix track, or start a new track with it"
 				},
 				"remove": {
-					"description": "Stop a song that is mixed in"
+					"description": "Remove a mix track, or one song from its queue"
+				},
+				"skip": {
+					"description": "Move a mix track on to its next song now"
 				},
 				"volume": {
-					"description": "Set the volume of a song that is mixed in"
+					"description": "Set the volume of a mix track"
+				},
+				"gap": {
+					"description": "Set how long a mix track waits between its songs"
+				},
+				"loop": {
+					"description": "Have a mix track play its queue round and round"
+				},
+				"swap": {
+					"description": "Make a mix track's song the queue's song, and the queue's song the track's"
 				},
 				"main": {
 					"description": "Set the volume of the queue's song within the mix"
 				},
 				"list": {
-					"description": "Show what is mixed in"
-				},
-				"swap": {
-					"description": "Make a mixed-in song the queue's song, and the queue's song mixed in"
+					"description": "Show the mix's tracks and what each has queued"
 				}
 			}
 		},
@@ -308,19 +317,36 @@
 	"SCHEDULE_FROM_DASHBOARD": "from the dashboard",
 	"MIX_NATIVE_ONLY": "Mixing songs needs the Rust voice backend (`USE_RUST_VOICE`)",
 	"MIX_MAIN_VOLUME": "Queue song volume: {volume}%",
-	"MIX_LIST_HEADER": "Mixed in:",
-	"MIX_EMPTY": "Nothing is mixed in",
-	"MIX_LIST_ITEM": "`{index}.` **[{title}]({url})** · {volume}%",
+	"MIX_EMPTY": "No tracks are mixed in",
+	"MIX_TRACK_HEADER": "**Track {index}** · {volume}% · {gap}s between songs",
+	"MIX_TRACK_LOOPING": " · looping",
+	"MIX_TRACK_PLAYING": "▶ **[{title}]({url})** `{time}`",
+	"MIX_TRACK_LOADING": "Loading **[{title}]({url})**",
+	"MIX_TRACK_WAITING": "Next song in {seconds}s",
+	"MIX_TRACK_SILENT": "Nothing playing",
+	"MIX_TRACK_QUEUE_ITEM": "`{index}.` [{title}]({url})",
+	"MIX_TRACK_QUEUE_MORE": "…and {count} more",
 	"MIX_VIDEO_ONLY": "Only a single video can be mixed in, not a playlist",
-	"MIX_FULL": "The mix is full, remove a song first",
+	"MIX_FULL": "The mix has as many tracks as it can, queue on an existing track or remove one",
+	"MIX_QUEUE_FULL": "That track's queue is full",
 	"MIX_NOT_FOUND": "I couldn't find that video",
-	"MIX_ADDED": "Mixed in **[{title}]({url})** at {volume}%",
+	"MIX_ADDED_TRACK": "Mixed in **[{title}]({url})** on new track {track} at {volume}%",
+	"MIX_PLAYING_ON": "Playing **[{title}]({url})** on track {track}",
+	"MIX_QUEUED": "Queued **[{title}]({url})** on track {track}, #{position} up next",
 	"MIX_MAIN_SET": "Set the queue song's volume in the mix to {volume}%",
-	"MIX_NO_LAYER": "There is no mixed-in song #{index}",
-	"MIX_REMOVED": "Stopped mixing in **[{title}]({url})**",
-	"MIX_VOLUME_SET": "Set **[{title}]({url})** to {volume}%",
-	"MIX_SWAPPED": "Swapped: **[{title}]({url})** is now the queue's song, and **[{mixed}]({mixedUrl})** plays on in the mix",
+	"MIX_NO_TRACK": "There is no mix track #{index}",
+	"MIX_NO_SONG": "Track {track} has no song #{index} queued",
+	"MIX_TRACK_REMOVED": "Removed mix track {track}",
+	"MIX_SONG_REMOVED": "Took **[{title}]({url})** off track {track}",
+	"MIX_SKIPPED": "Track {track} moved on to its next song",
+	"MIX_SKIP_NOTHING": "Track {track} has nothing to skip",
+	"MIX_VOLUME_SET": "Set track {track} to {volume}%",
+	"MIX_GAP_SET": "Track {track} now leaves {seconds}s between songs",
+	"MIX_LOOP_ON": "Track {track} now plays its queue round and round",
+	"MIX_LOOP_OFF": "Track {track} no longer loops",
+	"MIX_SWAPPED": "Swapped: **[{title}]({url})** is now the queue's song, and **[{mixed}]({mixedUrl})** plays on in track {track}",
 	"MIX_SWAP_NOTHING_PLAYING": "Nothing in the queue is playing to swap with",
+	"MIX_SWAP_SILENT": "Track {track} isn't playing anything to swap",
 	"MIX_SWAP_FAILED": "Couldn't swap, try again in a moment",
 	"VOICE_COMMANDS_ON": "Voice commands are on. Say \"Amhra\" (em-ha-ra) and then a command, like \"Amhra, skip this song\".",
 	"VOICE_COMMANDS_OFF": "Voice commands are off. I no longer listen in this server.",
@@ -374,10 +400,13 @@
 	"VOICE_SAY_LYRICS": "Finding the lyrics.",
 	"VOICE_SAY_RELOCATE": "Jumping to {position}.",
 	"VOICE_SAY_MIX_ADD": "Mixing it in.",
-	"VOICE_SAY_MIX_REMOVE": "Stopping mixed-in song {layer}.",
-	"VOICE_SAY_MIX_VOLUME": "Mixed-in song {layer} at {volume} percent.",
+	"VOICE_SAY_MIX_REMOVE": "Removing mix track {track}.",
+	"VOICE_SAY_MIX_SKIP": "Skipping on mix track {track}.",
+	"VOICE_SAY_MIX_VOLUME": "Mix track {track} at {volume} percent.",
+	"VOICE_SAY_MIX_GAP": "Mix track {track} with {seconds} seconds between songs.",
+	"VOICE_SAY_MIX_LOOP": "Changing looping on mix track {track}.",
 	"VOICE_SAY_MIX_MAIN": "The queue's song at {volume} percent.",
-	"VOICE_SAY_MIX_SWAP": "Swapping in mixed-in song {layer}.",
+	"VOICE_SAY_MIX_SWAP": "Swapping in mix track {track}.",
 	"VOICE_SAY_MIX_LIST": "Here's the mix.",
 	"TRANSCRIPT_ON": "From now on, when you say my name, I'll post what I heard in the channel, in every server with voice commands on. Turn it off with `/transcript enabled:false`.",
 	"TRANSCRIPT_OFF": "I'll stop posting what I hear from you.",

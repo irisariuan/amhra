@@ -84,7 +84,7 @@ const COMMANDS: Record<string, Command<SlashCommandBuilder>> = {
 				s
 					.setName("remove")
 					.setDescription("Stop a mixed-in song")
-					.addIntegerOption((o) => o.setName("layer").setDescription("Layer").setMinValue(1).setRequired(true)),
+					.addIntegerOption((o) => o.setName("track").setDescription("Track").setMinValue(1).setRequired(true)),
 			)
 			.addSubcommand((s) => s.setName("list").setDescription("Show what is mixed in")),
 	) as unknown as Command<SlashCommandBuilder>,
@@ -117,10 +117,10 @@ describe("what the model is told", () => {
 		expect(told).toContain("volume (number, 0 to 500, required): a percentage");
 		expect(told).toContain("- relocate:");
 		// Subcommands are offered by name, each with its own options.
-		expect(told).toContain('- mix: Play songs or sounds on top of the queue\'s song, each at its own volume. Give "subcommand" as one of:');
+		expect(told).toContain('- mix: Play tracks of songs or sounds on top of the queue\'s song, each track with its own queue and volume. Give "subcommand" as one of:');
 		expect(told).toContain("    add: Play a song alongside");
 		expect(told).toContain("        search (text, required): the song or sound to mix in");
-		expect(told).toContain("        layer (whole number, 1 to …, required): which mixed-in song");
+		expect(told).toContain("        track (whole number, 1 to …, required): which mix track");
 		expect(told).toContain("    list: Show what is mixed in");
 		// Options for fixing things by hand, and commands that are not about
 		// the music, are left out.
@@ -252,8 +252,8 @@ describe("what the model's answer is taken to mean", () => {
 			{ command: "mix", subcommand: "add", options: { search: "rain sounds", volume: 30 } },
 		],
 		[
-			'{"command": "mix", "subcommand": "Remove", "layer": 2}',
-			{ command: "mix", subcommand: "remove", options: { layer: 2 } },
+			'{"command": "mix", "subcommand": "Remove", "track": 2}',
+			{ command: "mix", subcommand: "remove", options: { track: 2 } },
 		],
 		['{"command": "mix", "subcommand": "list"}', { command: "mix", subcommand: "list" }],
 		['<think>\n\n</think>\n\n{"command": "pause"}', { command: "pause" }],
@@ -293,7 +293,7 @@ describe("what the model's answer is taken to mean", () => {
 		['{"command": "mix", "search": "rain"}'],
 		['{"command": "mix", "subcommand": "shuffle"}'],
 		['{"command": "mix", "subcommand": "remove"}'],
-		['{"command": "mix", "subcommand": "add", "layer": 1}'],
+		['{"command": "mix", "subcommand": "add", "track": 1}'],
 		['{"command": "skip",'],
 	])("%p is no command", (answer) => {
 		expect(read(answer)).toBeNull();
