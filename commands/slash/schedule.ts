@@ -20,6 +20,13 @@ import {
 } from "../../lib/voice/schedule";
 import { parseScheduleTime } from "../../lib/voice/schedulePlan";
 import { indexChoices } from "../../lib/autocompletePlan";
+import {
+	queueOf,
+	queueOption,
+	queueRefusal,
+	respondQueues,
+	typingQueue,
+} from "../../lib/voice/queueOption";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -43,6 +50,9 @@ export default {
 						.setDescription(
 							"10m, 1h30m, 21:30, 2026-10-22 21:30 or a Discord timestamp; leave empty for a premiere",
 						),
+				)
+				.addIntegerOption(
+					queueOption("The queue to cut in on, 1 if left empty; a new number starts another queue"),
 				),
 		)
 		.addSubcommand((sub) =>
@@ -61,8 +71,10 @@ export default {
 						.setAutocomplete(true),
 				),
 		),
-	async autocomplete({ interaction, language }) {
-		// Only cancel's "index" is autocompleted.
+	async autocomplete({ interaction, client, language }) {
+		if (typingQueue(interaction))
+			return respondQueues(interaction, client, language, { offerNew: true });
+		// Otherwise it is cancel's "index"
 		const labels = interaction.guildId
 			? listSchedules(interaction.guildId).map(
 					(entry) =>
@@ -89,9 +101,11 @@ export default {
 					index: i + 1,
 					title: entry.title,
 					url: entry.url,
-					premiere: entry.premiere
-						? languageText("schedule_premiere_tag", language)
-						: "",
+					premiere:
+						(entry.premiere ? languageText("schedule_premiere_tag", language) : "") +
+						(entry.queue !== 1
+							? languageText("schedule_queue_tag", language, { queue: entry.queue })
+							: ""),
 					...discordTime(entry.at),
 				}),
 			);
@@ -157,6 +171,9 @@ export default {
 		}
 		if (isPlaylist(input))
 			return interaction.reply(languageText("schedule_video_only", language));
+		const queue = queueOf(interaction);
+		const refusal = queueRefusal(queue, language);
+		if (refusal) return interaction.reply({ content: refusal });
 
 		await interaction.deferReply();
 
@@ -177,6 +194,7 @@ export default {
 			channelId: interaction.channelId,
 			createdBy: interaction.user.displayName,
 			language,
+			queue,
 		});
 		if ("error" in result) {
 			const key = {

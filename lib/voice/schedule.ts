@@ -20,6 +20,7 @@ import {
 	getConnection,
 	getVideoInfo,
 } from "./core";
+import { findQueue } from "./queues";
 import { sendSkipMessage } from "./segment";
 import { fireTime, planTimer } from "./schedulePlan";
 
@@ -53,6 +54,8 @@ export interface ScheduledPlay {
 	/** Who asked, for the log */
 	createdBy: string;
 	language: Language;
+	/** The queue it cuts in on: 1, or one of those mixed in over it */
+	queue: number;
 }
 
 /** What the dashboard is told about one. */
@@ -69,6 +72,7 @@ export interface PublicScheduledPlay {
 	starting: boolean;
 	premiere: boolean;
 	createdBy: string;
+	queue: number;
 }
 
 interface Armed {
@@ -139,6 +143,7 @@ export function publicSchedules(guildId: string): PublicScheduledPlay[] {
 		starting,
 		premiere: entry.premiere,
 		createdBy: entry.createdBy,
+		queue: entry.queue,
 	}));
 }
 
@@ -241,7 +246,7 @@ async function warn(armed: Armed) {
 	arm(armed);
 
 	const client = boundClient;
-	const player = client?.player.get(entry.guildId);
+	const player = client ? queueOf(client, entry) : undefined;
 	const cutting = !!player?.isPlaying;
 	const channel =
 		(entry.channelId ? await client?.channels.fetch(entry.channelId).catch(() => null) : null) ??
@@ -314,8 +319,9 @@ async function warn(armed: Armed) {
 /** "Play next instead": behind the current song, or straight away if nothing is playing. */
 async function queueInstead(entry: ScheduledPlay) {
 	const client = boundClient;
-	const player = client?.player.get(entry.guildId);
-	if (!client || !player) return;
+	if (!client) return;
+	const player = queueOf(client, entry) ?? playerFor(client, entry);
+	if (!player) return;
 	if (player.isPlaying) {
 		player.addToQueue(entry.url, false, 0);
 		return;
@@ -355,10 +361,7 @@ async function fire(armed: Armed) {
 		return;
 	}
 
-	// An existing player keeps its language; getAudioPlayer would switch it
-	const player =
-		client.player.get(entry.guildId) ??
-		getAudioPlayer(client, entry.guildId, null, entry.language);
+	const player = queueOf(client, entry) ?? playerFor(client, entry);
 	if (!player) return;
 	connection.subscribe(player);
 	const resumed = player.interruptWith(resource);
@@ -369,6 +372,24 @@ async function fire(armed: Armed) {
 		await player.skipCurrentSegment();
 		await sendSkipMessage(player);
 	}
+}
+
+/** The queue an entry cuts in on, if it is there. */
+function queueOf(client: CustomClient, entry: ScheduledPlay) {
+	return entry.queue === 1
+		? client.player.get(entry.guildId)
+		: findQueue(entry.guildId, entry.queue);
+}
+
+/**
+ * The queue for an entry, made if it has gone since it was scheduled. An
+ * existing queue keeps its language, which getAudioPlayer would switch.
+ */
+function playerFor(client: CustomClient, entry: ScheduledPlay) {
+	return getAudioPlayer(client, entry.guildId, null, entry.language, {
+		createPlayer: true,
+		queue: entry.queue,
+	});
 }
 
 export type ScheduleRequestError = "not_found" | "need_time" | "past";
@@ -406,6 +427,8 @@ export async function requestSchedule(request: {
 	channelId: string | null;
 	createdBy: string;
 	language: Language;
+	/** The queue to cut in on; 1 if left out */
+	queue?: number | null;
 	/** Already looked up by the caller, to save asking twice */
 	upcoming?: Upcoming | null;
 }): Promise<{ entry: ScheduledPlay } | { error: ScheduleRequestError }> {
@@ -430,6 +453,7 @@ export async function requestSchedule(request: {
 			channelId: request.channelId,
 			createdBy: request.createdBy,
 			language: request.language,
+			queue: request.queue ?? 1,
 		}),
 	};
 }

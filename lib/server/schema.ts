@@ -2,7 +2,7 @@ import z from "zod";
 import { SongEditType } from "./event";
 import { isYouTubePlaylist, isYouTubeVideo } from "../youtube";
 import { Language } from "../interaction";
-import { MAX_GAP_MS } from "../voice/mixPlan";
+import { MAX_GAP_MS, MAX_LEAD_IN_MS, MAX_QUEUES } from "../voice/queuePlan";
 
 // Queue item (from custom.ts)
 export const QueueItemSchema = z.object({
@@ -174,6 +174,11 @@ const AutoSuggestSchema = z.object({
  */
 const MixVolume = z.number().nonnegative().max(5, "Volume must be <= 5");
 const MixGap = z.number().nonnegative().max(MAX_GAP_MS, `Gap must be <= ${MAX_GAP_MS}ms`);
+/** A song's own silence before it, from where it was dropped on the timeline. */
+const MixLeadIn = z
+	.number()
+	.nonnegative()
+	.max(MAX_LEAD_IN_MS, `Lead-in must be <= ${MAX_LEAD_IN_MS}ms`);
 const TrackId = z.string().min(1);
 
 const TrackSettings = z.object({
@@ -206,22 +211,13 @@ const RemoveMixTrackSchema = z.object({
 const SetMixTrackSchema = z.object({
 	action: z.literal(SongEditType.SetMixTrack),
 	guildId: z.string(),
-	detail: TrackSettings.extend({ track: TrackId }),
+	/** Any queue, "1" included; `paused` holds or releases just that one. */
+	detail: TrackSettings.extend({ track: TrackId, paused: z.boolean().optional() }),
 });
 
 /** Move a track on to its next song now, cutting short any gap. */
 const SkipMixTrackSchema = z.object({
 	action: z.literal(SongEditType.SkipMixTrack),
-	guildId: z.string(),
-	detail: z.object({ track: TrackId }),
-});
-
-/**
- * Trade a track's song with the queue's. Inaudible: each keeps its place and
- * volume, and the queue then controls the swapped-in song.
- */
-const SwapMixTrackSchema = z.object({
-	action: z.literal(SongEditType.SwapMixTrack),
 	guildId: z.string(),
 	detail: z.object({ track: TrackId }),
 });
@@ -279,7 +275,7 @@ const MoveMixSongSchema = z.object({
 			 * how the editor lines a song up on its timeline. Ignored for the
 			 * guild's queue, which plays back to back.
 			 */
-			gapMs: MixGap.optional(),
+			gapMs: MixLeadIn.optional(),
 		}),
 		url: z.string().optional(),
 	}),
@@ -309,7 +305,6 @@ export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	RemoveMixTrackSchema,
 	SetMixTrackSchema,
 	SkipMixTrackSchema,
-	SwapMixTrackSchema,
 	AddMixSongSchema,
 	RemoveMixSongSchema,
 	MoveMixSongSchema,
@@ -328,6 +323,8 @@ export const ScheduleAddSchema = z.object({
 		.string()
 		.refine((u) => isYouTubeVideo(u), "Must be a valid YouTube video URL"),
 	at: z.number().int().positive().optional(),
+	/** The queue to cut in on; 1 if left out */
+	queue: z.number().int().min(1).max(MAX_QUEUES).optional(),
 });
 
 /** Answer a pending schedule: drop it, or queue it next instead of cutting in. */

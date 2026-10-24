@@ -1,110 +1,87 @@
-import type { CustomAudioPlayer } from "../custom";
-import { globalApp } from "../misc";
+import type { Channel } from "discord.js";
+import type { CustomAudioPlayer, QueueItem } from "../custom";
 import { getYouTubeVideoId } from "../youtube";
-import { updateLastUsed } from "./cache";
-import { createResource, getVideoInfo, isVideo } from "./core";
-import {
-	clampGap,
-	type GuildMix,
-	type MixSong,
-	type MixTrack,
-	type PlayingSong,
-	type TrackOptions,
-} from "./mixPlan";
-import {
-	allMixes,
-	findMix,
-	getMix,
-	nativeAddLayer,
-	nativeNoCache,
-	nativeRemoveLayer,
-	nativeSetLayerVolume,
-	nativeSwapLayer,
-} from "./native";
-import { nativeFetchReady } from "./nativeFetch";
-
-/** How often waiting tracks are checked for a song that is due. */
-const SWEEP_MS = 100;
-
-let sweeper: ReturnType<typeof setInterval> | null = null;
+import { closeQueue, createQueue, createResource, getVideoInfo, isVideo } from "./core";
+import { clampGap, clampLeadIn, MAX_QUEUE_LENGTH, MAX_QUEUES } from "./queuePlan";
+import { extraQueues, findQueue } from "./queues";
 
 /**
- * Start the songs that tracks are waiting on, as their gaps run out.
+ * The mix: a guild's queues past the first, as `/mix` and the dashboard's
+ * lanes have always shown them. Each is a full player (lib/custom.ts), so
+ * these are only the moves the mix offers on top of what any queue can do.
  *
- * One sweep for every guild, rather than a timer per track: a pause, a skip
- * or a removed track then only has to change what the track waits on, and
- * there is never a timer left over to fire into a mix that has gone.
+ * `/mix`, every command's `queue` option and the dashboard all go by the
+ * queue's number, 2 and up.
  */
-export function bindMixTracks() {
-	if (sweeper) return;
-	sweeper = setInterval(() => {
-		const now = Date.now();
-		for (const [guildId, mix] of allMixes()) {
-			for (const track of mix.due(now)) void startNext(guildId, mix, track);
-		}
-	}, SWEEP_MS);
-	sweeper.unref?.();
+
+/** The guild's mix tracks, in order. */
+export function mixTracks(guildId: string) {
+	return extraQueues(guildId);
 }
 
-async function startNext(guildId: string, mix: GuildMix, track: MixTrack) {
-	const song = mix.begin(track);
-	if (!song) return;
-	try {
-		await fetchSong(song.videoId);
-	} catch (error) {
-		globalApp.err(`Failed to fetch ${song.videoId} for mix track ${track.id}`, error);
-		if (mix.stillLoading(track, song)) mix.failed(track, Date.now());
-		return;
-	}
-	// The fetch takes a while; the track may have been removed, skipped or
-	// stopped in the meantime, and then nothing should start.
-	if (findMix(guildId) !== mix || !mix.stillLoading(track, song)) return;
-	const startMs = song.startMs ?? 0;
-	const playing = mix.started(track, song, Date.now(), startMs);
-	nativeAddLayer(guildId, playing.layerId, playing.videoId, track.volume, startMs);
-	prefetch(track);
+/** The track that is queue `n`. */
+export function trackAt(guildId: string, n: number): CustomAudioPlayer | undefined {
+	return findQueue(guildId, n);
 }
 
-/**
- * Make sure enough of a video is cached for the sidecar to play it. Streaming,
- * the sidecar fetches it itself and there is no file to wait for.
- */
-async function fetchSong(videoId: string) {
-	if (nativeNoCache()) return;
-	await nativeFetchReady(videoId);
-	// Marked as used so the cache sweep does not delete a file being played.
-	await updateLastUsed([videoId]).catch(() => {});
+/** A track by its queue number, as the dashboard names it. */
+export function trackById(guildId: string, id: string): CustomAudioPlayer | undefined {
+	return mixTracks(guildId).find((track) => track.sidecarQueue === id);
 }
 
-/** Start downloading a track's next song now, so its gap is not spent waiting on it. */
-function prefetch(track: MixTrack) {
-	const next = track.queue[0];
-	if (next && !nativeNoCache()) fetchSong(next.videoId).catch(() => {});
+/** Percent, as the user typed it. */
+export function trackVolume(track: CustomAudioPlayer) {
+	return Math.round(track.volume * 100);
 }
 
-/** A video as a track can queue it: its title and length, nothing downloaded yet. */
+/** A video as a queue can hold it: its title and length, nothing downloaded yet. */
 export async function resolveSong(
 	url: string,
 	startMs?: number,
 	gapBeforeMs?: number,
-): Promise<MixSong | null> {
+): Promise<QueueItem | null> {
 	const videoId = isVideo(url) ? getYouTubeVideoId(url) : null;
 	if (!videoId) return null;
 	const info = await getVideoInfo(url).catch(() => null);
 	if (!info) return null;
 	const seconds = info.video_details.durationInSec;
 	return {
-		videoId,
-		title: info.video_details.title,
 		url: info.video_details.url,
+		repeating: false,
+		title: info.video_details.title,
 		durationMs: seconds > 0 ? seconds * 1000 : null,
-		...(startMs ? { startMs } : {}),
-		...(gapBeforeMs === undefined ? {} : { gapBeforeMs: clampGap(gapBeforeMs) }),
+		...(startMs ? { seek: Math.floor(startMs / 1000) } : {}),
+		...(gapBeforeMs === undefined ? {} : { gapBeforeMs: clampLeadIn(gapBeforeMs) }),
 	};
 }
 
+export interface TrackOptions {
+	/** Percent */
+	volume?: number;
+	gapMs?: number;
+	loop?: boolean;
+}
+
+/**
+ * A new, empty track, as queue `number` or the lowest free one. Null when
+ * that number is taken, or the guild already has every queue it may.
+ */
+export function addTrack(
+	guildId: string,
+	channel: Channel | null,
+	options: TrackOptions = {},
+	number?: number,
+) {
+	return createQueue(
+		guildId,
+		channel,
+		{ ...options, volume: options.volume === undefined ? undefined : options.volume / 100 },
+		number,
+	);
+}
+
 export type QueueOnTrackResult =
-	| { track: MixTrack; song: MixSong; created: boolean }
+	| { track: CustomAudioPlayer; song: QueueItem; created: boolean }
 	| { error: "not_found" | "full" | "queue_full" };
 
 /**
@@ -122,19 +99,24 @@ export async function queueOnTrack(
 		index,
 		startMs,
 		gapBeforeMs,
+		channel = null,
+		number,
 		...options
 	}: TrackOptions & {
-		track?: MixTrack;
+		track?: CustomAudioPlayer;
 		index?: number;
 		startMs?: number;
 		/** Silence before it, in place of the track's gap */
 		gapBeforeMs?: number;
+		/** Where a new track sends its messages */
+		channel?: Channel | null;
+		/** The queue number for a new track; the lowest free one if left out */
+		number?: number;
 	} = {},
 ): Promise<QueueOnTrackResult> {
-	const mix = getMix(guildId);
 	// Checked before the lookup as well as after, so a full mix does not cost
 	// one it will then refuse.
-	if (!track && mix.isFull()) return { error: "full" };
+	if (!track && isFull(guildId)) return { error: "full" };
 	const song = await resolveSong(url, startMs, gapBeforeMs);
 	if (!song) return { error: "not_found" };
 
@@ -142,52 +124,111 @@ export async function queueOnTrack(
 	let created = false;
 	if (target) {
 		// Removed while the lookup ran
-		if (!mix.list().includes(target)) return { error: "not_found" };
+		if (target.closed) return { error: "not_found" };
 	} else {
-		const added = mix.addTrack(options);
+		const added = addTrack(guildId, channel, options, number);
 		if (!added) return { error: "full" };
 		target = added;
 		created = true;
 	}
-	if (!mix.enqueue(target, song, Date.now(), index)) return { error: "queue_full" };
-	prefetch(target);
+	if (!enqueue(target, song, index)) return { error: "queue_full" };
 	return { track: target, song, created };
 }
 
-/** Move a track on to its next song now, without waiting out the gap. */
-export function skipTrack(guildId: string, track: MixTrack) {
-	const layerId = getMix(guildId).skip(track, Date.now());
-	if (layerId) nativeRemoveLayer(guildId, layerId);
+/** Whether the guild has every queue it may. Queue 1 is never a mix track. */
+export function isFull(guildId: string) {
+	return mixTracks(guildId).length >= MAX_QUEUES - 1;
+}
+
+/**
+ * Put a song on a track at `index`, or at the end. A silent track starts it
+ * after its own lead-in, or straight away. False when the queue is full.
+ */
+export function enqueue(track: CustomAudioPlayer, song: QueueItem, index?: number) {
+	if (isFullQueue(track)) return false;
+	const at = clampIndex(index, track.queue.length);
+	track.queue.splice(at, 0, song);
+	track.placed(at);
+	return true;
+}
+
+/**
+ * Whether a queue can take no more songs. Queue 1 takes whole playlists, as
+ * it always has; the cap is on the queues mixed in over it.
+ */
+function isFullQueue(track: CustomAudioPlayer) {
+	return track.queueId !== 1 && track.queue.length >= MAX_QUEUE_LENGTH;
+}
+
+/** Take the song at `index` off a track's queue. */
+export function removeSong(track: CustomAudioPlayer, index: number): QueueItem | null {
+	if (!Number.isInteger(index) || index < 0 || index >= track.queue.length) return null;
+	const [removed] = track.queue.splice(index, 1);
+	if (!track.queue.length) track.wait = null;
+	return removed ?? null;
+}
+
+/**
+ * Move a queued song within a track or onto another. `toIndex` is where it
+ * lands in the target's queue as it is after the song left. `gapBeforeMs`,
+ * when given, is the silence it now waits for after whatever comes before
+ * it. False when there is no song at `fromIndex`, or the target is full.
+ */
+export function moveSong(
+	from: CustomAudioPlayer,
+	fromIndex: number,
+	to: CustomAudioPlayer,
+	toIndex: number,
+	gapBeforeMs?: number,
+) {
+	const song = from.queue[fromIndex];
+	if (!song) return false;
+	if (from !== to && isFullQueue(to)) return false;
+	removeSong(from, fromIndex);
+	const moved = gapBeforeMs === undefined ? song : { ...song, gapBeforeMs: clampLeadIn(gapBeforeMs) };
+	return enqueue(to, moved, toIndex);
+}
+
+/** Move a track on to its next song now, cutting short any gap it is waiting out. */
+export function skipTrack(track: CustomAudioPlayer) {
+	if (track.stop()) return;
+	if (track.wait) track.wait = { ...track.wait, after: "skip" };
 }
 
 /** Stop a track and drop its queue. */
-export function removeTrack(guildId: string, track: MixTrack) {
-	const layerId = getMix(guildId).removeTrack(track);
-	if (layerId) nativeRemoveLayer(guildId, layerId);
+export function removeTrack(track: CustomAudioPlayer) {
+	closeQueue(track);
 }
 
-/** A track's volume, applied at once to whatever it is playing. */
-export function setTrackVolume(guildId: string, track: MixTrack, volume: number) {
-	track.volume = volume;
-	if (track.playing) nativeSetLayerVolume(guildId, track.playing.layerId, volume);
+/** A track's volume, in percent, applied at once to whatever it is playing. */
+export function setTrackVolume(track: CustomAudioPlayer, volume: number) {
+	track.setVolume(Math.max(0, volume) / 100);
+}
+
+/** Change a track's gap. One being waited out stretches or shrinks to match. */
+export function setTrackGap(track: CustomAudioPlayer, gapMs: number) {
+	track.gapMs = clampGap(gapMs);
+}
+
+export function setTrackLoop(track: CustomAudioPlayer, loop: boolean) {
+	if (loop) track.enableLoop();
+	else track.disableLoop();
 }
 
 /**
  * Put another video in `song`'s place on its track, for switching to another
  * search result after `/mix add` picked the wrong one. A queued song is swapped
- * for the new one; a playing one is cut over to it, at the track's volume.
- * Returns what took its place, or null when `song` has left the track.
+ * for the new one; a playing one is cut over to it. Returns what took its
+ * place, or null when `song` has left the track.
  */
 export async function replaceTrackSong(
-	guildId: string,
-	track: MixTrack,
-	song: MixSong,
+	track: CustomAudioPlayer,
+	song: QueueItem,
 	url: string,
-): Promise<MixSong | null> {
+): Promise<QueueItem | null> {
 	const next = await resolveSong(url);
 	if (!next) throw new Error(`Could not find ${url}`);
-	const mix = getMix(guildId);
-	if (!mix.list().includes(track)) return null;
+	if (track.closed) return null;
 
 	const queued = track.queue.indexOf(song);
 	if (queued >= 0) {
@@ -196,70 +237,17 @@ export async function replaceTrackSong(
 		track.queue[queued] = placed;
 		return placed;
 	}
-	if (track.playing?.videoId !== song.videoId) return null;
-	await fetchSong(next.videoId);
+	if (track.nowPlaying?.url !== song.url) return null;
+	const resource = await createResource(next.url);
 	// Read after the download: the song may have ended while it ran.
-	const old = track.playing;
-	if (!old || old.videoId !== song.videoId) return null;
-	const playing = mix.replacePlaying(track, next, Date.now());
-	if (!playing) return null;
-	nativeRemoveLayer(guildId, old.layerId);
-	nativeAddLayer(guildId, playing.layerId, playing.videoId, track.volume);
-	return playing;
+	if (!resource || track.closed || track.nowPlaying?.url !== song.url) return null;
+	// A play replaces what the queue holds without reporting it finished.
+	track.playResource(resource);
+	return next;
 }
 
-export type SwapResult =
-	/** `now` is what the track plays now: the queue's former song. */
-	| { now: PlayingSong; before: PlayingSong }
-	| { error: "nothing_playing" | "track_silent" | "failed" };
-
-/**
- * Make a track's song the queue's song, and the queue's song the track's.
- *
- * Inaudible: each keeps its place and its volume. What changes is which one
- * the queue controls — skip, seek, segment skips, lyrics and now playing all
- * follow the swapped-in song, and when it ends the queue moves on as usual.
- * The swapped-out song plays on in the track until it ends, and then the
- * track moves on to its own next song.
- */
-export async function swapTrackWithMain(
-	player: CustomAudioPlayer,
-	track: MixTrack,
-): Promise<SwapResult> {
-	const guildId = player.guildId;
-	if (!player.nativePlayback || !player.isPlaying || !player.nowPlaying) {
-		return { error: "nothing_playing" };
-	}
-	const layer = track.playing;
-	if (!layer) return { error: "track_silent" };
-	// Built first, so the queue's view can change the moment the sidecar
-	// reports the swap rather than a network round trip later.
-	const resource = await createResource(layer.url).catch(() => null);
-	if (!resource) return { error: "failed" };
-
-	const swapped = await nativeSwapLayer(guildId, layer.layerId);
-	if (!swapped) return { error: "failed" };
-
-	// Read after the waits: the queue may have moved on in the meantime, and
-	// the sidecar's report says which track actually went into the mix.
-	const outgoing = player.nowPlaying;
-	const main: MixSong =
-		outgoing?.videoId === swapped.layerTrackId
-			? {
-					videoId: swapped.layerTrackId,
-					title: outgoing.title,
-					url: outgoing.url,
-					durationMs: outgoing.details.durationInSec * 1000 || null,
-				}
-			: {
-					videoId: swapped.layerTrackId,
-					title: swapped.layerTrackId,
-					url: `https://youtu.be/${swapped.layerTrackId}`,
-					durationMs: null,
-				};
-	const mix = getMix(guildId);
-	const before = mix.swap(track, main, swapped.layerPositionMs, Date.now());
-	player.adoptSwapped(resource, swapped.positionMs);
-	if (!before || !track.playing) return { error: "failed" };
-	return { now: track.playing, before };
+function clampIndex(index: number | undefined, length: number) {
+	return index !== undefined && Number.isFinite(index)
+		? Math.min(Math.max(0, Math.floor(index)), length)
+		: length;
 }

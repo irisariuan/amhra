@@ -10,6 +10,7 @@ import {
 import { dcb } from "../../lib/misc";
 import { pageSize, sendPaginationMessage } from "../../lib/page";
 import { languageText } from "../../lib/language";
+import { queueOf, queueOption, respondQueues } from "../../lib/voice/queueOption";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -20,7 +21,11 @@ export default {
 				.setMinValue(1)
 				.setName("page")
 				.setDescription("Page number of queue"),
-		),
+		)
+		.addIntegerOption(queueOption()),
+	async autocomplete({ interaction, client, language }) {
+		return respondQueues(interaction, client, language);
+	},
 	async execute({ interaction, client, language }) {
 		if (!interaction.guildId)
 			return await interaction.reply({
@@ -28,12 +33,12 @@ export default {
 			});
 
 		await interaction.deferReply();
-		const player = getAudioPlayer(
-			client,
-			interaction.guildId,
-			interaction.channel,
-			language,
-		);
+		const queue = queueOf(interaction);
+		const player = getAudioPlayer(client, interaction.guildId, interaction.channel, language, {
+			// Only queue 1 is made just by asking about it
+			createPlayer: (queue ?? 1) === 1,
+			queue,
+		});
 		if (!getConnection(interaction.guildId)) {
 			dcb.log("Bot not in voice channel");
 			return interaction.editReply({

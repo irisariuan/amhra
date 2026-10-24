@@ -91,7 +91,12 @@
 			"description": "Schedule a video to cut in at a set time",
 			"options": {
 				"add": {
-					"description": "Schedule a video to cut in, premieres are timed automatically"
+					"description": "Schedule a video to cut in, premieres are timed automatically",
+					"options": {
+						"queue": {
+							"description": "The queue to cut in on, 1 if left empty; a new number starts another queue"
+						}
+					}
 				},
 				"list": {
 					"description": "Show what is scheduled"
@@ -115,6 +120,9 @@
 				},
 				"next": {
 					"description": "Add the song to play next (if something is playing already)"
+				},
+				"queue": {
+					"description": "The queue to play it on, 1 if left empty; a new number starts another queue"
 				}
 			}
 		},
@@ -126,6 +134,9 @@
 				},
 				"force": {
 					"description": "Force skip without waiting for confirmation"
+				},
+				"queue": {
+					"description": "Which queue, by number; 1 if left empty"
 				}
 			}
 		},
@@ -134,6 +145,9 @@
 			"options": {
 				"position": {
 					"description": "The position to relocate to (in seconds or (HH:)MM:SS format)"
+				},
+				"queue": {
+					"description": "Which queue, by number; 1 if left empty"
 				}
 			}
 		},
@@ -142,6 +156,9 @@
 			"options": {
 				"index": {
 					"description": "The index of the song in the queue (starting from 1)"
+				},
+				"queue": {
+					"description": "Which queue, by number; 1 if left empty"
 				}
 			}
 		},
@@ -150,23 +167,44 @@
 			"options": {
 				"page": {
 					"description": "The page number"
+				},
+				"queue": {
+					"description": "Which queue, by number; 1 if left empty"
 				}
 			}
 		},
 		"pause": {
-			"description": "Pause the current song"
+			"description": "Pause the current song",
+			"options": {
+				"queue": {
+					"description": "Only this queue; every queue if left empty"
+				}
+			}
 		},
 		"resume": {
-			"description": "Resume the paused song"
+			"description": "Resume the paused song",
+			"options": {
+				"queue": {
+					"description": "Only this queue; every queue if left empty"
+				}
+			}
 		},
 		"stop": {
-			"description": "Stop the music and clear the queue"
+			"description": "Stop the music and clear the queue",
+			"options": {
+				"queue": {
+					"description": "Only this queue; every queue if left empty"
+				}
+			}
 		},
 		"volume": {
 			"description": "Set the volume",
 			"options": {
 				"volume": {
 					"description": "The volume level (0-500)"
+				},
+				"queue": {
+					"description": "Only this queue's own volume; the whole bot's if left empty"
 				}
 			}
 		},
@@ -175,6 +213,9 @@
 			"options": {
 				"enabled": {
 					"description": "Set loop mode"
+				},
+				"queue": {
+					"description": "Which queue, by number; 1 if left empty"
 				}
 			}
 		},
@@ -185,7 +226,12 @@
 			"description": "Super reset the player (if something REALLY goes wrong)"
 		},
 		"nowplaying": {
-			"description": "Show the currently playing song"
+			"description": "Show the currently playing song",
+			"options": {
+				"queue": {
+					"description": "Which queue, by number; 1 if left empty"
+				}
+			}
 		},
 		"version": {
 			"description": "Show the current version"
@@ -197,7 +243,12 @@
 			"description": "Get the dashboard link"
 		},
 		"skipnonmusic": {
-			"description": "Skip the current non-music part"
+			"description": "Skip the current non-music part",
+			"options": {
+				"queue": {
+					"description": "Which queue, by number; 1 if left empty"
+				}
+			}
 		},
 		"join": {
 			"description": "Make the bot join your voice channel"
@@ -216,6 +267,9 @@
 			"options": {
 				"enabled": {
 					"description": "Set auto-skip non-music mode"
+				},
+				"queue": {
+					"description": "Which queue, by number; 1 if left empty"
 				}
 			}
 		},
@@ -227,38 +281,38 @@
 				},
 				"delay": {
 					"description": "Show this song's lyrics this many milliseconds later (negative for sooner), for everyone"
+				},
+				"queue": {
+					"description": "Which queue, by number; 1 if left empty"
 				}
 			}
 		},
 		"mix": {
-			"description": "Play tracks on top of the queue, each with its own queue and volume",
+			"description": "Play queues on top of queue 1, each with its own songs and volume",
 			"options": {
 				"add": {
-					"description": "Queue a song on a mix track, or start a new track with it"
+					"description": "Queue a song on a mixed-in queue, or start a new queue with it"
 				},
 				"remove": {
-					"description": "Remove a mix track, or one song from its queue"
+					"description": "Remove a mixed-in queue, or one song from it"
 				},
 				"skip": {
-					"description": "Move a mix track on to its next song now"
+					"description": "Move a mixed-in queue on to its next song now"
 				},
 				"volume": {
-					"description": "Set the volume of a mix track"
+					"description": "Set the volume of a mixed-in queue"
 				},
 				"gap": {
-					"description": "Set how long a mix track waits between its songs"
+					"description": "Set how long a mixed-in queue waits between its songs"
 				},
 				"loop": {
-					"description": "Have a mix track play its queue round and round"
-				},
-				"swap": {
-					"description": "Make a mix track's song the queue's song, and the queue's song the track's"
+					"description": "Have a mixed-in queue loop"
 				},
 				"main": {
-					"description": "Set the volume of the queue's song within the mix"
+					"description": "Set queue 1's own volume within the mix"
 				},
 				"list": {
-					"description": "Show the mix's tracks and what each has queued"
+					"description": "Show the mixed-in queues and what each has queued"
 				}
 			}
 		},
@@ -316,9 +370,9 @@
 	"SCHEDULE_NOT_FOUND": "There is no scheduled play #{index}",
 	"SCHEDULE_FROM_DASHBOARD": "from the dashboard",
 	"MIX_NATIVE_ONLY": "Mixing songs needs the Rust voice backend (`USE_RUST_VOICE`)",
-	"MIX_MAIN_VOLUME": "Queue song volume: {volume}%",
-	"MIX_EMPTY": "No tracks are mixed in",
-	"MIX_TRACK_HEADER": "**Track {index}** · {volume}% · {gap}s between songs",
+	"MIX_MAIN_VOLUME": "Queue 1 volume: {volume}%",
+	"MIX_EMPTY": "No queues are mixed in",
+	"MIX_TRACK_HEADER": "**Queue {index}** · {volume}% · {gap}s between songs",
 	"MIX_TRACK_LOOPING": " · looping",
 	"MIX_TRACK_PLAYING": "▶ **[{title}]({url})** `{time}`",
 	"MIX_TRACK_LOADING": "Loading **[{title}]({url})**",
@@ -327,27 +381,23 @@
 	"MIX_TRACK_QUEUE_ITEM": "`{index}.` [{title}]({url})",
 	"MIX_TRACK_QUEUE_MORE": "…and {count} more",
 	"MIX_VIDEO_ONLY": "Only a single video can be mixed in, not a playlist",
-	"MIX_FULL": "The mix has as many tracks as it can, queue on an existing track or remove one",
-	"MIX_QUEUE_FULL": "That track's queue is full",
+	"MIX_FULL": "The mix has as many queues as it can, queue on an existing one or remove one",
+	"MIX_QUEUE_FULL": "That queue is full",
 	"MIX_NOT_FOUND": "I couldn't find that video",
-	"MIX_ADDED_TRACK": "Mixed in **[{title}]({url})** on new track {track} at {volume}%",
-	"MIX_PLAYING_ON": "Playing **[{title}]({url})** on track {track}",
-	"MIX_QUEUED": "Queued **[{title}]({url})** on track {track}, #{position} up next",
-	"MIX_MAIN_SET": "Set the queue song's volume in the mix to {volume}%",
-	"MIX_NO_TRACK": "There is no mix track #{index}",
-	"MIX_NO_SONG": "Track {track} has no song #{index} queued",
-	"MIX_TRACK_REMOVED": "Removed mix track {track}",
-	"MIX_SONG_REMOVED": "Took **[{title}]({url})** off track {track}",
-	"MIX_SKIPPED": "Track {track} moved on to its next song",
-	"MIX_SKIP_NOTHING": "Track {track} has nothing to skip",
-	"MIX_VOLUME_SET": "Set track {track} to {volume}%",
-	"MIX_GAP_SET": "Track {track} now leaves {seconds}s between songs",
-	"MIX_LOOP_ON": "Track {track} now plays its queue round and round",
-	"MIX_LOOP_OFF": "Track {track} no longer loops",
-	"MIX_SWAPPED": "Swapped: **[{title}]({url})** is now the queue's song, and **[{mixed}]({mixedUrl})** plays on in track {track}",
-	"MIX_SWAP_NOTHING_PLAYING": "Nothing in the queue is playing to swap with",
-	"MIX_SWAP_SILENT": "Track {track} isn't playing anything to swap",
-	"MIX_SWAP_FAILED": "Couldn't swap, try again in a moment",
+	"MIX_ADDED_TRACK": "Mixed in **[{title}]({url})** on new queue {track} at {volume}%",
+	"MIX_PLAYING_ON": "Playing **[{title}]({url})** on queue {track}",
+	"MIX_QUEUED": "Queued **[{title}]({url})** on queue {track}, #{position} up next",
+	"MIX_MAIN_SET": "Set queue 1 to {volume}% in the mix",
+	"MIX_NO_TRACK": "There is no queue {index} in the mix",
+	"MIX_NO_SONG": "Queue {track} has no song #{index} queued",
+	"MIX_TRACK_REMOVED": "Removed queue {track} from the mix",
+	"MIX_SONG_REMOVED": "Took **[{title}]({url})** off queue {track}",
+	"MIX_SKIPPED": "Queue {track} moved on to its next song",
+	"MIX_SKIP_NOTHING": "Queue {track} has nothing to skip",
+	"MIX_VOLUME_SET": "Set queue {track} to {volume}%",
+	"MIX_GAP_SET": "Queue {track} now leaves {seconds}s between songs",
+	"MIX_LOOP_ON": "Queue {track} now loops",
+	"MIX_LOOP_OFF": "Queue {track} no longer loops",
 	"VOICE_COMMANDS_ON": "Voice commands are on. Say \"Amhra\" (em-ha-ra) and then a command, like \"Amhra, skip this song\".",
 	"VOICE_COMMANDS_OFF": "Voice commands are off. I no longer listen in this server.",
 	"VOICE_COMMANDS_ALREADY_ON": "Voice commands are already on.",
@@ -400,16 +450,21 @@
 	"VOICE_SAY_LYRICS": "Finding the lyrics.",
 	"VOICE_SAY_RELOCATE": "Jumping to {position}.",
 	"VOICE_SAY_MIX_ADD": "Mixing it in.",
-	"VOICE_SAY_MIX_REMOVE": "Removing mix track {track}.",
-	"VOICE_SAY_MIX_SKIP": "Skipping on mix track {track}.",
-	"VOICE_SAY_MIX_VOLUME": "Mix track {track} at {volume} percent.",
-	"VOICE_SAY_MIX_GAP": "Mix track {track} with {seconds} seconds between songs.",
-	"VOICE_SAY_MIX_LOOP": "Changing looping on mix track {track}.",
-	"VOICE_SAY_MIX_MAIN": "The queue's song at {volume} percent.",
-	"VOICE_SAY_MIX_SWAP": "Swapping in mix track {track}.",
+	"VOICE_SAY_MIX_REMOVE": "Removing mix queue {track}.",
+	"VOICE_SAY_MIX_SKIP": "Skipping on mix queue {track}.",
+	"VOICE_SAY_MIX_VOLUME": "Mix queue {track} at {volume} percent.",
+	"VOICE_SAY_MIX_GAP": "Mix queue {track} with {seconds} seconds between songs.",
+	"VOICE_SAY_MIX_LOOP": "Changing looping on mix queue {track}.",
+	"VOICE_SAY_MIX_MAIN": "Queue 1 at {volume} percent.",
 	"VOICE_SAY_MIX_LIST": "Here's the mix.",
 	"TRANSCRIPT_ON": "From now on, when you say my name, I'll post what I heard in the channel, in every server with voice commands on. Turn it off with `/transcript enabled:false`.",
 	"TRANSCRIPT_OFF": "I'll stop posting what I hear from you.",
 	"VOICE_FEEDBACK_ON": "I'll say aloud what I do for your voice commands, where the bot speaks. Turn it off with `/voicefeedback enabled:false`.",
-	"VOICE_FEEDBACK_OFF": "I'll stop saying aloud what I do for your voice commands. The chat still shows it."
+	"VOICE_FEEDBACK_OFF": "I'll stop saying aloud what I do for your voice commands. The chat still shows it.",
+	"QUEUE_CHOICE_PLAYING": "Queue {queue}: {title}, {queued} up next",
+	"QUEUE_CHOICE_IDLE": "Queue {queue}: nothing playing, {queued} up next",
+	"QUEUE_CHOICE_NEW": "Queue {queue}: start a new queue",
+	"QUEUE_NATIVE_ONLY": "Queues past 1 need the Rust voice backend (`USE_RUST_VOICE`)",
+	"SET_QUEUE_VOLUME": "Set queue {queue} to {volume}%",
+	"SCHEDULE_QUEUE_TAG": " · on queue {queue}"
 }

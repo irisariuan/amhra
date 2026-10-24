@@ -6,6 +6,7 @@ import {
 } from "../../lib/voice/core";
 import { type Command } from "../../lib/interaction";
 import { languageText } from "../../lib/language";
+import { queueOf, queueOption, respondQueues } from "../../lib/voice/queueOption";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -18,7 +19,11 @@ export default {
 				.setMinValue(0)
 				.setMaxValue(500)
 				.setRequired(true),
-		),
+		)
+		.addIntegerOption(queueOption("Set only this queue's own volume; the whole bot's if left empty")),
+	async autocomplete({ interaction, client, language }) {
+		return respondQueues(interaction, client, language);
+	},
 	async execute({ interaction, client, language }) {
 		if (!interaction.guild)
 			return await interaction.reply({
@@ -49,7 +54,7 @@ export default {
 			interaction.guild.id,
 			interaction.channel,
 			language,
-			{ createPlayer: false },
+			{ createPlayer: false, queue: queueOf(interaction) },
 		);
 		if (!getConnection(interaction.guildId))
 			return interaction.reply({
@@ -59,9 +64,17 @@ export default {
 			return interaction.reply({
 				content: languageText("not_playing", language),
 			});
-		player.setVolume(volume / 100);
+		const queue = queueOf(interaction);
+		// Left empty, the whole bot's: queue 1's volume, which every queue
+		// plays under. Named, that queue's own level under it.
+		if (queue === null) player.setVolume(volume / 100);
+		else if (queue === 1) player.setMainVolume(volume);
+		else player.setVolume(volume / 100);
 		interaction.reply({
-			content: languageText("set_volume", language, { volume }),
+			content:
+				queue === null
+					? languageText("set_volume", language, { volume })
+					: languageText("set_queue_volume", language, { volume, queue }),
 		});
 	},
 } as Command<SlashCommandBuilder>;

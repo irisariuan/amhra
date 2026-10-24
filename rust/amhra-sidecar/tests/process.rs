@@ -78,7 +78,7 @@ fn commands_for_an_unknown_guild_are_refused_not_ignored() {
 
 	// A bot whose state drifted from the sidecar's must be told, or it will
 	// wait forever for a track that was never going to play.
-	sidecar.send(Command::Skip { guild_id: "999".to_owned() });
+	sidecar.send(Command::Skip { guild_id: "999".to_owned(), queue_id: "1".to_owned() });
 	let Event::Error { guild_id, message } = sidecar.next_event() else {
 		panic!("expected an error");
 	};
@@ -95,6 +95,7 @@ fn playing_without_a_connection_is_refused_before_the_cache_is_consulted() {
 	// anything about the track. Asserting the message keeps a later reordering
 	// from turning this into a test of nothing.
 	sidecar.send(Command::Play {
+		queue_id: "1".to_owned(),
 		guild_id: "1".to_owned(),
 		track_id: "does-not-exist".to_owned(),
 		start_ms: 0,

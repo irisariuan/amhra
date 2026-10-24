@@ -28,6 +28,7 @@ import {
 } from "../../lib/voice/schedule";
 import { readSetting } from "../../lib/setting";
 import { reportFound } from "../../lib/voice/voiceInteraction";
+import { queueOf, queueOption, queueRefusal, respondQueues } from "../../lib/voice/queueOption";
 
 const setting = readSetting();
 
@@ -57,7 +58,13 @@ export default {
 				.setDescription("Set volume")
 				.setMaxValue(500)
 				.setMinValue(0),
+		)
+		.addIntegerOption(
+			queueOption("The queue to play it on, 1 if left empty; a new number starts another queue"),
 		),
+	async autocomplete({ interaction, client, language }) {
+		return respondQueues(interaction, client, language, { offerNew: true });
+	},
 	async execute({ interaction, client, language }) {
 		if (!interaction.guild)
 			return await interaction.reply({
@@ -82,6 +89,9 @@ export default {
 				content: languageText("not_same_voice", language),
 			});
 		}
+		const queue = queueOf(interaction);
+		const refusal = queueRefusal(queue, language);
+		if (refusal) return interaction.reply({ content: refusal });
 		//prevent error caused by long response time
 
 		await interaction.deferReply();
@@ -105,6 +115,7 @@ export default {
 			interaction.guild.id,
 			interaction.channel,
 			language,
+			{ createPlayer: true, queue },
 		);
 
 		if (!player || !connection) {
@@ -173,6 +184,7 @@ export default {
 					createdBy: interaction.user.displayName,
 					language,
 					upcoming,
+					queue,
 				});
 				if ("entry" in result) {
 					return interaction.editReply({

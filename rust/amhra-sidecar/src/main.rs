@@ -87,7 +87,7 @@ use amhra_audio::CacheReader;
 use amhra_fetch::Extractor;
 use amhra_fetch::download::DownloadOptions;
 use amhra_sidecar::framing::{read_frame, write_frame};
-use amhra_sidecar::protocol::{Command, Event, PROTOCOL_VERSION, SessionState};
+use amhra_sidecar::protocol::{Command, Event, PROTOCOL_VERSION, QueueState, SessionState};
 use amhra_sidecar::speech::{Answer, Speech, Voice};
 use amhra_sidecar::worker::{Worker, WorkerCommand};
 
@@ -132,17 +132,29 @@ struct GuildSession {
 	/// explain it.
 	alive: Arc<AtomicBool>,
 	channel_id: String,
-	track_id: Option<String>,
-	position_ms: u32,
+	/// Whether the whole guild is paused.
 	paused: bool,
+	/// The overall gain.
 	gain: f32,
-	main_gain: f32,
+	/// What each queue was last told, for `ListSessions`.
+	queues: std::collections::BTreeMap<String, QueueState>,
 	/// Whether this guild's receive thread passes packets on. Shared with it,
 	/// so `SetListen` takes effect without a reconnect.
 	listening: Arc<AtomicBool>,
 }
 
 impl GuildSession {
+	/// What this session remembers about `queue_id`, made on first mention.
+	fn queue(&mut self, queue_id: &str) -> &mut QueueState {
+		self.queues.entry(queue_id.to_owned()).or_insert_with(|| QueueState {
+			queue_id: queue_id.to_owned(),
+			track_id: None,
+			position_ms: 0,
+			paused: false,
+			gain: 1.0,
+		})
+	}
+
 	/// Close this session for good, in the one order that is safe.
 	///
 	/// The flag has to be cleared before the gateway is closed, and every way a
@@ -379,11 +391,9 @@ async fn dispatch(
 					gateway: handle,
 					alive,
 					channel_id,
-					track_id: None,
-					position_ms: 0,
 					paused: false,
 					gain: 1.0,
-					main_gain: 1.0,
+					queues: Default::default(),
 					listening,
 				},
 			);
@@ -402,15 +412,17 @@ async fn dispatch(
 			}
 		}
 
-		Command::Play { guild_id, track_id, start_ms, stream } => {
+		Command::Play { guild_id, queue_id, track_id, start_ms, stream } => {
 			let source = Source { cache_dir, streamer, stream };
 			if let Some((session, reader)) =
 				with_track(guilds, events, &guild_id, &track_id, source, "play")
 			{
-				session.track_id = Some(track_id.clone());
-				session.position_ms = start_ms;
-				session.paused = false;
+				let queue = session.queue(&queue_id);
+				queue.track_id = Some(track_id.clone());
+				queue.position_ms = start_ms;
+				queue.paused = false;
 				session.worker.send(WorkerCommand::Play {
+					queue: queue_id,
 					track_id,
 					reader: Box::new(reader),
 					start_ms,
@@ -418,37 +430,50 @@ async fn dispatch(
 			}
 		}
 
-		Command::SetNext { guild_id, track_id, stream } => {
+		Command::SetNext { guild_id, queue_id, track_id, stream } => {
 			let source = Source { cache_dir, streamer, stream };
 			if let Some((session, reader)) =
 				with_track(guilds, events, &guild_id, &track_id, source, "queue")
 			{
-				session.worker.send(WorkerCommand::SetNext { track_id, reader: Box::new(reader) });
+				session.worker.send(WorkerCommand::SetNext {
+					queue: queue_id,
+					track_id,
+					reader: Box::new(reader),
+				});
 			}
 		}
 
-		Command::ClearNext { guild_id } => with_guild(guilds, events, &guild_id, |session| {
-			session.worker.send(WorkerCommand::ClearNext)
+		Command::ClearNext { guild_id, queue_id } => with_guild(guilds, events, &guild_id, |session| {
+			session.worker.send(WorkerCommand::ClearNext(queue_id))
 		}),
-		Command::Skip { guild_id } => with_guild(guilds, events, &guild_id, |session| {
-			session.worker.send(WorkerCommand::Skip)
+		Command::Skip { guild_id, queue_id } => with_guild(guilds, events, &guild_id, |session| {
+			session.worker.send(WorkerCommand::Skip(queue_id))
 		}),
-		Command::Stop { guild_id, keep_layers } => with_guild(guilds, events, &guild_id, |session| {
-			session.track_id = None;
-			session.worker.send(WorkerCommand::Stop { keep_layers });
+		Command::Stop { guild_id, queue_id } => with_guild(guilds, events, &guild_id, |session| {
+			match &queue_id {
+				Some(queue_id) => session.queue(queue_id).track_id = None,
+				None => session.queues.values_mut().for_each(|queue| queue.track_id = None),
+			}
+			session.worker.send(WorkerCommand::Stop(queue_id));
 		}),
-		Command::Pause { guild_id } => with_guild(guilds, events, &guild_id, |session| {
-			session.paused = true;
-			session.worker.send(WorkerCommand::Pause);
+		Command::Pause { guild_id, queue_id } => with_guild(guilds, events, &guild_id, |session| {
+			match &queue_id {
+				Some(queue_id) => session.queue(queue_id).paused = true,
+				None => session.paused = true,
+			}
+			session.worker.send(WorkerCommand::Pause(queue_id));
 		}),
-		Command::Resume { guild_id } => with_guild(guilds, events, &guild_id, |session| {
-			session.paused = false;
-			session.worker.send(WorkerCommand::Resume);
+		Command::Resume { guild_id, queue_id } => with_guild(guilds, events, &guild_id, |session| {
+			match &queue_id {
+				Some(queue_id) => session.queue(queue_id).paused = false,
+				None => session.paused = false,
+			}
+			session.worker.send(WorkerCommand::Resume(queue_id));
 		}),
-		Command::Seek { guild_id, position_ms } => {
+		Command::Seek { guild_id, queue_id, position_ms } => {
 			with_guild(guilds, events, &guild_id, |session| {
-				session.position_ms = position_ms;
-				session.worker.send(WorkerCommand::Seek(position_ms));
+				session.queue(&queue_id).position_ms = position_ms;
+				session.worker.send(WorkerCommand::Seek { queue: queue_id, position_ms });
 			})
 		}
 		Command::SetVolume { guild_id, gain } => {
@@ -457,46 +482,24 @@ async fn dispatch(
 				session.worker.send(WorkerCommand::SetVolume(gain));
 			})
 		}
-		Command::SetMainVolume { guild_id, gain } => {
+		Command::SetQueueVolume { guild_id, queue_id, gain } => {
 			with_guild(guilds, events, &guild_id, |session| {
-				session.main_gain = gain;
-				session.worker.send(WorkerCommand::SetMainVolume(gain));
+				session.queue(&queue_id).gain = gain;
+				session.worker.send(WorkerCommand::SetQueueVolume { queue: queue_id, gain });
 			})
 		}
-		Command::AddLayer { guild_id, layer_id, track_id, gain, start_ms, stream } => {
-			let source = Source { cache_dir, streamer, stream };
-			if let Some((session, reader)) =
-				with_track(guilds, events, &guild_id, &track_id, source, "layer")
-			{
-				session.worker.send(WorkerCommand::AddLayer {
-					layer_id,
-					track_id,
-					reader: Box::new(reader),
-					gain,
-					start_ms,
+		Command::RemoveQueue { guild_id, queue_id } => {
+			with_guild(guilds, events, &guild_id, |session| {
+				session.queues.remove(&queue_id);
+				session.worker.send(WorkerCommand::RemoveQueue(queue_id));
+			})
+		}
+		Command::SetFades { guild_id, queue_id, crossfade_ms, skip_fade_ms } => {
+			with_guild(guilds, events, &guild_id, |session| {
+				session.worker.send(WorkerCommand::SetFades {
+					queue: queue_id,
+					fades: FadeSettings { crossfade_ms, skip_fade_ms },
 				});
-			}
-		}
-		Command::RemoveLayer { guild_id, layer_id } => {
-			with_guild(guilds, events, &guild_id, |session| {
-				session.worker.send(WorkerCommand::RemoveLayer(layer_id));
-			})
-		}
-		Command::SetLayerVolume { guild_id, layer_id, gain } => {
-			with_guild(guilds, events, &guild_id, |session| {
-				session.worker.send(WorkerCommand::SetLayerVolume { layer_id, gain });
-			})
-		}
-		Command::SwapLayer { guild_id, layer_id } => {
-			with_guild(guilds, events, &guild_id, |session| {
-				session.worker.send(WorkerCommand::SwapLayer(layer_id));
-			})
-		}
-		Command::SetFades { guild_id, crossfade_ms, skip_fade_ms } => {
-			with_guild(guilds, events, &guild_id, |session| {
-				session
-					.worker
-					.send(WorkerCommand::SetFades(FadeSettings { crossfade_ms, skip_fade_ms }));
 			})
 		}
 
@@ -555,11 +558,9 @@ async fn dispatch(
 				.map(|(guild_id, session)| SessionState {
 					guild_id: guild_id.clone(),
 					channel_id: session.channel_id.clone(),
-					track_id: session.track_id.clone(),
-					position_ms: session.position_ms,
 					paused: session.paused,
 					gain: session.gain,
-					main_gain: session.main_gain,
+					queues: session.queues.values().cloned().collect(),
 				})
 				.collect();
 			let _ = events.send(Event::Sessions { guilds });
@@ -619,8 +620,8 @@ impl Source<'_> {
 
 /// The connected guild and an open track, or nothing and a reported reason.
 ///
-/// The commands that name a track — play it now, queue it for the seam, layer
-/// it over the rest — all have the same two ways of not happening, and `verb`
+/// The commands that name a track — play it now, or queue it for the seam —
+/// both have the same two ways of not happening, and `verb`
 /// is all that differs between what they say when the track will not open.
 fn with_track<'a>(
 	guilds: &'a mut HashMap<String, GuildSession>,

@@ -28,8 +28,8 @@ const STATE: PlaybackState = {
 	autoSkipNonMusic: true,
 	crossfadeMs: 3000,
 	mix: [
-		{ playing: "Rain sounds", volume: 30, queued: 0, gapMs: 0, loop: true },
-		{ playing: null, volume: 100, queued: 2, gapMs: 5000, loop: false },
+		{ queue: 2, playing: "Rain sounds", volume: 30, queued: 0, gapMs: 0, loop: true },
+		{ queue: 4, playing: null, volume: 100, queued: 2, gapMs: 5000, loop: false },
 	],
 	mixMainVolume: 100,
 };
@@ -44,9 +44,9 @@ describe("the state as the model reads it", () => {
 			"…and 10 more",
 			"Volume: 80%",
 			"Loop: on. Suggesting songs when the queue runs out: off. Skipping non-music parts automatically: on. Crossfade: 3s.",
-			"Mix tracks over the queue's song (at 100%):",
-			'1. "Rain sounds" at 30%, looping',
-			"2. nothing playing at 100%, 2 queued, 5s between songs",
+			"Queues mixed in over queue 1 (queue 1 at 100%):",
+			'Queue 2: "Rain sounds" at 30%, looping',
+			"Queue 4: nothing playing at 100%, 2 queued, 5s between songs",
 		]);
 	});
 

@@ -20,6 +20,7 @@ import {
 	type Lyrics,
 } from "../../lib/lyrics";
 import { getAudioPlayer, timeFormat } from "../../lib/voice/core";
+import { queueOf, queueOption, respondQueues } from "../../lib/voice/queueOption";
 
 /** How long the buttons keep working, inside the 15 minute interaction token */
 const ACTIVE_MS = 10 * 60 * 1000;
@@ -95,13 +96,18 @@ export default {
 				)
 				.setMinValue(-MAX_LYRICS_DELAY_MS)
 				.setMaxValue(MAX_LYRICS_DELAY_MS),
-		),
+		)
+		.addIntegerOption(queueOption("The queue whose song to show, 1 if left empty")),
+	async autocomplete({ interaction, client, language }) {
+		return respondQueues(interaction, client, language);
+	},
 	async execute({ interaction, client, language }) {
 		const query = interaction.options.getString("search")?.trim() || null;
 		const newDelay = interaction.options.getInteger("delay");
 		const player = interaction.guildId
 			? getAudioPlayer(client, interaction.guildId, interaction.channel, language, {
 					createPlayer: false,
+					queue: queueOf(interaction),
 				})
 			: null;
 		const track = player?.isPlaying ? player.nowPlaying : null;

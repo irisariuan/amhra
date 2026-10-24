@@ -93,7 +93,13 @@
 			"options": {
 				"add": {
 					"name": "新增",
-					"description": "預約影片插播，首播會自動設定時間"
+					"description": "預約影片插播，首播會自動設定時間",
+					"options": {
+						"queue": {
+							"name": "佇列",
+							"description": "要插播的佇列，留空則為 1；新的編號會開另一個佇列"
+						}
+					}
 				},
 				"list": {
 					"name": "列表",
@@ -124,6 +130,10 @@
 				"next": {
 					"name": "下一個",
 					"description": "將歌曲新增至稍後播放清單 (如果已有歌曲正在播放)"
+				},
+				"queue": {
+					"name": "佇列",
+					"description": "要播放的佇列，留空則為 1；新的編號會開另一個佇列"
 				}
 			}
 		},
@@ -138,6 +148,10 @@
 				"force": {
 					"name": "強制",
 					"description": "強制跳過而不等待確認"
+				},
+				"queue": {
+					"name": "佇列",
+					"description": "佇列編號，留空則為 1"
 				}
 			}
 		},
@@ -148,6 +162,10 @@
 				"position": {
 					"name": "位置",
 					"description": "要重新定位到的位置（以秒為單位或 (HH:)MM:SS 格式）"
+				},
+				"queue": {
+					"name": "佇列",
+					"description": "佇列編號，留空則為 1"
 				}
 			}
 		},
@@ -158,6 +176,10 @@
 				"index": {
 					"name": "索引",
 					"description": "播放清單中歌曲的索引（從 1 開始）"
+				},
+				"queue": {
+					"name": "佇列",
+					"description": "佇列編號，留空則為 1"
 				}
 			}
 		},
@@ -168,20 +190,42 @@
 				"page": {
 					"name": "頁碼",
 					"description": "頁碼"
+				},
+				"queue": {
+					"name": "佇列",
+					"description": "佇列編號，留空則為 1"
 				}
 			}
 		},
 		"pause": {
 			"name": "暫停",
-			"description": "暫停目前的歌曲"
+			"description": "暫停目前的歌曲",
+			"options": {
+				"queue": {
+					"name": "佇列",
+					"description": "只限這個佇列，留空則為所有佇列"
+				}
+			}
 		},
 		"resume": {
 			"name": "恢復",
-			"description": "恢復已暫停的歌曲"
+			"description": "恢復已暫停的歌曲",
+			"options": {
+				"queue": {
+					"name": "佇列",
+					"description": "只限這個佇列，留空則為所有佇列"
+				}
+			}
 		},
 		"stop": {
 			"name": "停止",
-			"description": "停止音樂並清除播放清單"
+			"description": "停止音樂並清除播放清單",
+			"options": {
+				"queue": {
+					"name": "佇列",
+					"description": "只限這個佇列，留空則為所有佇列"
+				}
+			}
 		},
 		"volume": {
 			"name": "音量",
@@ -190,6 +234,10 @@
 				"volume": {
 					"name": "音量",
 					"description": "音量級別（0-500）"
+				},
+				"queue": {
+					"name": "佇列",
+					"description": "只設這個佇列本身的音量，留空則為整個機器人的音量"
 				}
 			}
 		},
@@ -200,6 +248,10 @@
 				"enabled": {
 					"name": "啟用",
 					"description": "設定循環模式"
+				},
+				"queue": {
+					"name": "佇列",
+					"description": "佇列編號，留空則為 1"
 				}
 			}
 		},
@@ -213,7 +265,13 @@
 		},
 		"nowplaying": {
 			"name": "正在播放",
-			"description": "顯示目前正在播放的歌曲"
+			"description": "顯示目前正在播放的歌曲",
+			"options": {
+				"queue": {
+					"name": "佇列",
+					"description": "佇列編號，留空則為 1"
+				}
+			}
 		},
 		"version": {
 			"name": "版本",
@@ -229,7 +287,13 @@
 		},
 		"skipnonmusic": {
 			"name": "跳過非音樂",
-			"description": "跳過目前的非音樂部分"
+			"description": "跳過目前的非音樂部分",
+			"options": {
+				"queue": {
+					"name": "佇列",
+					"description": "佇列編號，留空則為 1"
+				}
+			}
 		},
 		"join": {
 			"name": "加入",
@@ -254,6 +318,10 @@
 				"enabled": {
 					"name": "啟用",
 					"description": "設定自動跳過非音樂模式"
+				},
+				"queue": {
+					"name": "佇列",
+					"description": "佇列編號，留空則為 1"
 				}
 			}
 		},
@@ -265,48 +333,48 @@
 				},
 				"delay": {
 					"description": "將這首歌的歌詞對所有人延後這麼多毫秒顯示（負數為提前）"
+				},
+				"queue": {
+					"name": "佇列",
+					"description": "佇列編號，留空則為 1"
 				}
 			}
 		},
 		"mix": {
 			"name": "混音",
-			"description": "在佇列之上播放多條音軌，每條都有自己的佇列和音量",
+			"description": "在佇列 1 上疊加播放其他佇列，每個佇列有自己的歌曲和音量",
 			"options": {
 				"add": {
 					"name": "新增",
-					"description": "將歌曲加入一條混音音軌，或用它開一條新音軌"
+					"description": "把歌曲加入疊加的佇列，或用它開一個新佇列"
 				},
 				"remove": {
 					"name": "移除",
-					"description": "移除一條混音音軌，或其佇列中的一首歌曲"
+					"description": "移除疊加的佇列，或其中一首歌"
 				},
 				"skip": {
 					"name": "跳過",
-					"description": "讓混音音軌立即播放下一首"
+					"description": "讓疊加的佇列立即跳到下一首"
 				},
 				"volume": {
 					"name": "音量",
-					"description": "設定混音音軌的音量"
+					"description": "設定疊加佇列的音量"
 				},
 				"gap": {
 					"name": "間隔",
-					"description": "設定混音音軌歌曲之間的間隔"
+					"description": "設定疊加佇列歌曲之間的間隔"
 				},
 				"loop": {
 					"name": "循環",
-					"description": "讓混音音軌循環播放其佇列"
-				},
-				"swap": {
-					"name": "交換",
-					"description": "將混音音軌的歌曲與佇列歌曲交換"
+					"description": "讓疊加的佇列循環播放"
 				},
 				"main": {
 					"name": "主要",
-					"description": "設定混音中佇列歌曲的音量"
+					"description": "設定混音中佇列 1 本身的音量"
 				},
 				"list": {
 					"name": "列表",
-					"description": "顯示混音的音軌及各自的佇列"
+					"description": "顯示疊加的佇列及各自排著的歌曲"
 				}
 			}
 		},
@@ -370,9 +438,9 @@
 	"SCHEDULE_NOT_FOUND": "沒有第 {index} 個預約播放",
 	"SCHEDULE_FROM_DASHBOARD": "來自控制台",
 	"MIX_NATIVE_ONLY": "混音需要 Rust 語音後端（`USE_RUST_VOICE`）",
-	"MIX_MAIN_VOLUME": "佇列歌曲音量：{volume}%",
-	"MIX_EMPTY": "沒有混音音軌",
-	"MIX_TRACK_HEADER": "**音軌 {index}** · {volume}% · 歌曲間隔 {gap} 秒",
+	"MIX_MAIN_VOLUME": "佇列 1 音量：{volume}%",
+	"MIX_EMPTY": "沒有混音佇列",
+	"MIX_TRACK_HEADER": "**佇列 {index}** · {volume}% · 歌曲間隔 {gap} 秒",
 	"MIX_TRACK_LOOPING": " · 循環中",
 	"MIX_TRACK_PLAYING": "▶ **[{title}]({url})** `{time}`",
 	"MIX_TRACK_LOADING": "正在載入 **[{title}]({url})**",
@@ -381,27 +449,23 @@
 	"MIX_TRACK_QUEUE_ITEM": "`{index}.` [{title}]({url})",
 	"MIX_TRACK_QUEUE_MORE": "…還有 {count} 首",
 	"MIX_VIDEO_ONLY": "只能混入單一影片，不能混入播放清單",
-	"MIX_FULL": "音軌已達上限，請加入現有音軌或先移除一條",
-	"MIX_QUEUE_FULL": "該音軌的佇列已滿",
+	"MIX_FULL": "佇列已達上限，請加入現有佇列或先移除一個",
+	"MIX_QUEUE_FULL": "該佇列已滿",
 	"MIX_NOT_FOUND": "找不到該影片",
-	"MIX_ADDED_TRACK": "已以 {volume}% 將 **[{title}]({url})** 混入新音軌 {track}",
-	"MIX_PLAYING_ON": "正在音軌 {track} 播放 **[{title}]({url})**",
-	"MIX_QUEUED": "已將 **[{title}]({url})** 加入音軌 {track}，排在第 {position} 首",
-	"MIX_MAIN_SET": "已將混音中佇列歌曲的音量設為 {volume}%",
-	"MIX_NO_TRACK": "沒有第 {index} 條混音音軌",
-	"MIX_NO_SONG": "音軌 {track} 的佇列中沒有第 {index} 首",
-	"MIX_TRACK_REMOVED": "已移除混音音軌 {track}",
-	"MIX_SONG_REMOVED": "已將 **[{title}]({url})** 從音軌 {track} 移除",
-	"MIX_SKIPPED": "音軌 {track} 已跳到下一首",
-	"MIX_SKIP_NOTHING": "音軌 {track} 沒有可跳過的歌曲",
-	"MIX_VOLUME_SET": "已將音軌 {track} 的音量設為 {volume}%",
-	"MIX_GAP_SET": "音軌 {track} 的歌曲間隔已設為 {seconds} 秒",
-	"MIX_LOOP_ON": "音軌 {track} 現在會循環播放其佇列",
-	"MIX_LOOP_OFF": "音軌 {track} 已停止循環",
-	"MIX_SWAPPED": "已交換：**[{title}]({url})** 現在是佇列歌曲，**[{mixed}]({mixedUrl})** 繼續在音軌 {track} 播放",
-	"MIX_SWAP_NOTHING_PLAYING": "佇列中沒有正在播放的歌曲可以交換",
-	"MIX_SWAP_SILENT": "音軌 {track} 沒有正在播放的歌曲可以交換",
-	"MIX_SWAP_FAILED": "無法交換，請稍後再試",
+	"MIX_ADDED_TRACK": "已以 {volume}% 將 **[{title}]({url})** 混入新佇列 {track}",
+	"MIX_PLAYING_ON": "正在佇列 {track} 播放 **[{title}]({url})**",
+	"MIX_QUEUED": "已將 **[{title}]({url})** 加入佇列 {track}，排在第 {position} 首",
+	"MIX_MAIN_SET": "已將混音中佇列 1 的音量設為 {volume}%",
+	"MIX_NO_TRACK": "混音中沒有佇列 {index}",
+	"MIX_NO_SONG": "佇列 {track} 中沒有第 {index} 首",
+	"MIX_TRACK_REMOVED": "已從混音移除佇列 {track}",
+	"MIX_SONG_REMOVED": "已將 **[{title}]({url})** 從佇列 {track} 移除",
+	"MIX_SKIPPED": "佇列 {track} 已跳到下一首",
+	"MIX_SKIP_NOTHING": "佇列 {track} 沒有可跳過的歌曲",
+	"MIX_VOLUME_SET": "已將佇列 {track} 的音量設為 {volume}%",
+	"MIX_GAP_SET": "佇列 {track} 的歌曲間隔已設為 {seconds} 秒",
+	"MIX_LOOP_ON": "佇列 {track} 現在會循環播放",
+	"MIX_LOOP_OFF": "佇列 {track} 已停止循環",
 	"VOICE_COMMANDS_ON": "已開啟語音指令。先說「Amhra」(em-ha-ra)再說指令,例如「Amhra,跳過這首歌」。",
 	"VOICE_COMMANDS_OFF": "已關閉語音指令,我不會再在這個伺服器聆聽。",
 	"VOICE_COMMANDS_ALREADY_ON": "語音指令已經是開啟的。",
@@ -454,16 +518,21 @@
 	"VOICE_SAY_LYRICS": "正在找歌詞。",
 	"VOICE_SAY_RELOCATE": "跳到{position}。",
 	"VOICE_SAY_MIX_ADD": "加入混音。",
-	"VOICE_SAY_MIX_REMOVE": "移除混音音軌{track}。",
-	"VOICE_SAY_MIX_SKIP": "混音音軌{track}跳到下一首。",
-	"VOICE_SAY_MIX_VOLUME": "混音音軌{track}音量百分之{volume}。",
-	"VOICE_SAY_MIX_GAP": "混音音軌{track}歌曲間隔{seconds}秒。",
-	"VOICE_SAY_MIX_LOOP": "切換混音音軌{track}的循環。",
-	"VOICE_SAY_MIX_MAIN": "佇列的歌音量百分之{volume}。",
-	"VOICE_SAY_MIX_SWAP": "和混音音軌{track}交換。",
+	"VOICE_SAY_MIX_REMOVE": "移除混音佇列{track}。",
+	"VOICE_SAY_MIX_SKIP": "混音佇列{track}跳到下一首。",
+	"VOICE_SAY_MIX_VOLUME": "混音佇列{track}音量百分之{volume}。",
+	"VOICE_SAY_MIX_GAP": "混音佇列{track}歌曲間隔{seconds}秒。",
+	"VOICE_SAY_MIX_LOOP": "切換混音佇列{track}的循環。",
+	"VOICE_SAY_MIX_MAIN": "佇列1音量百分之{volume}。",
 	"VOICE_SAY_MIX_LIST": "這是目前的混音。",
 	"TRANSCRIPT_ON": "從現在起,你說出我的名字後,我會把聽到的內容貼在頻道裡(在所有開啟語音指令的伺服器)。可用 `/transcript enabled:false` 關閉。",
 	"TRANSCRIPT_OFF": "我不會再貼出聽到你說的內容。",
 	"VOICE_FEEDBACK_ON": "從現在起,我會用語音說出你的語音指令做了什麼(在機器人能說話的地方)。可用 `/voicefeedback enabled:false` 關閉。",
-	"VOICE_FEEDBACK_OFF": "我不會再用語音說出你的語音指令做了什麼,聊天中仍會顯示。"
+	"VOICE_FEEDBACK_OFF": "我不會再用語音說出你的語音指令做了什麼,聊天中仍會顯示。",
+	"QUEUE_CHOICE_PLAYING": "佇列 {queue}：{title}（待播 {queued} 首）",
+	"QUEUE_CHOICE_IDLE": "佇列 {queue}：沒有播放（待播 {queued} 首）",
+	"QUEUE_CHOICE_NEW": "佇列 {queue}：開一個新佇列",
+	"QUEUE_NATIVE_ONLY": "佇列 2 以後需要 Rust 語音後端（`USE_RUST_VOICE`）",
+	"SET_QUEUE_VOLUME": "已將佇列 {queue} 的音量設為 {volume}%",
+	"SCHEDULE_QUEUE_TAG": " · 佇列 {queue}"
 }

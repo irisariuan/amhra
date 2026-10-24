@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { Sidecar, fadeSettings, parseEvent, sidecarBin } from "../lib/voice/sidecar";
+import { PROTOCOL_VERSION, Sidecar, fadeSettings, parseEvent, sidecarBin } from "../lib/voice/sidecar";
 
 /**
  * Tests for the voice sidecar client, run against the real Rust process.
@@ -113,7 +113,7 @@ describeBuilt("Sidecar", () => {
 		const hello = await next(sidecar, "hello");
 		// A mismatch here is what a stale binary looks like, and it explains
 		// every later oddity, so it is asserted rather than logged.
-		expect(hello.version).toBe(1);
+		expect(hello.version).toBe(PROTOCOL_VERSION);
 		expect(hello.pid).toBeGreaterThan(0);
 		expect(sidecar.running).toBe(true);
 	});

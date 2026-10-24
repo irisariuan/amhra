@@ -1,5 +1,4 @@
 import type { CustomAudioPlayer, CustomClient } from "../custom";
-import type { GuildMix } from "./mixPlan";
 
 /**
  * What the voice command model is told about the bot as it stands: what is
@@ -40,9 +39,16 @@ export interface PlaybackState {
 	autoSuggest: boolean;
 	autoSkipNonMusic: boolean;
 	crossfadeMs: number;
-	/** Tracks mixed in over the queue's song, in their numbered order. */
-	mix: { playing: string | null; volume: number; queued: number; gapMs: number; loop: boolean }[];
-	/** Percent, the queue's song in the mix. */
+	/** The queues mixed in over queue 1, by number. */
+	mix: {
+		queue: number;
+		playing: string | null;
+		volume: number;
+		queued: number;
+		gapMs: number;
+		loop: boolean;
+	}[];
+	/** Percent, queue 1's own level in the mix. */
 	mixMainVolume: number;
 }
 
@@ -94,13 +100,13 @@ export function describePlayback(state: PlaybackState | null): string {
 		`Loop: ${onOff(state.loop)}. Suggesting songs when the queue runs out: ${onOff(state.autoSuggest)}. Skipping non-music parts automatically: ${onOff(state.autoSkipNonMusic)}. Crossfade: ${state.crossfadeMs ? `${state.crossfadeMs / 1000}s` : "off"}.`,
 	);
 	if (state.mix.length) {
-		lines.push(`Mix tracks over the queue's song (at ${Math.round(state.mixMainVolume)}%):`);
-		state.mix.forEach((track, index) => {
+		lines.push(`Queues mixed in over queue 1 (queue 1 at ${Math.round(state.mixMainVolume)}%):`);
+		state.mix.forEach((track) => {
 			const playing = track.playing ? `"${track.playing}"` : "nothing playing";
 			const queued = track.queued ? `, ${track.queued} queued` : "";
 			const gap = track.gapMs ? `, ${track.gapMs / 1000}s between songs` : "";
 			lines.push(
-				`${index + 1}. ${playing} at ${Math.round(track.volume)}%${queued}${gap}${track.loop ? ", looping" : ""}`,
+				`Queue ${track.queue}: ${playing} at ${Math.round(track.volume)}%${queued}${gap}${track.loop ? ", looping" : ""}`,
 			);
 		});
 	}
@@ -139,8 +145,12 @@ export async function playbackState(
 	{
 		within = RESOLVE_WITHIN_MS,
 		lookup = lookUp,
-		mixOf = async (guildId: string) => (await import("./native.js")).findMix(guildId),
-	}: { within?: number; lookup?: Lookup; mixOf?: (guildId: string) => Promise<GuildMix | undefined> } = {},
+		mixOf = async (guildId: string) => (await import("./queues.js")).extraQueues(guildId),
+	}: {
+		within?: number;
+		lookup?: Lookup;
+		mixOf?: (guildId: string) => Promise<readonly CustomAudioPlayer[] | undefined>;
+	} = {},
 ): Promise<PlaybackState | null> {
 	const player: CustomAudioPlayer | undefined = client.player.get(guildId);
 	if (!player) return null;
@@ -176,14 +186,15 @@ export async function playbackState(
 			autoSuggest: player.customSetting.autoSuggest ?? false,
 			autoSkipNonMusic: player.customSetting.autoSkipSegment ?? false,
 			crossfadeMs: player.native ? player.crossfadeMs : 0,
-			mix: (mix?.list() ?? []).map((track) => ({
-				playing: (track.playing ?? track.loading)?.title ?? null,
-				volume: track.volume,
+			mix: (mix ?? []).map((track) => ({
+				queue: track.queueId,
+				playing: track.isPlaying ? (track.nowPlaying?.title ?? null) : null,
+				volume: Math.round(track.volume * 100),
 				queued: track.queue.length,
 				gapMs: track.gapMs,
-				loop: track.loop,
+				loop: track.customSetting.looping ?? false,
 			})),
-			mixMainVolume: mix?.mainVolume ?? 100,
+			mixMainVolume: player.mainVolume,
 		};
 	} finally {
 		clearTimeout(timer);

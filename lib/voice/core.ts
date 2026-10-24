@@ -53,6 +53,8 @@ import {
 } from "./opusStream";
 import { WebmOpusDemuxer } from "./webm";
 import { pickRadioTrack } from "./suggest";
+import { clampGap, gapBefore } from "./queuePlan";
+import { addQueue, allExtraQueues, extraQueues, findQueue, removeQueue } from "./queues";
 import {
 	getNativeConnection,
 	joinVoiceNative,
@@ -83,9 +85,10 @@ function createAudioPlayer(
 	guildId: string,
 	channel: Channel | null,
 	createOpts?: CreateAudioPlayerOptions,
+	queueId = 1,
 ) {
 	//create a player and initialize it if there isn't one
-	const player = new CustomAudioPlayer(guildId, channel, createOpts);
+	const player = new CustomAudioPlayer(guildId, channel, createOpts, queueId);
 
 	// Nothing arms a leave timer here any more: lib/voice/leave.ts sweeps every
 	// player and decides from the state it finds. See leavePlan.ts for why.
@@ -96,60 +99,174 @@ function createAudioPlayer(
 		player.isPlaying = true;
 	});
 	//continue to play song after ending one
-	player.on(AudioPlayerStatus.Idle, async () => {
-		// Radio mode: when the queue empties, auto-append a related track so
-		// playback continues, unless the account disabled it.
-		if (
-			player.queue.length === 0 &&
-			player.customSetting.autoSuggest &&
-			player.nowPlaying
-		) {
-			const next = await pickRadioTrack(
-				player.nowPlaying.url,
-				player.history,
-			).catch(() => null);
-			if (next) {
-				player.addToQueue(next);
-				dcb.log("Radio mode queued a suggested track");
-			}
-		}
-		try {
-			dcb.log("Finished music playing");
-			if (player.queue.length > 0) {
-				const next = player.shiftQueue();
-				const nextUrl = next?.url;
-				if (nextUrl) {
-					const resource = await createResource(nextUrl, next.seek);
-					if (!resource) {
-						return globalApp.err("Failed to create resource");
-					}
-					event.emit("songInfo", nextUrl);
-					player.playResource(resource);
-					dcb.log("Playing next music");
-					if (resource.segments && player.customSetting.autoSkipSegment) {
-						await player.skipCurrentSegment();
-						if (!(await sendSkipMessage(player))) {
-							globalApp.warn("Failed to send skip message");
-						}
-					}
-				} else {
-					globalApp.err("No next URL found");
-					player.endPlayback();
-				}
-			} else {
-				dcb.log("Finished playing all music");
-				player.endPlayback();
-			}
-		} catch (error) {
-			dcb.log(`Error: ${error}`);
-			player.endPlayback();
-		}
-	});
+	player.on(AudioPlayerStatus.Idle, () => advance(player));
 	return player;
+}
+
+/**
+ * A track ended: move on to the next one, straight away or after the gap
+ * before it. The same for every queue a guild has.
+ */
+async function advance(player: CustomAudioPlayer) {
+	const after = player.skipping ? "skip" : "song";
+	player.skipping = false;
+	// Radio mode: when the queue empties, auto-append a related track so
+	// playback continues, unless the account disabled it.
+	if (
+		player.queue.length === 0 &&
+		player.customSetting.autoSuggest &&
+		player.nowPlaying
+	) {
+		const next = await pickRadioTrack(
+			player.nowPlaying.url,
+			player.history,
+		).catch(() => null);
+		if (next) {
+			player.addToQueue(next);
+			dcb.log("Radio mode queued a suggested track");
+		}
+	}
+	if (player.queue.length === 0) {
+		dcb.log("Finished playing all music");
+		return player.endPlayback();
+	}
+	dcb.log("Finished music playing");
+	if (gapBefore(after, player.gapMs, player.queue[0]) > 0) {
+		// Silent until the sweep below finds the next song due
+		player.endPlayback();
+		player.wait = { from: Date.now(), after };
+		return;
+	}
+	await playNext(player);
+}
+
+/** Take the head of a queue and play it. */
+async function playNext(player: CustomAudioPlayer) {
+	try {
+		const next = player.shiftQueue();
+		const nextUrl = next?.url;
+		if (!nextUrl) {
+			globalApp.err("No next URL found");
+			return player.endPlayback();
+		}
+		const resource = await createResource(nextUrl, next.seek);
+		// The queue may have been dropped while the lookup ran
+		if (player.closed) return;
+		if (!resource) {
+			globalApp.err("Failed to create resource");
+			// Moved on from, as a skip would, rather than leaving the queue stuck
+			player.endPlayback();
+			if (player.queue.length) player.wait = { from: Date.now(), after: "skip" };
+			return;
+		}
+		event.emit("songInfo", nextUrl);
+		player.playResource(resource);
+		dcb.log(`Playing next music on queue ${player.queueId}`);
+		if (resource.segments && player.customSetting.autoSkipSegment) {
+			await player.skipCurrentSegment();
+			if (!(await sendSkipMessage(player))) {
+				globalApp.warn("Failed to send skip message");
+			}
+		}
+	} catch (error) {
+		dcb.log(`Error: ${error}`);
+		player.endPlayback();
+	}
+}
+
+/** How often waiting queues are checked for a song that is due. */
+const WAIT_SWEEP_MS = 100;
+let waitSweeper: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Start the songs queues are waiting on, as their gaps and lead-ins run out.
+ *
+ * One sweep for every queue of every guild, rather than a timer per wait: a
+ * pause, a skip or a dropped queue then only has to change what the queue
+ * waits on, and no timer is ever left to fire into a queue that has gone.
+ */
+export function bindQueueWaits(client: CustomClient) {
+	if (waitSweeper) return;
+	waitSweeper = setInterval(() => {
+		const now = Date.now();
+		for (const player of [...client.player.values(), ...allExtraQueues()]) {
+			if (!player.isDue(now)) continue;
+			player.wait = null;
+			void playNext(player);
+		}
+	}, WAIT_SWEEP_MS);
+	waitSweeper.unref?.();
+}
+
+export interface QueueOptions {
+	/** Linear, 1 is as recorded. */
+	volume?: number;
+	gapMs?: number;
+	loop?: boolean;
+}
+
+/**
+ * Open another queue for the guild, mixed in over the others. Only the
+ * sidecar can play two things at once, so this is null without it, and when
+ * the guild already has as many queues as it may.
+ */
+export function createQueue(
+	guildId: string,
+	channel: Channel | null,
+	{ volume, gapMs, loop }: QueueOptions = {},
+	/** The number to give it, when it is free; the lowest free one otherwise. */
+	number?: number,
+) {
+	if (!nativeVoiceActive()) return null;
+	return addQueue(guildId, number, (n) => {
+		const player = createAudioPlayer(guildId, channel, {}, n);
+		if (gapMs !== undefined) player.gapMs = clampGap(gapMs);
+		if (loop) player.customSetting.looping = true;
+		player.setVolume(volume ?? 1);
+		return player;
+	});
+}
+
+/** Drop one of the guild's queues past the first. */
+export function closeQueue(player: CustomAudioPlayer) {
+	if (removeQueue(player)) player.close();
+}
+
+/**
+ * Pause every queue the guild has, as a pause that names no queue does.
+ * True when queue 1 paused, or any other that was playing or waiting did.
+ */
+export function pauseAll(main: CustomAudioPlayer) {
+	let paused = main.pause();
+	for (const queue of extraQueues(main.guildId)) {
+		if ((queue.isPlaying || queue.wait) && queue.pause()) paused = true;
+	}
+	return paused;
+}
+
+/** Undo `pauseAll`. True when any queue was paused. */
+export function unpauseAll(main: CustomAudioPlayer) {
+	let resumed = main.unpause();
+	for (const queue of extraQueues(main.guildId)) {
+		if (queue.isPaused && queue.unpause()) resumed = true;
+	}
+	return resumed;
+}
+
+/** Every queue the guild has, queue 1 first. */
+export function guildQueues(client: CustomClient, guildId: string): CustomAudioPlayer[] {
+	const main = client.player.get(guildId);
+	return [...(main ? [main] : []), ...extraQueues(guildId)];
 }
 
 interface GetAudioPlayerOption {
 	createPlayer: boolean;
+	/**
+	 * Which of the guild's queues, as a command's `queue` option names it;
+	 * queue 1 when null or left out. A queue past the first is only made with
+	 * the sidecar, which is the only backend that can play two at once.
+	 */
+	queue?: number | null;
 }
 
 export function getAudioPlayer(
@@ -158,13 +275,18 @@ export function getAudioPlayer(
 	channel: Channel | null,
 	language: Language,
 	option: GetAudioPlayerOption = { createPlayer: true },
-) {
-	const player = client.player.get(guildId) ?? null;
-
+): CustomAudioPlayer | null {
+	const queue = option.queue ?? 1;
+	let player = client.player.get(guildId) ?? null;
 	if (!player && option.createPlayer) {
-		const player = createAudioPlayer(guildId, channel, {});
+		// Made for queue 1 as well when another is asked for: the guild's own
+		// state (its volume, the leave sweep) lives on queue 1.
+		player = createAudioPlayer(guildId, channel, {});
 		client.player.set(guildId, player);
-		return player;
+	}
+	if (queue !== 1) {
+		player = findQueue(guildId, queue) ?? null;
+		if (!player && option.createPlayer) player = createQueue(guildId, channel, {}, queue);
 	}
 	if (channel) player?.setChannel(channel);
 	if (player && player.currentLanguage !== language) {

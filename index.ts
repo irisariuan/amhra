@@ -9,8 +9,8 @@ import { readSetting } from "./lib/setting";
 import { watch } from "node:fs";
 import { updateYtdlpVersion } from "./lib/voice/ytdlp";
 import { bindNativeVoice, nativeVoiceActive } from "./lib/voice/native";
-import { bindMixTracks } from "./lib/voice/mix";
 import { startLeaveSweeper } from "./lib/voice/leave";
+import { bindQueueWaits } from "./lib/voice/core";
 import { bindSchedules } from "./lib/voice/schedule";
 import { bindAutoJoin } from "./lib/voice/autoJoin";
 import { bindVoiceCommands } from "./lib/voice/voiceCommands";
@@ -80,12 +80,13 @@ const setting = readSetting();
 	if (nativeVoiceActive()) {
 		console.log(chalk.bgBlue.whiteBright("Voice runs through the Rust sidecar"));
 		bindNativeVoice(client);
-		bindMixTracks();
 		if (voiceCommandsAllowed()) {
 			console.log(chalk.bgBlue.whiteBright("Voice commands can be turned on per server"));
 			bindVoiceCommands(client, slashCommand);
 		}
 	}
+	// Ends the gaps queues leave between songs, on either backend.
+	bindQueueWaits(client);
 	// Watches for players to go idle and for channels to empty out. Started
 	// before login so a guild the bot is already in when it reconnects is swept
 	// like any other.

@@ -33,7 +33,7 @@ import type {
  */
 
 /** Kept in step with PROTOCOL_VERSION in the Rust protocol module. */
-const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 /** Restart backoff bounds after an unexpected exit. */
 const MIN_BACKOFF_MS = 500;
 const MAX_BACKOFF_MS = 30_000;
@@ -46,11 +46,17 @@ const VOICE_STATE_RESET_MS = 500;
 const sessionState = z.object({
 	guildId: z.string(),
 	channelId: z.string(),
-	trackId: z.string().nullable(),
-	positionMs: z.number(),
 	paused: z.boolean(),
 	gain: z.number(),
-	mainGain: z.number(),
+	queues: z.array(
+		z.object({
+			queueId: z.string(),
+			trackId: z.string().nullable(),
+			positionMs: z.number(),
+			paused: z.boolean(),
+			gain: z.number(),
+		}),
+	),
 });
 
 /**
@@ -68,24 +74,13 @@ const sessionState = z.object({
 const event = z.discriminatedUnion("type", [
 	z.object({ type: z.literal("hello"), version: z.number(), pid: z.number() }),
 	z.object({ type: z.literal("ready"), guildId: z.string(), daveVersion: z.number() }),
-	z.object({ type: z.literal("started"), guildId: z.string(), trackId: z.string() }),
-	z.object({ type: z.literal("finished"), guildId: z.string(), trackId: z.string() }),
-	z.object({ type: z.literal("starved"), guildId: z.string(), trackId: z.string() }),
-	z.object({ type: z.literal("layerStarted"), guildId: z.string(), layerId: z.string() }),
-	z.object({ type: z.literal("layerFinished"), guildId: z.string(), layerId: z.string() }),
-	z.object({ type: z.literal("layerStarved"), guildId: z.string(), layerId: z.string() }),
-	z.object({
-		type: z.literal("layerSwapped"),
-		guildId: z.string(),
-		layerId: z.string(),
-		trackId: z.string(),
-		positionMs: z.number(),
-		layerTrackId: z.string(),
-		layerPositionMs: z.number(),
-	}),
+	z.object({ type: z.literal("started"), guildId: z.string(), queueId: z.string(), trackId: z.string() }),
+	z.object({ type: z.literal("finished"), guildId: z.string(), queueId: z.string(), trackId: z.string() }),
+	z.object({ type: z.literal("starved"), guildId: z.string(), queueId: z.string(), trackId: z.string() }),
 	z.object({
 		type: z.literal("position"),
 		guildId: z.string(),
+		queueId: z.string(),
 		trackId: z.string(),
 		positionMs: z.number(),
 	}),
@@ -498,7 +493,7 @@ export function joinVoiceViaSidecar(
 			// Sent straight after connect rather than waiting for a ready
 			// event: the sidecar queues commands per guild, so this is applied
 			// before the first frame either way.
-			client.send({ type: "setFades", guildId: guild.id, ...fadeSettings() });
+			client.send({ type: "setFades", guildId: guild.id, queueId: null, ...fadeSettings() });
 			resolve();
 		}
 

@@ -3,6 +3,8 @@ import { getAudioPlayer } from "../../lib/voice/core";
 import type { Command } from "../../lib/interaction";
 import { languageText } from "../../lib/language";
 import { indexChoices } from "../../lib/autocompletePlan";
+import { queueOf, queueOption, respondQueues, typingQueue } from "../../lib/voice/queueOption";
+import { findQueue } from "../../lib/voice/queues";
 
 export default {
 	data: new SlashCommandBuilder()
@@ -15,13 +17,18 @@ export default {
 				.setMinValue(1)
 				.setRequired(true)
 				.setAutocomplete(true),
-		),
-	async autocomplete({ interaction, client }) {
+		)
+		.addIntegerOption(queueOption("The queue to remove it from, 1 if left empty")),
+	async autocomplete({ interaction, client, language }) {
+		if (typingQueue(interaction)) return respondQueues(interaction, client, language);
 		// Looked up directly: getAudioPlayer would also rebind the player's
 		// channel and language, which only a real command should do.
-		const player = interaction.guildId
-			? client.player.get(interaction.guildId)
-			: undefined;
+		const queue = queueOf(interaction) ?? 1;
+		const player = !interaction.guildId
+			? undefined
+			: queue === 1
+				? client.player.get(interaction.guildId)
+				: findQueue(interaction.guildId, queue);
 		// Cached titles only: Discord drops an answer that takes over three
 		// seconds, too short to look up every song in a long queue.
 		const labels = (player?.queue ?? []).map(
@@ -40,7 +47,7 @@ export default {
 			interaction.guildId,
 			interaction.channel,
 			language,
-			{ createPlayer: false },
+			{ createPlayer: false, queue: queueOf(interaction) },
 		);
 		const index = interaction.options.getInteger("index", true);
 		if (!player) {
