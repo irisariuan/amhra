@@ -33,6 +33,12 @@ From the repository root, with the training environment's Python
    this machine: play each clip, press `1` name, `2` chatter, `3` can't tell,
    or `enter` if the guess is right. Then run `screen.py` again, which keeps
    what you decided and rebuilds the members' test sets from it.
+
+   Copy `outcomes.tsv` and `near-misses.tsv` in with the clips, and
+   `screen.py` guesses from them before the transcript: a wake the bot found
+   a command after is the name (`outcome`), and so is a near miss just before
+   one (`repeat`). A near miss is in the same split as its wake; list it in
+   `train.tsv` or `test.tsv` as you would any clip.
 3. `training/wake/classifier/train.py`.
 4. `evaluate.py` for the spotter, with and without `--echo`, over the
    held-out takes with the evaluation negatives and over

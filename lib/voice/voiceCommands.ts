@@ -260,6 +260,9 @@ async function handleUtterance(
 		throw error;
 	}
 	const { intents, by, turns } = read;
+	// Labels the wake clip this followed, if the sidecar saved one: a name
+	// followed by a command is very likely the name.
+	sidecar().send({ type: "understood", guildId, userId, command: intents.length > 0 });
 	const waiting = await takeListening(guildId, userId);
 	// Only what the model read: the fallback has no answer to carry on from.
 	if (by === "model") memory.remember(key, [{ role: "user", content: text }, ...(turns ?? [])]);

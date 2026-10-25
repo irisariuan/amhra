@@ -29,7 +29,7 @@ use rustfft::{Fft, FftPlanner};
 use serde::Deserialize;
 use tract_onnx::prelude::*;
 
-use super::{Detection, ModelError, SAMPLE_RATE, Spotter, samples};
+use super::{Detection, ModelError, NEAR_MISS, NearMiss, SAMPLE_RATE, Spotter, samples};
 
 /// Mel bands per frame.
 pub const MELS: usize = 40;
@@ -269,13 +269,15 @@ pub struct ClassifierSpotter {
 	/// with.
 	made: usize,
 	window: Vec<f32>,
+	/// The best near miss in the last `accept`.
+	near: Option<NearMiss>,
 }
 
 impl ClassifierSpotter {
 	fn new(classifier: Arc<Classifier>) -> Self {
 		let frames = MelFrames::new(Arc::clone(&classifier.mel));
 		let mut spotter =
-			Self { classifier, frames, ring: vec![[0.0; MELS]; FRAMES], head: 0, made: 0, window: vec![0.0; MELS * FRAMES] };
+			Self { classifier, frames, ring: vec![[0.0; MELS]; FRAMES], head: 0, made: 0, window: vec![0.0; MELS * FRAMES], near: None };
 		spotter.reset();
 		spotter
 	}
@@ -301,19 +303,32 @@ impl ClassifierSpotter {
 impl Spotter for ClassifierSpotter {
 	fn accept(&mut self, samples: &[f32]) -> Option<Detection> {
 		self.frames.pending.extend_from_slice(samples);
+		self.near = None;
 		let mut frame = [0.0; MELS];
 		while self.frames.next(&mut frame) {
 			self.ring[self.head] = frame;
 			self.head = (self.head + 1) % FRAMES;
 			self.made += 1;
-			if (self.made - FRAMES).is_multiple_of(SCORE_HOP) && self.score() >= self.classifier.threshold {
-				return Some(Detection {
-					keyword: self.classifier.keyword.clone(),
-					lag: self.frames.beyond_last() + self.classifier.after,
-				});
+			if !(self.made - FRAMES).is_multiple_of(SCORE_HOP) {
+				continue;
+			}
+			// Every sample fed is already pending, so this counts back from
+			// the end of all of it, as a detection's lag does.
+			let lag = self.frames.beyond_last() + self.classifier.after;
+			let score = self.score();
+			if score >= self.classifier.threshold {
+				self.near = None;
+				return Some(Detection { keyword: self.classifier.keyword.clone(), lag });
+			}
+			if score >= NEAR_MISS && self.near.is_none_or(|near| score > near.score) {
+				self.near = Some(NearMiss { score, lag });
 			}
 		}
 		None
+	}
+
+	fn near_miss(&mut self) -> Option<NearMiss> {
+		self.near.take()
 	}
 
 	/// Back to the start of a stream: a window of silence, as if the speaker
@@ -323,6 +338,7 @@ impl Spotter for ClassifierSpotter {
 		self.head = 0;
 		self.made = FRAMES;
 		self.frames.start();
+		self.near = None;
 	}
 }
 

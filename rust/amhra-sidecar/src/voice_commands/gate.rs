@@ -27,6 +27,13 @@
 //! as though they had just said it, waiting [`GateConfig::follow_up_wait_ms`]
 //! for them to start.
 //!
+//! A spotter that scores what it hears, like the classifier, also says when
+//! it came close and did not wake ([`Spotter::near_miss`]). The gate keeps
+//! the audio of each near miss for [`GateConfig::near_miss_ms`], and if the
+//! same speaker then wakes it, hands the latest one out with the name
+//! ([`GateEvent::NearMiss`]): someone saying the name again because the first
+//! time went unheard is how the names a model misses can be collected.
+//!
 //! Whether anything was said after the name is decided on the audio after the
 //! keyword's end only. Counting the pre-roll would count the name itself as
 //! speech, and "Amhra" on its own would then be transcribed rather than time
@@ -34,7 +41,16 @@
 
 use std::collections::VecDeque;
 
-use super::{Detection, FRAME_SAMPLES, Spotter, Vad, samples};
+use super::{Detection, FRAME_SAMPLES, NearMiss, Spotter, Vad, samples};
+
+/// Near misses heard less than this apart are one attempt at the name, kept
+/// at its highest score.
+const ATTEMPT_GAP_MS: u32 = 300;
+/// A near miss whose end is closer than this to where the wake's name ended
+/// is that same name, scored on its way up to waking, not an earlier try.
+const SAME_NAME_MS: u32 = 500;
+/// The most near misses kept at once.
+const MAX_NEAR: usize = 4;
 
 /// Timings, in milliseconds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +89,10 @@ pub struct GateConfig {
 	/// after the bot answered them. Longer than after the name: they are
 	/// answering a question, not finishing a sentence.
 	pub follow_up_wait_ms: u32,
+	/// How long before a wake a near miss is kept for, to hand out with the
+	/// name as one the speaker probably had to repeat. Zero keeps none; only
+	/// with [`GateConfig::name_clip_ms`], whose length each is cut to.
+	pub near_miss_ms: u32,
 }
 
 impl Default for GateConfig {
@@ -87,6 +107,7 @@ impl Default for GateConfig {
 			max_lag_ms: 1500,
 			name_clip_ms: 0,
 			follow_up_wait_ms: 5000,
+			near_miss_ms: 0,
 		}
 	}
 }
@@ -104,6 +125,11 @@ pub enum GateEvent {
 	/// the spotter says it ended, and whatever had been heard after by the
 	/// time it said so. Sent straight after `Woke`, and only when asked for.
 	Name { keyword: String, samples: Vec<f32> },
+	/// The same speaker came close to waking it shortly before: the audio of
+	/// that near miss, cut as [`GateEvent::Name`] is, its score, and how many
+	/// samples before the name that woke it the near miss ended. Sent straight
+	/// after `Name`, and only when [`GateConfig::near_miss_ms`] asks.
+	NearMiss { keyword: String, samples: Vec<f32>, score: f32, before: usize },
 }
 
 /// A window of speech that followed the wake word.
@@ -144,6 +170,7 @@ struct Limits {
 	max_lag: usize,
 	name_clip: usize,
 	follow_up_wait: usize,
+	near_miss: usize,
 }
 
 impl Limits {
@@ -165,6 +192,7 @@ impl From<GateConfig> for Limits {
 			max_lag: samples(config.max_lag_ms),
 			name_clip: samples(config.name_clip_ms),
 			follow_up_wait: samples(config.follow_up_wait_ms),
+			near_miss: if config.name_clip_ms > 0 { samples(config.near_miss_ms) } else { 0 },
 		}
 	}
 }
@@ -179,6 +207,21 @@ pub struct Gate {
 	/// The window being built, once the name has been heard.
 	window: Vec<f32>,
 	state: State,
+	/// Samples heard while listening, ever: where in the stream things are.
+	heard: usize,
+	/// Recent near misses, oldest first.
+	near: VecDeque<Near>,
+}
+
+/// One attempt at the name that did not wake the spotter.
+#[derive(Debug)]
+struct Near {
+	samples: Vec<f32>,
+	score: f32,
+	/// Where in the stream its best-scoring name ended.
+	end: usize,
+	/// Where the last near miss counted in this attempt ended.
+	last: usize,
 }
 
 impl std::fmt::Debug for Gate {
@@ -201,6 +244,8 @@ impl Gate {
 			history: VecDeque::with_capacity(limits.history()),
 			window: Vec::new(),
 			state: State::Listening,
+			heard: 0,
+			near: VecDeque::new(),
 		}
 	}
 
@@ -234,8 +279,20 @@ impl Gate {
 		if self.history.len() > keep {
 			self.history.drain(..self.history.len() - keep);
 		}
+		self.heard += samples.len();
 
-		let Some(Detection { keyword, lag }) = self.spotter.accept(samples) else { return };
+		let Some(Detection { keyword, lag }) = self.spotter.accept(samples) else {
+			if self.limits.near_miss > 0 {
+				if let Some(near) = self.spotter.near_miss() {
+					self.keep_near(near);
+				}
+				let (heard, window) = (self.heard, self.limits.near_miss + self.limits.max_lag);
+				while self.near.front().is_some_and(|near| heard - near.end > window) {
+					self.near.pop_front();
+				}
+			}
+			return;
+		};
 		self.spotter.reset();
 		self.vad.reset();
 		events(GateEvent::Woke { keyword: keyword.clone() });
@@ -249,6 +306,12 @@ impl Gate {
 			let from = keyword_end.saturating_sub(self.limits.name_clip);
 			let samples = self.history.range(from..).copied().collect();
 			events(GateEvent::Name { keyword: keyword.clone(), samples });
+		}
+		let end = self.heard - lag;
+		let (same, window) = (super::samples(SAME_NAME_MS), self.limits.near_miss);
+		let earlier = self.near.drain(..).rev().find(|near| (same..=window).contains(&end.saturating_sub(near.end)));
+		if let Some(Near { samples, score, end: near_end, .. }) = earlier {
+			events(GateEvent::NearMiss { keyword: keyword.clone(), samples, score, before: end - near_end });
 		}
 		self.window.clear();
 		self.window.extend(self.history.range(start..));
@@ -270,6 +333,34 @@ impl Gate {
 		}
 	}
 
+	/// Remember a near miss: a new attempt at the name, or a better score for
+	/// the one under way.
+	fn keep_near(&mut self, NearMiss { score, lag }: NearMiss) {
+		let lag = lag.min(self.limits.max_lag).min(self.history.len());
+		let end = self.heard - lag;
+		let clip = |history: &VecDeque<f32>, name_clip: usize| {
+			let from = (history.len() - lag).saturating_sub(name_clip);
+			history.range(from..).copied().collect()
+		};
+		match self.near.back_mut() {
+			Some(near) if end.saturating_sub(near.last) <= samples(ATTEMPT_GAP_MS) => {
+				near.last = near.last.max(end);
+				if score > near.score {
+					near.samples = clip(&self.history, self.limits.name_clip);
+					near.score = score;
+					near.end = end;
+				}
+			}
+			_ => {
+				if self.near.len() == MAX_NEAR {
+					self.near.pop_front();
+				}
+				let samples = clip(&self.history, self.limits.name_clip);
+				self.near.push_back(Near { samples, score, end, last: end });
+			}
+		}
+	}
+
 	/// Listen for a command as though `keyword` had just been heard, waiting
 	/// the follow-up's time for it to start. Nothing, if a command is already
 	/// open: theirs is under way.
@@ -281,6 +372,8 @@ impl Gate {
 		self.vad.reset();
 		self.history.clear();
 		self.window.clear();
+		// Whatever came close before was not followed by the name.
+		self.near.clear();
 		self.state = State::Armed {
 			keyword: keyword.to_owned(),
 			wait: self.limits.follow_up_wait,
@@ -543,6 +636,138 @@ mod tests {
 		let name = &clip[samples(500)..samples(1000)];
 		assert!(name.iter().all(|&sample| sample >= LOUD), "the name sits before its end");
 		assert!(clip[..samples(500)].iter().all(|&sample| sample == 0.0));
+	}
+
+	/// A sample value that means "a near miss ends here", scored by how
+	/// many of them the frame holds, a tenth each.
+	const NEAR: f32 = 0.625;
+
+	/// [`FakeSpotter`], and near misses too.
+	struct NearSpotter {
+		lag: usize,
+		near: Option<NearMiss>,
+	}
+
+	impl Spotter for NearSpotter {
+		fn accept(&mut self, samples: &[f32]) -> Option<Detection> {
+			let count = samples.iter().filter(|&&sample| sample == NEAR).count();
+			self.near = (count > 0).then(|| NearMiss { score: count as f32 / 10.0, lag: self.lag });
+			samples.contains(&KEYWORD).then(|| Detection { keyword: "AMHRA".to_owned(), lag: self.lag })
+		}
+
+		fn near_miss(&mut self) -> Option<NearMiss> {
+			self.near.take()
+		}
+
+		fn reset(&mut self) {}
+	}
+
+	fn near_gate(near_miss_ms: u32) -> Gate {
+		let config = GateConfig { name_clip_ms: 1000, near_miss_ms, ..GateConfig::default() };
+		Gate::new(config, Box::new(NearSpotter { lag: samples(200), near: None }), Box::new(FakeVad))
+	}
+
+	/// A frame ending in a near miss scoring `tenths` tenths.
+	fn near_frame(tenths: usize) -> Vec<f32> {
+		let mut frame = vec![LOUD; FRAME_SAMPLES];
+		frame[FRAME_SAMPLES - tenths..].fill(NEAR);
+		frame
+	}
+
+	fn near_misses(events: &[GateEvent]) -> Vec<(usize, f32, usize)> {
+		events
+			.iter()
+			.filter_map(|event| match event {
+				GateEvent::NearMiss { samples, score, before, .. } => Some((samples.len(), *score, *before)),
+				_ => None,
+			})
+			.collect()
+	}
+
+	#[test]
+	fn a_near_miss_before_a_wake_is_handed_out_after_the_name() {
+		let mut gate = near_gate(8000);
+		let mut audio = frames(0.0, 100);
+		audio.push(near_frame(3)); // the first try, unheard
+		audio.extend(frames(0.0, 99)); // two seconds on…
+		audio.push(keyword_frame()); // …the second, heard
+		let events = feed(&mut gate, &audio);
+
+		assert!(matches!(events[1], GateEvent::Name { .. }), "{events:?}");
+		assert!(matches!(events[2], GateEvent::NearMiss { .. }), "{events:?}");
+		// Cut as the name is: a second before it ended, and the 200ms after.
+		assert_eq!(near_misses(&events), vec![(samples(1000) + samples(200), 0.3, samples(2000))]);
+	}
+
+	#[test]
+	fn one_try_is_one_near_miss_at_its_best_score() {
+		let mut gate = near_gate(8000);
+		let mut audio = frames(0.0, 100);
+		audio.extend([near_frame(2), near_frame(5), near_frame(3)]);
+		audio.extend(frames(0.0, 50));
+		audio.push(keyword_frame());
+		let events = feed(&mut gate, &audio);
+		// The 0.5, ending 1040ms before the name that woke it.
+		assert_eq!(near_misses(&events), vec![(samples(1200), 0.5, samples(1040))]);
+	}
+
+	#[test]
+	fn the_latest_try_is_the_one_handed_out() {
+		let mut gate = near_gate(8000);
+		let mut audio = frames(0.0, 100);
+		audio.push(near_frame(6));
+		audio.extend(frames(0.0, 50));
+		audio.push(near_frame(2));
+		audio.extend(frames(0.0, 50));
+		audio.push(keyword_frame());
+		let events = feed(&mut gate, &audio);
+		assert_eq!(near_misses(&events), vec![(samples(1200), 0.2, samples(1020))]);
+	}
+
+	#[test]
+	fn the_wakes_own_name_on_its_way_up_is_not_a_near_miss() {
+		let mut gate = near_gate(8000);
+		let mut audio = frames(0.0, 100);
+		audio.extend([near_frame(4), near_frame(8)]);
+		audio.push(keyword_frame());
+		let events = feed(&mut gate, &audio);
+		assert!(near_misses(&events).is_empty(), "{events:?}");
+	}
+
+	#[test]
+	fn a_near_miss_long_before_the_wake_is_forgotten() {
+		let mut gate = near_gate(3000);
+		let mut audio = frames(0.0, 100);
+		audio.push(near_frame(5));
+		audio.extend(frames(0.0, 200)); // four seconds
+		audio.push(keyword_frame());
+		let events = feed(&mut gate, &audio);
+		assert!(near_misses(&events).is_empty(), "{events:?}");
+		assert!(gate.near.is_empty(), "nothing kept past the window");
+	}
+
+	#[test]
+	fn a_wake_takes_its_near_miss_with_it() {
+		let mut gate = near_gate(8000);
+		let mut audio = frames(0.0, 100);
+		audio.push(near_frame(5));
+		audio.extend(frames(0.0, 50));
+		audio.push(keyword_frame());
+		let mut events = feed(&mut gate, &audio);
+		events.extend(feed(&mut gate, &frames(0.0, 2500 / MS_PER_FRAME)));
+		events.extend(feed(&mut gate, &[keyword_frame()]));
+		assert_eq!(near_misses(&events).len(), 1, "{events:?}");
+	}
+
+	#[test]
+	fn no_near_misses_unless_asked() {
+		let mut gate = near_gate(0);
+		let mut audio = frames(0.0, 100);
+		audio.push(near_frame(5));
+		audio.extend(frames(0.0, 50));
+		audio.push(keyword_frame());
+		let events = feed(&mut gate, &audio);
+		assert!(near_misses(&events).is_empty(), "{events:?}");
 	}
 
 	#[test]

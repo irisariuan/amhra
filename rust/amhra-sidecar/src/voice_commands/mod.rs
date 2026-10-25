@@ -56,10 +56,31 @@ pub struct Detection {
 	pub lag: usize,
 }
 
+/// A wake word almost found: scored above [`NEAR_MISS`] but below waking.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NearMiss {
+	pub score: f32,
+	/// As [`Detection::lag`]: how long ago, in samples, the name would have
+	/// ended.
+	pub lag: usize,
+}
+
+/// The score from which a sound that did not wake counts as a near miss. The
+/// names the classifier missed in other members' voices scored 0.00 to 0.56;
+/// a near miss is kept only if the same speaker wakes soon after, so this can
+/// sit low.
+pub const NEAR_MISS: f32 = 0.2;
+
 /// A streaming wake-word detector for one speaker.
 pub trait Spotter: Send {
 	/// Hear more audio. Returns a detection if a keyword completed in it.
 	fn accept(&mut self, samples: &[f32]) -> Option<Detection>;
+	/// The closest it came to waking in the last [`Spotter::accept`] that did
+	/// not wake, if that was a near miss. A spotter with no score below its
+	/// threshold to give, like sherpa's, has none.
+	fn near_miss(&mut self) -> Option<NearMiss> {
+		None
+	}
 	/// Forget everything heard so far, so a keyword already reported is not
 	/// reported again.
 	fn reset(&mut self);

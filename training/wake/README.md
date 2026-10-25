@@ -64,6 +64,17 @@ Run from the repository root.
    `training/wake/work/data/real/`, appending their lines to `train.tsv`, or
    to `test.tsv` for a speaker you want held out.
 
+   Beside them, `outcomes.tsv` says what came of each wake: `command` (the
+   bot found one in what followed, so it was very likely the name),
+   `no-command`, `silent` or `unintelligible` (where most false wakes end,
+   but so does a name said and then thought better of). With the wake
+   classifier, the same folder also gets near misses: a try at the name it
+   scored above 0.2 without waking, kept when the same speaker woke it within
+   8 seconds after, as `<wake>-near.wav`, listed in `near-misses.tsv` with
+   its wake, score and how long before it was. Those are the takes the model
+   misses, from the people it misses them for. Both are guesses to listen
+   to, not labels.
+
 3. **Synthesised speech and general English.**
 
    ```bash
