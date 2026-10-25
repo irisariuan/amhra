@@ -176,6 +176,11 @@ pub enum Command {
 	/// it: stop the waiting sound for them. Harmless if it already stopped.
 	#[serde(rename_all = "camelCase")]
 	Settle { guild_id: String, user_id: String },
+	/// What the bot made of a member's last `Utterance`: whether it found a
+	/// command in it. Only used to label the wake saved with `--wake-clips`;
+	/// ignored otherwise, and for an utterance that was not after the name.
+	#[serde(rename_all = "camelCase")]
+	Understood { guild_id: String, user_id: String, command: bool },
 	/// Have these phrases ready, so saying them never waits on the model:
 	/// what is not yet saved is synthesised in the background, once.
 	#[serde(rename_all = "camelCase")]
@@ -327,7 +332,8 @@ impl Command {
 			| Self::SetFades { guild_id, .. }
 			| Self::SetListen { guild_id, .. }
 			| Self::Speak { guild_id, .. }
-			| Self::Settle { guild_id, .. } => Some(guild_id),
+			| Self::Settle { guild_id, .. }
+			| Self::Understood { guild_id, .. } => Some(guild_id),
 			Self::SetTimings { .. } | Self::PrepareSpeech { .. } | Self::ListSessions | Self::Shutdown => None,
 		}
 	}

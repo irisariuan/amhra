@@ -49,6 +49,9 @@ pub enum Notice {
 	Woke { guild_id: String, user_id: u64, keyword: String },
 	/// The audio the wake word was heard in, when the gate was asked for it.
 	Name { guild_id: String, user_id: u64, keyword: String, samples: Vec<f32> },
+	/// The audio of a near miss the same speaker had `before_ms` before the
+	/// name that woke it, as the gate hands it out. Follows `Name`.
+	NearMiss { guild_id: String, user_id: u64, samples: Vec<f32>, score: f32, before_ms: u32 },
 	/// …and then nothing.
 	TimedOut { guild_id: String, user_id: u64, keyword: String },
 	/// What followed it has been taken down and is being recognised. An
@@ -72,6 +75,9 @@ pub enum Notice {
 	/// Speech after the name that the recogniser made nothing of, or failed
 	/// on (reported as `Failed` first).
 	Unintelligible { guild_id: String, user_id: u64, keyword: String },
+	/// What the bot made of their last `Utterance`: whether it found a
+	/// command in it. Passed on from the bot by [`Engine::understood`].
+	Understood { guild_id: String, user_id: u64, command: bool },
 	/// Work shed because a queue was full.
 	Dropped { guild_id: String, what: &'static str, count: u64 },
 	Failed { guild_id: String, message: String },
@@ -162,6 +168,12 @@ impl Engine {
 		if let Some(gate) = self.controls.lock().ok().and_then(|map| map.get(guild_id).cloned()) {
 			let _ = gate.send(Control::FollowUp(user_id));
 		}
+	}
+
+	/// The bot has read what `user_id` said after the name, and found a
+	/// command in it or not. Only reported on, for labelling the wake.
+	pub fn understood(&self, guild_id: &str, user_id: u64, command: bool) {
+		(self.report)(Notice::Understood { guild_id: guild_id.to_owned(), user_id, command });
 	}
 
 	/// The timings gates start with now.
@@ -264,6 +276,9 @@ fn handle(
 		GateEvent::TimedOut { keyword } => report(Notice::TimedOut { guild_id, user_id, keyword }),
 		GateEvent::Name { keyword, samples } => {
 			report(Notice::Name { guild_id, user_id, keyword, samples })
+		}
+		GateEvent::NearMiss { samples, score, before, .. } => {
+			report(Notice::NearMiss { guild_id, user_id, samples, score, before_ms: milliseconds(before) })
 		}
 		GateEvent::Captured(capture) => {
 			let since = Duration::from_millis(milliseconds(capture.since_speech).into());

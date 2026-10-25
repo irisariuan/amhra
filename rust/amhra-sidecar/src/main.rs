@@ -53,7 +53,9 @@
 //!   `--wake-model` are then unused;
 //! - `--wake-clips <dir>`: save the second or so of audio each wake was heard
 //!   in, for retraining the spotter (see `voice_commands::clips`), at most
-//!   `--wake-clips-max <n>` of them, default 2000;
+//!   `--wake-clips-max <n>` of them, default 2000, with what came of each
+//!   wake and, with the classifier, the near misses the speaker had just
+//!   before it;
 //! - `--wake-chime`: chime in the call when the name is heard, chime again
 //!   when what follows has been taken down, and sound softly every two
 //!   seconds until the bot answers (see `wake_feedback`);
@@ -107,6 +109,12 @@ use amhra_voice::{Opener, Session, VoiceUdp};
 /// name is about half a second; the rest is context, as the training cuts have.
 #[cfg(feature = "voice-commands")]
 const WAKE_CLIP_MS: u32 = 1000;
+
+/// How long before a wake a near miss counts as a try at the name the
+/// speaker then had to repeat, for `--wake-clips`. Long enough to wait for a
+/// chime that never came and say it again.
+#[cfg(feature = "voice-commands")]
+const NEAR_MISS_MS: u32 = 8000;
 
 /// How often the gateway task checks whether the audio thread wants the
 /// speaking flag changed. The flag is a courtesy to the client's UI, not part
@@ -545,6 +553,11 @@ async fn dispatch(
 				settle(guilds, &guild_id, user_id);
 			}
 		}
+		Command::Understood { guild_id, user_id, command } => {
+			if let (Some(engine), Ok(user_id)) = (voice, user_id.parse()) {
+				engine.understood(&guild_id, user_id, command);
+			}
+		}
 		Command::PrepareSpeech { phrases } => {
 			for phrase in phrases {
 				if let Some(speech) = speech {
@@ -936,7 +949,7 @@ fn voice_sink(engine: &Engine, events: &Sender<Event>, guild_id: &str) -> VoiceS
 /// connects.
 #[cfg(feature = "voice-commands")]
 fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc<Engine>> {
-	use amhra_sidecar::voice_commands::clips::ClipStore;
+	use amhra_sidecar::voice_commands::clips::{ClipStore, Outcome};
 	use amhra_sidecar::voice_commands::engine::Notice;
 	use amhra_sidecar::voice_commands::gate::GateConfig;
 	use amhra_sidecar::voice_commands::sherpa::{self, SherpaConfig};
@@ -1006,6 +1019,7 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 		end_silence_ms: ms("--end-silence-ms", defaults.end_silence_ms),
 		max_capture_ms: ms("--max-capture-ms", defaults.max_capture_ms),
 		name_clip_ms: if clips.is_some() { WAKE_CLIP_MS } else { 0 },
+		near_miss_ms: if clips.is_some() { NEAR_MISS_MS } else { 0 },
 		..defaults
 	};
 	if let Some(clips) = &clips {
@@ -1047,6 +1061,7 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 		}
 		Notice::TimedOut { guild_id, user_id, keyword } => {
 			eprintln!("[{guild_id}] voice: {user_id} said {keyword} and nothing after it");
+			note_outcome(clips.as_ref(), &guild_id, user_id, Some(&keyword), Outcome::Silent);
 			tell(&guild_id, WorkerCommand::Heard);
 			tell(&guild_id, WorkerCommand::Closed { chime });
 			let _ = events.send(Event::NothingHeard { guild_id, user_id: user_id.to_string() });
@@ -1062,12 +1077,28 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 				Err(error) => eprintln!("[{guild_id}] voice: could not save a wake clip: {error}"),
 			}
 		}
+		Notice::NearMiss { guild_id, user_id, samples, score, before_ms } => {
+			let Some(Ok(mut clips)) = clips.as_ref().map(Mutex::lock) else { return };
+			match clips.save_near_miss(&guild_id, user_id, &samples, score, before_ms) {
+				Ok(Some(path)) => eprintln!(
+					"[{guild_id}] voice: saved a near miss ({score:.2}, {before_ms}ms before the wake) {}",
+					path.display()
+				),
+				Ok(None) => {}
+				Err(error) => eprintln!("[{guild_id}] voice: could not save a near miss: {error}"),
+			}
+		}
+		Notice::Understood { guild_id, user_id, command } => {
+			let outcome = if command { Outcome::Command } else { Outcome::NoCommand };
+			note_outcome(clips.as_ref(), &guild_id, user_id, None, outcome);
+		}
 		Notice::Captured { guild_id, user_id, .. } => {
 			tell(&guild_id, WorkerCommand::Captured { user_id, chime, duck });
 			let _ = events.send(Event::Captured { guild_id, user_id: user_id.to_string() });
 		}
 		Notice::Unintelligible { guild_id, user_id, keyword } => {
 			eprintln!("[{guild_id}] voice: {user_id} said {keyword}, then nothing recognisable");
+			note_outcome(clips.as_ref(), &guild_id, user_id, Some(&keyword), Outcome::Unintelligible);
 			tell(&guild_id, WorkerCommand::Heard);
 			tell(&guild_id, WorkerCommand::Settled { user_id });
 			let _ = events.send(Event::NothingHeard { guild_id, user_id: user_id.to_string() });
@@ -1095,6 +1126,25 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 			eprintln!("voice commands are off: could not start the recogniser: {error}");
 			None
 		}
+	}
+}
+
+/// Note what came of `user_id`'s last saved wake, if clips are being saved.
+/// What comes of a follow-up is not a wake's, and is not noted.
+#[cfg(feature = "voice-commands")]
+fn note_outcome(
+	clips: Option<&Mutex<amhra_sidecar::voice_commands::clips::ClipStore>>,
+	guild_id: &str,
+	user_id: u64,
+	keyword: Option<&str>,
+	outcome: amhra_sidecar::voice_commands::clips::Outcome,
+) {
+	if keyword == Some(amhra_sidecar::voice_commands::engine::FOLLOW_UP) {
+		return;
+	}
+	let Some(Ok(mut clips)) = clips.map(Mutex::lock) else { return };
+	if let Err(error) = clips.outcome(guild_id, user_id, outcome) {
+		eprintln!("[{guild_id}] voice: could not note what came of a wake: {error}");
 	}
 }
 

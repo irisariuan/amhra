@@ -47,9 +47,11 @@ def load():
 
 
 def yours():
-	"""Your own clips: the ones collected/train.tsv lists."""
+	"""Your own clips: the ones collected/train.tsv lists, and the near
+	misses saved beside them."""
 	lines = (COLLECTED / "train.tsv").read_text(encoding="utf-8").splitlines()
-	return {line.split("\t", 1)[0] for line in lines if line.strip()}
+	listed = {line.split("\t", 1)[0] for line in lines if line.strip()}
+	return listed | {file.removesuffix(".wav") + "-near.wav" for file in listed}
 
 
 def save(rows):
@@ -170,7 +172,7 @@ main { max-width: 900px; margin: 0 auto; padding: 12px 16px 80px; }
 		</select></label>
 		<label>Speaker <select id="who"><option value="">everyone</option></select></label>
 	</div>
-	<div class="keys"><kbd>space</kbd> play · <kbd>1</kbd> name · <kbd>2</kbd> chatter · <kbd>3</kbd> can't tell · <kbd>enter</kbd> guess is right · <kbd>↑</kbd><kbd>↓</kbd> move. Each clip is the second before the name ended and a little after. Dashed = guessed from the transcript; solid = heard by you.</div>
+	<div class="keys"><kbd>space</kbd> play · <kbd>1</kbd> name · <kbd>2</kbd> chatter · <kbd>3</kbd> can't tell · <kbd>enter</kbd> guess is right · <kbd>↑</kbd><kbd>↓</kbd> move. Each clip is the second before the name ended and a little after. Dashed = guessed, from the transcript or what came of the wake; solid = heard by you. A clip ending -near is a try the classifier did not wake on, just before the speaker woke it.</div>
 </header>
 <main id="list"></main>
 <audio id="player" preload="auto"></audio>

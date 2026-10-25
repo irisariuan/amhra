@@ -20,6 +20,16 @@ review.py. It is a screen by text, not by ear: the labels are a best guess,
 marked `screen` in the last column. A label someone gave by ear is marked
 `ear` and is kept when this runs again.
 
+What the sidecar noted beside the clips comes before the transcript, if
+outcomes.tsv and near-misses.tsv were copied in with them:
+
+- a wake the bot found a command after is the name, marked `outcome`;
+- a near miss (`…-near.wav`, a try the classifier did not wake on) just
+  before such a wake is the name too, marked `repeat`: the speaker said it
+  again because it went unheard.
+
+Both are still guesses, shown as such in review.py.
+
 It also lays out the other members' clips for evaluate.py and score.py:
 work/data/members-name/ and work/data/members-chatter/, each with a test.tsv.
 """
@@ -46,9 +56,11 @@ def rules():
 
 
 def yours():
-	"""The clips that are yours: the ones collected/train.tsv lists."""
+	"""The clips that are yours: the ones collected/train.tsv lists, and the near
+	misses saved beside them."""
 	lines = (COLLECTED / "train.tsv").read_text(encoding="utf-8").splitlines()
-	return {line.split("\t", 1)[0] for line in lines if line.strip()}
+	listed = {line.split("\t", 1)[0] for line in lines if line.strip()}
+	return listed | {file.removesuffix(".wav") + "-near.wav" for file in listed}
 
 
 def label(text, lang, listed):
@@ -56,6 +68,27 @@ def label(text, lang, listed):
 	name if the recogniser heard English, which is how it mostly hears the
 	name, and unclear if not."""
 	return listed.get(text, "name" if lang == "en" else "unclear")
+
+
+def sidecar_notes():
+	"""Labels from what the sidecar noted, by file: `outcome` for wakes the bot
+	found a command after, `repeat` for the near misses before them."""
+	outcomes = COLLECTED / "outcomes.tsv"
+	if not outcomes.exists():
+		return {}
+	commanded = set()
+	for line in outcomes.read_text(encoding="utf-8").splitlines():
+		file, outcome = line.split("\t")[:2]
+		if outcome == "command":
+			commanded.add(file)
+	notes = {file: "outcome" for file in commanded}
+	near = COLLECTED / "near-misses.tsv"
+	if near.exists():
+		for line in near.read_text(encoding="utf-8").splitlines():
+			file, wake = line.split("\t")[:2]
+			if wake in commanded:
+				notes[file] = "repeat"
+	return notes
 
 
 def by_ear():
@@ -73,6 +106,7 @@ def by_ear():
 
 def main():
 	heard = by_ear()
+	noted = sidecar_notes()
 	listed = rules()
 	mine = yours()
 	rows = []
@@ -82,6 +116,8 @@ def main():
 			continue
 		if file in heard:
 			rows.append((file, file.split("-")[1], lang, text, heard[file], "ear"))
+		elif file in noted:
+			rows.append((file, file.split("-")[1], lang, text, "name", noted[file]))
 		else:
 			rows.append((file, file.split("-")[1], lang, text, label(text, lang, listed), "screen"))
 	with (COLLECTED / "review.tsv").open("w", encoding="utf-8") as out:
