@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fetch the models voice commands need into models/voice (gitignored).
 #
-#   scripts/download-voice-models.sh [--speech] [target dir]
+#   scripts/download-voice-models.sh [--speech] [--whisper-v3-turbo] [target dir]
 #
 # Idempotent: anything already in place is left alone, so rerunning after a
 # partial download only fetches what is missing. About 1.2GB to download and
@@ -13,10 +13,15 @@
 set -euo pipefail
 
 SPEECH=0
-if [[ "${1:-}" == "--speech" ]]; then
-	SPEECH=1
+WHISPER=0
+while [[ "${1:-}" == --* ]]; do
+	case "$1" in
+		--speech) SPEECH=1 ;;
+		--whisper-v3-turbo) WHISPER=1 ;;
+		*) echo "unknown option: $1" >&2; exit 1 ;;
+	esac
 	shift
-fi
+done
 TARGET="${1:-models/voice}"
 RELEASES="https://github.com/k2-fsa/sherpa-onnx/releases/download"
 
@@ -36,6 +41,10 @@ QWEN3="sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25"
 QWEN3_FILES=(conv_frontend.onnx encoder.int8.onnx decoder.int8.onnx
 	tokenizer/vocab.json tokenizer/merges.txt tokenizer/tokenizer_config.json)
 HUGGING_FACE="https://huggingface.co/csukuangfj2"
+# Optional Whisper large-v3-turbo, int8: about 1GB extra. The encoder's
+# full-precision export uses external weights; these int8 files are standalone.
+WHISPER_TURBO="sherpa-onnx-whisper-turbo"
+WHISPER_FILES=(turbo-encoder.int8.onnx turbo-decoder.int8.onnx turbo-tokens.txt)
 # End of speech.
 VAD="silero_vad.onnx"
 # Speech, for answering aloud (see the sidecar's speech::models). English,
@@ -92,6 +101,19 @@ else
 		download "$HUGGING_FACE/$QWEN3/resolve/main/$file" ".staging.$QWEN3/$file"
 	done
 	mv ".staging.$QWEN3" "$QWEN3"
+fi
+
+if [[ "$WHISPER" == 1 ]]; then
+	if [[ -d "$WHISPER_TURBO" ]]; then
+		echo "have $WHISPER_TURBO"
+	else
+		echo "fetching $WHISPER_TURBO"
+		mkdir -p ".staging.$WHISPER_TURBO"
+		for file in "${WHISPER_FILES[@]}"; do
+			download "https://huggingface.co/csukuangfj/$WHISPER_TURBO/resolve/main/$file" ".staging.$WHISPER_TURBO/$file"
+		done
+		mv ".staging.$WHISPER_TURBO" "$WHISPER_TURBO"
+	fi
 fi
 
 if [[ -f "$VAD" ]]; then

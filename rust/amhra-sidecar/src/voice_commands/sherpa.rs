@@ -4,7 +4,7 @@
 //!   (GigaSpeech). One spotter for the process, one stream per speaker.
 //! - **End of speech:** Silero VAD, one small instance per speaker.
 //! - **Speech to text:** Qwen3-ASR 0.6B, int8, by default; or SenseVoice-Small
-//!   (FunASR), int8, a quarter of its size (see [`Recogniser`]). Either way
+//!   (FunASR), int8; or Whisper large-v3-turbo, int8 (see [`Recogniser`]). All
 //!   with the language worked out per window.
 //!
 //! The keyword spotter and the VAD go through the `sherpa-onnx` crate's safe
@@ -39,6 +39,7 @@ const KWS_DIR: &str = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01";
 const KWS_STEM: &str = "epoch-12-avg-2-chunk-16-left-64.int8.onnx";
 const STT_DIR: &str = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17";
 const QWEN3_DIR: &str = "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25";
+const WHISPER_TURBO_DIR: &str = "sherpa-onnx-whisper-turbo";
 const VAD_FILE: &str = "silero_vad.onnx";
 
 /// Tunables, with the values the defaults were measured at.
@@ -122,6 +123,8 @@ pub enum Recogniser {
 	/// SenseVoice-Small (FunASR), int8: a non-autoregressive model of about
 	/// 230MB in five languages, for machines Qwen3-ASR is too big for.
 	SenseVoice,
+	/// Whisper large-v3-turbo, with int8 encoder and decoder.
+	WhisperTurbo,
 }
 
 impl Recogniser {
@@ -129,6 +132,7 @@ impl Recogniser {
 		match name.to_ascii_lowercase().as_str() {
 			"qwen3" | "qwen3-asr" => Some(Self::Qwen3),
 			"sensevoice" | "sense-voice" => Some(Self::SenseVoice),
+			"whisper-v3-turbo" | "whisper-large-v3-turbo" | "whisper-turbo" => Some(Self::WhisperTurbo),
 			_ => None,
 		}
 	}
@@ -138,6 +142,7 @@ impl Recogniser {
 		match self {
 			Self::Qwen3 => "qwen3",
 			Self::SenseVoice => "sensevoice",
+			Self::WhisperTurbo => "whisper-v3-turbo",
 		}
 	}
 }
@@ -226,6 +231,9 @@ pub struct ModelPaths {
 	pub qwen3_decoder: PathBuf,
 	/// A directory: `vocab.json`, `merges.txt` and `tokenizer_config.json`.
 	pub qwen3_tokenizer: PathBuf,
+	pub whisper_encoder: PathBuf,
+	pub whisper_decoder: PathBuf,
+	pub whisper_tokens: PathBuf,
 }
 
 impl ModelPaths {
@@ -233,6 +241,7 @@ impl ModelPaths {
 		let kws = dir.join(KWS_DIR);
 		let stt = dir.join(STT_DIR);
 		let qwen3 = dir.join(QWEN3_DIR);
+		let whisper = dir.join(WHISPER_TURBO_DIR);
 		Self {
 			kws_encoder: kws.join(format!("encoder-{KWS_STEM}")),
 			kws_decoder: kws.join(format!("decoder-{KWS_STEM}")),
@@ -246,6 +255,9 @@ impl ModelPaths {
 			qwen3_encoder: qwen3.join("encoder.int8.onnx"),
 			qwen3_decoder: qwen3.join("decoder.int8.onnx"),
 			qwen3_tokenizer: qwen3.join("tokenizer"),
+			whisper_encoder: whisper.join("turbo-encoder.int8.onnx"),
+			whisper_decoder: whisper.join("turbo-decoder.int8.onnx"),
+			whisper_tokens: whisper.join("turbo-tokens.txt"),
 		}
 	}
 
@@ -273,6 +285,9 @@ impl ModelPaths {
 	fn recogniser_files(&self, recogniser: Recogniser) -> Vec<PathBuf> {
 		match recogniser {
 			Recogniser::SenseVoice => vec![self.stt_model.clone(), self.stt_tokens.clone()],
+			Recogniser::WhisperTurbo => {
+				vec![self.whisper_encoder.clone(), self.whisper_decoder.clone(), self.whisper_tokens.clone()]
+			}
 			Recogniser::Qwen3 => {
 				let mut files = vec![self.qwen3_conv_frontend.clone(), self.qwen3_encoder.clone(), self.qwen3_decoder.clone()];
 				files.extend(
@@ -546,6 +561,7 @@ impl OfflineRecogniser {
 		let what = match model {
 			Recogniser::Qwen3 => "Qwen3-ASR",
 			Recogniser::SenseVoice => "SenseVoice",
+			Recogniser::WhisperTurbo => "Whisper large-v3-turbo",
 		};
 		let cstring = |text: String| {
 			CString::new(text).map_err(|_| ModelError::Load { what, reason: "a path contains a NUL byte".to_owned() })
@@ -563,6 +579,16 @@ impl OfflineRecogniser {
 		let mut strings = Vec::new();
 		let mut pinned = None;
 		match model {
+			Recogniser::WhisperTurbo => {
+				strings.extend([
+					path(&paths.whisper_encoder)?,
+					path(&paths.whisper_decoder)?,
+					path(&paths.whisper_tokens)?,
+					// Whisper uses an empty language for automatic detection.
+					cstring(if language == "auto" { "" } else { language }.to_owned())?,
+					cstring("transcribe".to_owned())?,
+				]);
+			}
 			Recogniser::SenseVoice => {
 				strings.extend([path(&paths.stt_model)?, path(&paths.stt_tokens)?, cstring(language.to_owned())?]);
 			}
@@ -589,6 +615,17 @@ impl OfflineRecogniser {
 			let mut config: sys::OfflineRecognizerConfig = std::mem::zeroed();
 			config.feat_config.sample_rate = SAMPLE_RATE as i32;
 			match model {
+				Recogniser::WhisperTurbo => {
+					config.feat_config.feature_dim = 128;
+					let whisper = &mut config.model_config.whisper;
+					whisper.encoder = strings[0].as_ptr();
+					whisper.decoder = strings[1].as_ptr();
+					config.model_config.tokens = strings[2].as_ptr();
+					whisper.language = strings[3].as_ptr();
+					whisper.task = strings[4].as_ptr();
+					// Recommended tail padding for multilingual Whisper models.
+					whisper.tail_paddings = 300;
+				}
 				Recogniser::SenseVoice => {
 					config.feat_config.feature_dim = 80;
 					config.model_config.sense_voice.model = strings[0].as_ptr();
@@ -743,6 +780,53 @@ fn parse_result(json: &str) -> Result<Transcript, ModelError> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn whisper_turbo_names_select_the_same_model() {
+		for name in ["whisper-v3-turbo", "whisper-large-v3-turbo", "WHISPER-TURBO"] {
+			assert_eq!(Recogniser::parse(name), Some(Recogniser::WhisperTurbo));
+		}
+		assert_eq!(Recogniser::WhisperTurbo.name(), "whisper-v3-turbo");
+		assert_eq!(Recogniser::default(), Recogniser::Qwen3);
+		assert_eq!(Recogniser::parse("whisper-v3"), None);
+	}
+
+	#[test]
+	fn whisper_requires_only_its_own_recognition_files() {
+		let dir = std::env::temp_dir().join(format!("amhra-whisper-paths-{}", std::process::id()));
+		let paths = ModelPaths::under(&dir);
+		let files = paths.recogniser_files(Recogniser::WhisperTurbo);
+		assert_eq!(
+			files,
+			vec![
+				dir.join(WHISPER_TURBO_DIR).join("turbo-encoder.int8.onnx"),
+				dir.join(WHISPER_TURBO_DIR).join("turbo-decoder.int8.onnx"),
+				dir.join(WHISPER_TURBO_DIR).join("turbo-tokens.txt"),
+			]
+		);
+		std::fs::create_dir_all(dir.join(WHISPER_TURBO_DIR)).unwrap();
+		std::fs::write(&paths.vad, []).unwrap();
+		for file in &files {
+			std::fs::write(file, []).unwrap();
+		}
+		assert!(paths.check(false, Recogniser::WhisperTurbo).is_ok());
+		assert!(paths.check(false, Recogniser::Qwen3).is_err());
+		assert!(paths.check(false, Recogniser::SenseVoice).is_err());
+		std::fs::remove_file(&paths.whisper_decoder).unwrap();
+		assert!(matches!(
+			paths.check(false, Recogniser::WhisperTurbo),
+			Err(ModelError::Missing(path)) if path == paths.whisper_decoder
+		));
+		std::fs::remove_dir_all(dir).unwrap();
+	}
+
+	#[test]
+	fn whisper_language_codes_are_preserved() {
+		for lang in LANGUAGES {
+			let json = format!(r#"{{"lang":"{lang}","text":"test"}}"#);
+			assert_eq!(parse_result(&json).unwrap().lang.as_deref(), Some(lang));
+		}
+	}
 
 	#[test]
 	fn the_language_tag_is_unwrapped() {

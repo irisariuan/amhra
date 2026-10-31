@@ -323,6 +323,9 @@ describe("sidecar flags", () => {
 	test("the recogniser is the sidecar's default unless set", () => {
 		const allowed = { ...base, VOICE_COMMANDS: true };
 		expect(voiceCommandArgs(allowed)).not.toContain("--recogniser");
+		expect(voiceCommandArgs({ ...allowed, VOICE_RECOGNISER: "whisper-v3-turbo" }).join(" ")).toContain(
+			"--recogniser whisper-v3-turbo",
+		);
 		expect(voiceCommandArgs({ ...allowed, VOICE_RECOGNISER: "sensevoice" }).join(" ")).toContain(
 			"--recogniser sensevoice",
 		);

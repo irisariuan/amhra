@@ -41,6 +41,25 @@ Reference `data/settingSchema.json` for more options
 
 If you want to limit API usage, you may enable rate limit for the `ENABLE_RATE_LIMIT` option
 
+### Whisper large-v3-turbo for voice commands
+
+Build the sidecar with voice commands enabled, then download the optional int8
+Whisper model (about 1GB):
+
+```sh
+cargo build --release --manifest-path rust/Cargo.toml --features voice-commands
+scripts/download-voice-models.sh --whisper-v3-turbo
+```
+
+Set `VOICE_RECOGNISER` to `"whisper-v3-turbo"` in `data/setting.json` and restart
+the bot. Voice commands require `USE_RUST_VOICE` and `VOICE_COMMANDS` to be enabled.
+`VOICE_LANGUAGE` supports `auto`, `en`, `zh`, `ja`, `ko`, or `yue`;
+Whisper transcribes in the source language. The existing recogniser thread and
+provider settings also apply. Qwen3 remains the default.
+
+For the sidecar directly, use `--recogniser whisper-v3-turbo`. The download flag
+can be combined with `--speech` to include the models for spoken answers.
+
 ### Misc
 This project is built with [Amhra Dashboard](https://github.com/irisariuan/amhraDashboard), make sure you check out the dashboard there!
 

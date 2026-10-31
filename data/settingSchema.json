@@ -215,10 +215,11 @@
    "type": "string",
    "enum": [
     "qwen3",
-    "sensevoice"
+    "sensevoice",
+    "whisper-v3-turbo"
    ],
    "default": "qwen3",
-   "description": "The speech recogniser. qwen3 is Qwen3-ASR 0.6B, in 30 languages, but the sidecar then holds about 1.05GB, up to 1.65GB in use, and each command takes about seven times as long. sensevoice is SenseVoice-Small, in five languages and about 600MB, for small machines like a Raspberry Pi. Restart to apply"
+   "description": "The speech recogniser. qwen3 is Qwen3-ASR 0.6B, in 30 languages, but the sidecar then holds about 1.05GB, up to 1.65GB in use, and each command takes about seven times as long. sensevoice is SenseVoice-Small, in five languages and about 600MB, for small machines like a Raspberry Pi. whisper-v3-turbo is Whisper large-v3-turbo with int8 encoder and decoder; download it with scripts/download-voice-models.sh --whisper-v3-turbo. Restart to apply"
   },
   "VOICE_RECOGNISER_PROVIDER": {
    "type": "string",
