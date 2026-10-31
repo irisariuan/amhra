@@ -1,6 +1,7 @@
 import chalk from "chalk";
 import {
 	type ContextMenuCommandBuilder,
+	Events,
 	GatewayIntentBits,
 	type GuildMember,
 	type SlashCommandBuilder,
@@ -21,7 +22,7 @@ export const client = new CustomClient({
 let commands = loadCommands<SlashCommandBuilder>("slash");
 let contextCommands = loadCommands<ContextMenuCommandBuilder>("context");
 
-client.on("ready", () => {
+client.on(Events.ClientReady, () => {
 	dcb.log(`Logged in as ${client.user?.tag}!`);
 	dcb.log(`Loaded commands ${Array.from(commands.keys()).join(", ")}`);
 	dcb.log(
@@ -29,7 +30,7 @@ client.on("ready", () => {
 	);
 });
 
-client.on("interactionCreate", async (interaction) => {
+client.on(Events.InteractionCreate, async (interaction) => {
 	const language = parseLocale(interaction.locale);
 	if (interaction.isAutocomplete()) {
 		const command = commands.get(interaction.commandName);
@@ -124,7 +125,7 @@ export function slashCommand(name: string) {
 	return commands.get(name);
 }
 
-client.on("shardError", (e) => {
+client.on(Events.ShardError, (e) => {
 	dcb.log(`Shard Error: ${e}`);
 });
 
