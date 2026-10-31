@@ -11,12 +11,12 @@
 //! Three sounds mark a command's way through:
 //!
 //! ```text
-//! "Amhra"  ─▶ start chime ─▶ they speak ─▶ end chime ─▶ waiting… waiting… ─▶ answer
-//!             (rising)                    (falling)    (every 2s)
+//! "Amhra"  ─▶ start chime ─▶ they speak ─▶ end chime ─▶ processing ─▶ answer
+//!             (rising)                    (falling)    (once)
 //! ```
 //!
-//! The waiting sound repeats until the bot answers for that speaker: by
-//! saying something to them, or by telling the sidecar it is done.
+//! Overlapping requests share one processing sound. Ready answers interrupt
+//! it and play in turn; start and end chimes mix over all other audio.
 //!
 //! They are synthesised, not sound files: soft sine notes, rising for the
 //! start the way an assistant answers to its name, falling for the end, and a
@@ -108,9 +108,16 @@ fn render(sound: &Sound) -> Vec<i16> {
 /// Run when a clip has played out.
 pub type Then = Box<dyn FnOnce() + Send>;
 
-/// A sound being played over the music, a frame at a time: a chime, or
-/// something the bot says.
+#[derive(Debug, PartialEq, Eq)]
+enum Kind {
+	Speech,
+	Cue,
+	Processing,
+}
+
+/// A sound being played over the music, a frame at a time.
 pub struct Clip {
+	kind: Kind,
 	pcm: Arc<[i16]>,
 	at: usize,
 	/// Lower the music to this while it plays.
@@ -136,21 +143,21 @@ impl std::fmt::Debug for Clip {
 
 impl Clip {
 	pub fn chime() -> Self {
-		Self::new(chime(), None)
+		Self { kind: Kind::Cue, ..Self::new(chime(), None) }
 	}
 
 	pub fn end_chime() -> Self {
-		Self::new(end_chime(), None)
+		Self { kind: Kind::Cue, ..Self::new(end_chime(), None) }
 	}
 
 	pub fn waiting() -> Self {
-		Self::new(waiting(), None)
+		Self { kind: Kind::Processing, ..Self::new(waiting(), None) }
 	}
 
 	/// `pcm`, interleaved stereo at the Opus rate, with the music lowered to
 	/// `duck` under it if given.
 	pub fn new(pcm: Arc<[i16]>, duck: Option<f32>) -> Self {
-		Self { pcm, at: 0, duck, answers: None, then: None, started: false }
+		Self { kind: Kind::Speech, pcm, at: 0, duck, answers: None, then: None, started: false }
 	}
 
 	/// Said in answer to `user_id`, ending the wait for them when it starts.
@@ -165,11 +172,6 @@ impl Clip {
 	pub fn then(mut self, then: Then) -> Self {
 		self.then = Some(then);
 		self
-	}
-
-	/// The speaker this answers, if any.
-	pub fn answers(&self) -> Option<u64> {
-		self.answers
 	}
 
 	/// Fill `out` with the next frame, padding the last with silence. False
@@ -187,41 +189,41 @@ impl Clip {
 	}
 }
 
-/// Clips waiting to be played, one after another: a chime is not talked over.
+/// Speech plays in order; recording cues mix independently over it.
 #[derive(Debug, Default)]
 pub struct Clips {
 	queue: VecDeque<Clip>,
+	cues: Vec<Clip>,
+	processing: Option<Clip>,
 }
 
-/// More than this waiting and the newest is dropped: a backlog of what the
-/// bot meant to say a while ago is worse than silence.
-const MAX_QUEUED: usize = 4;
-
 impl Clips {
-	/// Queue `clip`, or hand it back if too much is queued already.
-	pub fn push(&mut self, clip: Clip) -> Option<Clip> {
-		if self.queue.len() < MAX_QUEUED {
-			self.queue.push_back(clip);
-			None
-		} else {
-			Some(clip)
+	pub fn push(&mut self, clip: Clip) {
+		match clip.kind {
+			Kind::Cue => self.cues.push(clip),
+			Kind::Processing => {
+				if self.queue.is_empty() && self.processing.is_none() {
+					self.processing = Some(clip);
+				}
+			}
+			Kind::Speech => {
+				self.processing = None;
+				self.queue.push_back(clip);
+			}
 		}
 	}
 
-	pub fn is_empty(&self) -> bool {
-		self.queue.is_empty()
+	/// Recording cues never block processing audio.
+	pub fn processing_busy(&self) -> bool {
+		!self.queue.is_empty() || self.processing.is_some()
 	}
 
 	/// The next frame of whatever is playing into `out`, lowering the music
 	/// through `duck` while a clip that asks for it plays, and ending the wait
 	/// for whoever a clip answers as it starts. False when nothing is playing.
-	pub fn next_frame(
-		&mut self,
-		out: &mut [i16; FRAME_PCM],
-		duck: &mut Duck,
-		waits: &mut Waits,
-		now: Instant,
-	) -> bool {
+	pub fn next_frame(&mut self, out: &mut [i16; FRAME_PCM], duck: &mut Duck, waits: &mut Waits, now: Instant) -> bool {
+		let mut playing = false;
+		out.fill(0);
 		while let Some(clip) = self.queue.front_mut() {
 			if !clip.started {
 				clip.started = true;
@@ -235,7 +237,8 @@ impl Clips {
 				}
 			}
 			if clip.next_frame(out) {
-				return true;
+				playing = true;
+				break;
 			}
 			let Some(clip) = self.queue.pop_front() else { break };
 			if clip.duck.is_some() {
@@ -245,11 +248,41 @@ impl Clips {
 				then();
 			}
 		}
-		false
+		if waits.is_empty() {
+			self.processing = None;
+		}
+		if let Some(clip) = self.processing.as_mut() {
+			if clip.next_frame(out) {
+				playing = true;
+			} else {
+				self.processing = None;
+			}
+		}
+		if self.cues.is_empty() {
+			return playing;
+		}
+		// Sum before clamping so concurrent cues do not wrap or clip each other
+		// before the final mix is known.
+		let mut mixed = out.map(i32::from);
+		let mut cue_frame = [0i16; FRAME_PCM];
+		self.cues.retain_mut(|cue| {
+			if !cue.next_frame(&mut cue_frame) {
+				return false;
+			}
+			playing = true;
+			for (sample, cue) in mixed.iter_mut().zip(cue_frame) {
+				*sample += i32::from(cue);
+			}
+			true
+		});
+		for (sample, mixed) in out.iter_mut().zip(mixed) {
+			*sample = mixed.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16;
+		}
+		playing
 	}
 }
 
-/// How often the waiting sound repeats.
+/// Delay before the single processing sound.
 pub const WAIT_EVERY: Duration = Duration::from_secs(2);
 /// The longest anyone is waited on. Past this, whatever was meant to answer
 /// them has been lost.
@@ -259,8 +292,10 @@ const MAX_WAIT: Duration = Duration::from_secs(20);
 #[derive(Debug, Default)]
 pub struct Waits {
 	users: Vec<Wait>,
-	/// When the waiting sound is next due, while it is to be heard at all.
+	/// When this batch's processing sound is due.
 	next: Option<Instant>,
+	/// Prevent additional captures from restarting the sound during this batch.
+	sounded: bool,
 }
 
 #[derive(Debug)]
@@ -274,7 +309,7 @@ struct Wait {
 
 impl Waits {
 	/// `user_id`'s command has been taken down: hold the music at `gain`
-	/// until they are answered, with the waiting sound every [`WAIT_EVERY`] if
+	/// until they are answered, with one waiting sound after [`WAIT_EVERY`] if
 	/// `sound`.
 	pub fn start(&mut self, user_id: u64, sound: bool, gain: f32, duck: &mut Duck, now: Instant) {
 		if let Some(wait) = self.users.iter_mut().find(|wait| wait.user_id == user_id) {
@@ -286,7 +321,7 @@ impl Waits {
 			}
 			self.users.push(Wait { user_id, until: now + MAX_WAIT, ducked });
 		}
-		if sound && self.next.is_none() {
+		if sound && !self.sounded && self.next.is_none() {
 			self.next = Some(now + WAIT_EVERY);
 		}
 	}
@@ -306,11 +341,12 @@ impl Waits {
 	pub fn due(&mut self, busy: bool, duck: &mut Duck, now: Instant) -> bool {
 		self.release(duck, |wait| now >= wait.until);
 		let Some(next) = self.next else { return false };
-		if now < next {
+		if now < next || busy {
 			return false;
 		}
-		self.next = Some(now + WAIT_EVERY);
-		!busy
+		self.next = None;
+		self.sounded = true;
+		true
 	}
 
 	fn release(&mut self, duck: &mut Duck, done: impl Fn(&Wait) -> bool) {
@@ -323,6 +359,7 @@ impl Waits {
 		});
 		if self.users.is_empty() {
 			self.next = None;
+			self.sounded = false;
 		}
 	}
 }
@@ -400,7 +437,7 @@ mod tests {
 	#[test]
 	fn the_end_chime_is_not_the_start_chime() {
 		assert_ne!(&chime()[..], &end_chime()[..]);
-		// Quieter than either chime: it repeats.
+		// Quieter than either chime: it is background feedback.
 		const { assert!(WAITING.level < END.level && WAITING.length < END.length) };
 	}
 
@@ -417,43 +454,74 @@ mod tests {
 	}
 
 	#[test]
-	fn clips_play_in_turn_with_the_music_down_under_speech() {
+	fn speech_is_queued_without_dropping_responses() {
 		let now = Instant::now();
 		let mut duck = Duck::default();
 		let mut waits = Waits::default();
 		let mut clips = Clips::default();
 		let mut frame = [0i16; FRAME_PCM];
-		clips.push(Clip::chime());
-		let speech: Arc<[i16]> = vec![1000; FRAME_PCM * 2].into();
-		clips.push(Clip::new(speech, Some(0.3)));
-
-		// The chime first, with the music where it was.
-		for _ in 0..frames_of(&START) {
-			assert!(clips.next_frame(&mut frame, &mut duck, &mut waits, now));
-			assert_eq!(duck.factor(now), 1.0);
+		for user in 1..=8 {
+			waits.start(user, true, 0.3, &mut duck, now);
+			clips.push(Clip::new(vec![user as i16; FRAME_PCM * 2].into(), Some(0.3)).answering(user));
 		}
-		// Then the speech, over the music lowered.
-		assert!(clips.next_frame(&mut frame, &mut duck, &mut waits, now));
-		assert_eq!(frame[0], 1000);
-		assert_eq!(duck.factor(now), 0.3);
-		assert!(clips.next_frame(&mut frame, &mut duck, &mut waits, now));
-		// And the music back once it is said.
+		for user in 1..=8 {
+			for _ in 0..2 {
+				assert!(clips.next_frame(&mut frame, &mut duck, &mut waits, now));
+				assert!(frame.iter().all(|sample| *sample == user));
+				assert_eq!(duck.factor(now), 0.3);
+			}
+		}
 		assert!(!clips.next_frame(&mut frame, &mut duck, &mut waits, now));
+		assert!(waits.is_empty());
 		assert_eq!(duck.factor(now), 1.0);
 	}
 
 	#[test]
-	fn a_backlog_of_speech_is_dropped_and_handed_back() {
+	fn recording_cues_mix_over_speech_and_each_other() {
+		let now = Instant::now();
+		let mut duck = Duck::default();
+		let mut waits = Waits::default();
 		let mut clips = Clips::default();
-		for _ in 0..MAX_QUEUED {
-			assert!(clips.push(Clip::chime()).is_none());
+		let mut frame = [0i16; FRAME_PCM];
+		clips.push(Clip::new(vec![1000; FRAME_PCM * 30].into(), None));
+		assert!(clips.next_frame(&mut frame, &mut duck, &mut waits, now));
+		// Cues arriving during speech start together on the very next frame.
+		clips.push(Clip::chime());
+		clips.push(Clip::end_chime());
+		for index in 0..frames_of(&START) {
+			assert!(clips.next_frame(&mut frame, &mut duck, &mut waits, now));
+			for (offset, sample) in frame.iter().enumerate() {
+				let at = index * FRAME_PCM + offset;
+				assert_eq!(i32::from(*sample), 1000 + i32::from(chime()[at]) + i32::from(end_chime()[at]));
+			}
 		}
-		assert!(clips.push(Clip::chime()).is_some());
-		assert_eq!(clips.queue.len(), MAX_QUEUED);
 	}
 
 	#[test]
-	fn the_waiting_sound_repeats_until_the_answer_starts() {
+	fn a_ready_answer_interrupts_processing_but_not_recording_cues() {
+		let now = Instant::now();
+		let mut duck = Duck::default();
+		let mut waits = Waits::default();
+		let mut clips = Clips::default();
+		let mut frame = [0i16; FRAME_PCM];
+		waits.start(1, true, 0.3, &mut duck, now);
+		waits.start(2, true, 0.3, &mut duck, now);
+		clips.push(Clip::waiting());
+		clips.push(Clip::waiting());
+		assert!(clips.next_frame(&mut frame, &mut duck, &mut waits, now));
+		assert_eq!(frame.as_slice(), &waiting()[..FRAME_PCM]);
+		clips.push(Clip::new(vec![1000; FRAME_PCM].into(), None).answering(1));
+		clips.push(Clip::chime());
+		assert!(clips.next_frame(&mut frame, &mut duck, &mut waits, now));
+		assert!(clips.processing.is_none());
+		for (sample, cue) in frame.iter().zip(chime().iter()) {
+			assert_eq!(*sample, 1000 + cue);
+		}
+		assert!(!waits.is_empty(), "the second user is still waiting");
+	}
+
+	#[test]
+	fn overlapping_requests_share_one_processing_cycle() {
 		let start = Instant::now();
 		let mut duck = Duck::default();
 		let mut waits = Waits::default();
@@ -464,9 +532,11 @@ mod tests {
 		assert!(!waits.due(false, &mut duck, start));
 		assert!(waits.due(false, &mut duck, start + WAIT_EVERY));
 		assert!(!waits.due(false, &mut duck, start + WAIT_EVERY));
-		// A turn that finds something else playing is skipped, not queued.
-		assert!(!waits.due(true, &mut duck, start + WAIT_EVERY * 2));
-		assert!(waits.due(false, &mut duck, start + WAIT_EVERY * 3));
+		waits.start(8, true, 0.3, &mut duck, start + WAIT_EVERY);
+		for cycle in 2..=5 {
+			assert!(!waits.due(false, &mut duck, start + WAIT_EVERY * cycle));
+		}
+		waits.settle(8, &mut duck);
 
 		// The answer starts: no more waiting, and it holds the music down.
 		let mut clips = Clips::default();
@@ -480,6 +550,22 @@ mod tests {
 		assert!(!clips.next_frame(&mut frame, &mut duck, &mut waits, now));
 		assert_eq!(duck.factor(now), 1.0);
 		assert!(!waits.due(false, &mut duck, now + WAIT_EVERY * 10));
+	}
+
+	#[test]
+	fn a_new_batch_can_process_once_and_busy_speech_delays_it() {
+		let now = Instant::now();
+		let mut duck = Duck::default();
+		let mut waits = Waits::default();
+		waits.start(1, true, 0.3, &mut duck, now);
+		assert!(!waits.due(true, &mut duck, now + WAIT_EVERY));
+		assert!(waits.due(false, &mut duck, now + WAIT_EVERY * 2));
+		assert!(!waits.due(false, &mut duck, now + WAIT_EVERY * 3));
+		waits.settle(1, &mut duck);
+		let next = now + WAIT_EVERY * 4;
+		waits.start(2, true, 0.3, &mut duck, next);
+		assert!(waits.due(false, &mut duck, next + WAIT_EVERY));
+		assert!(!waits.due(false, &mut duck, next + WAIT_EVERY * 2));
 	}
 
 	#[test]

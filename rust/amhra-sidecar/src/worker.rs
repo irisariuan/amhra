@@ -84,8 +84,7 @@ pub enum WorkerCommand {
 	/// to `duck` meanwhile. Interleaved stereo PCM at the Opus rate.
 	///
 	/// `answers` ends the wait for that speaker as it starts; `then` runs once
-	/// it has been said. Nothing is said if too much is queued already, and
-	/// then `then` does not run either.
+	/// it has been said. Ready responses interrupt the processing sound.
 	Say { pcm: Arc<[i16]>, duck: f32, answers: Option<u64>, then: Option<Then> },
 	Shutdown,
 }
@@ -282,7 +281,7 @@ fn run(
 
 		ticks = ticks.wrapping_add(1);
 		let now = Instant::now();
-		if output.waits.due(!output.clips.is_empty(), &mut output.duck, now) {
+		if output.waits.due(output.clips.processing_busy(), &mut output.duck, now) {
 			output.say(Clip::waiting());
 		}
 		let playing = output.clips.next_frame(&mut overlay, &mut output.duck, &mut output.waits, now);
@@ -442,14 +441,9 @@ impl Output {
 		}
 	}
 
-	/// Queue `clip`. One that does not fit still answers whoever it was for:
-	/// nothing else will.
+	/// Queue speech or mix a recording cue into the current audio.
 	fn say(&mut self, clip: Clip) {
-		if let Some(dropped) = self.clips.push(clip)
-			&& let Some(user_id) = dropped.answers()
-		{
-			self.waits.settle(user_id, &mut self.duck);
-		}
+		self.clips.push(clip);
 	}
 }
 
