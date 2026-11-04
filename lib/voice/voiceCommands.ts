@@ -14,7 +14,7 @@ import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { userSetting } from "../userSetting";
 import { announcement, foundAnnouncement, prepared, spokenReply } from "./announce";
-import { isSpoken, readIntent, REQUEST_INPUT, type SpokenReply } from "./intentModel";
+import { type Heard, isSpoken, quickIntent, readIntent, REQUEST_INPUT, type SpokenReply } from "./intentModel";
 import { startIntentServer } from "./intentServer";
 import { getNativeConnection } from "./native";
 import { type SidecarEvent, sidecar } from "./sidecar";
@@ -22,7 +22,13 @@ import { type TranscriptStage, TranscriptStatus } from "./transcriptStatus";
 import { describePlayback, playbackState } from "./voiceContext";
 import { voiceInteraction } from "./voiceInteraction";
 import { REMEMBER_FOR_MS, VoiceMemory } from "./voiceMemory";
-import { collectsWakeClips, guildListens, speaksAnswers } from "./voiceSetting";
+import {
+	collectsWakeClips,
+	guildListens,
+	recogniserTakesLanguage,
+	speaksAnswers,
+	type VoiceLanguage,
+} from "./voiceSetting";
 
 /**
  * Turns what the sidecar heard after the wake word into the bot's own
@@ -43,6 +49,8 @@ const NEWCOMER_BATCH_MS = 3_000;
 const NEWCOMER_EVERY_MS = 5 * 60 * 1000;
 /** A "didn't catch that" is cleared away after this. */
 const NOTHING_HEARD_FOR_MS = 15_000;
+/** Hearing a command again is one recognition; past this it is not coming. */
+const HEAR_AGAIN_WITHIN_MS = 5_000;
 
 type Lookup = (name: string) => Command<SlashCommandBuilder> | undefined;
 
@@ -70,6 +78,12 @@ export function bindVoiceCommands(client: CustomClient, lookup: Lookup) {
 	});
 	bus.on("captured", ({ guildId, userId }: Extract<SidecarEvent, { type: "captured" }>) => {
 		listening.get(listeningKey(guildId, userId))?.set("transcribing");
+	});
+	bus.on("partial", ({ guildId, userId, text }: Extract<SidecarEvent, { type: "partial" }>) => {
+		listening.get(listeningKey(guildId, userId))?.heard(saidLine(text));
+	});
+	bus.on("retranscribed", ({ guildId, userId, text, lang }: Extract<SidecarEvent, { type: "retranscribed" }>) => {
+		hearingAgain.get(listeningKey(guildId, userId))?.(text === null ? null : { text, lang });
 	});
 	bus.on("nothingHeard", (payload: Extract<SidecarEvent, { type: "nothingHeard" }>) => {
 		onNothingHeard(client, payload).catch((error) =>
@@ -121,6 +135,29 @@ function listeningKey(guildId: string, userId: string) {
 	return `${guildId}:${userId}`;
 }
 
+/** Their words so far, as they go under a status line. */
+function saidLine(text: string) {
+	return `-# “${escapeMarkdown(text)}”`;
+}
+
+/** Who is waiting on their command being heard again. */
+const hearingAgain = new Map<string, (heard: Heard | null) => void>();
+
+/** Have the sidecar hear their last command again, in `language`. */
+function hearAgain(guildId: string, userId: string, language: VoiceLanguage) {
+	const key = listeningKey(guildId, userId);
+	return new Promise<Heard | null>((resolve) => {
+		const done = (heard: Heard | null) => {
+			clearTimeout(timer);
+			hearingAgain.delete(key);
+			resolve(heard);
+		};
+		const timer = setTimeout(() => done(null), HEAR_AGAIN_WITHIN_MS);
+		hearingAgain.set(key, done);
+		sidecar().send({ type: "retranscribe", guildId, userId, language });
+	});
+}
+
 /** The member who spoke, if they are someone the bot answers. */
 async function speaker(client: CustomClient, guildId: string, userId: string) {
 	// The sidecar should not have heard a guild that turned this off, but the
@@ -154,6 +191,9 @@ async function onWoke(
 	client: CustomClient,
 	{ guildId, userId }: Extract<SidecarEvent, { type: "woke" }>,
 ) {
+	// Each time, as a sidecar that restarted has forgotten: it is in time, since
+	// what they say cannot end for half a second yet.
+	sidecar().send({ type: "setMemberLanguage", userId, language: userSetting(userId).voiceLanguage ?? null });
 	if (!userSetting(userId).showTranscript) {
 		dcb.log(`(Guild ID: ${guildId}) No transcript for ${userId}: /transcript is off for them`);
 		return;
@@ -172,6 +212,8 @@ async function onWoke(
 			globalApp.warn(`(Guild ID: ${guildId}) Nowhere to post a voice transcript`);
 			return null;
 		}
+		// Only theirs, and only now: nobody else's words are taken down early.
+		sidecar().send({ type: "streamTranscript", guildId, userId });
 		return channel
 			.send({ content: wordings("listening")[0] ?? "", allowedMentions: { parse: [] } })
 			.catch(postFailed(guildId, "transcript", channel));
@@ -237,11 +279,12 @@ async function onUtterance(
 async function handleUtterance(
 	client: CustomClient,
 	lookup: Lookup,
-	{ guildId, userId, text, lang }: Pick<Extract<SidecarEvent, { type: "utterance" }>, "guildId" | "userId" | "text" | "lang">,
+	{ guildId, userId, ...said }: Pick<Extract<SidecarEvent, { type: "utterance" }>, "guildId" | "userId" | "text" | "lang">,
 ): Promise<boolean> {
 	const key = listeningKey(guildId, userId);
-	listening.get(key)?.set("generating");
-	const history = memory.recall(key);
+	let { text } = said;
+	// The language they chose, whichever the recogniser could be told.
+	let lang = userSetting(userId).voiceLanguage ?? said.lang;
 	const found = await speaker(client, guildId, userId);
 	if (!found) {
 		await takeListening(guildId, userId);
@@ -250,22 +293,45 @@ async function handleUtterance(
 	const { guild, member } = found;
 	const showTranscript = userSetting(userId).showTranscript === true;
 
-	let read: Awaited<ReturnType<typeof readIntent>>;
-	try {
-		const context = describePlayback(await playbackState(client, guildId));
-		read = await readIntent(text, lang, lookup, readSetting(), { context, history });
-	} catch (error) {
-		// Or the status line rotates on with nothing to replace it.
-		await takeListening(guildId, userId);
-		throw error;
+	// Said plainly, it runs now: no model, no reading of the bot's state.
+	let read = quickIntent(text, lang, lookup);
+	if (!read) {
+		const status = listening.get(key);
+		status?.heard(saidLine(text));
+		status?.set("generating");
+		try {
+			const context = describePlayback(await playbackState(client, guildId));
+			read = await readIntent(text, lang, lookup, readSetting(), {
+				context,
+				history: memory.recall(key),
+				retranscribe: recogniserTakesLanguage()
+					? async (language) => {
+							status?.set("transcribing");
+							const heard = await hearAgain(guildId, userId, language);
+							if (heard) status?.heard(saidLine(heard.text));
+							status?.set("generating");
+							return heard;
+						}
+					: undefined,
+			});
+		} catch (error) {
+			// Or the status line rotates on with nothing to replace it.
+			await takeListening(guildId, userId);
+			throw error;
+		}
 	}
-	const { intents, by, turns } = read;
+	const { intents, by, turns, heard: heardAgain } = read;
+	const firstText = text;
+	if (heardAgain) {
+		text = heardAgain.text;
+		lang = heardAgain.lang ?? lang;
+	}
 	// Labels the wake clip this followed, if the sidecar saved one: a name
 	// followed by a command is very likely the name.
 	sidecar().send({ type: "understood", guildId, userId, command: intents.length > 0 });
 	const waiting = await takeListening(guildId, userId);
-	// Only what the model read: the fallback has no answer to carry on from.
-	if (by === "model") memory.remember(key, [{ role: "user", content: text }, ...(turns ?? [])]);
+	// Not the fallback's: it has no answer to carry on from.
+	if (by !== "fallback") memory.remember(key, [{ role: "user", content: firstText }, ...(turns ?? [])]);
 	// What was said stays out of the log, as it does in the sidecar's, unless
 	// the owner is tuning the matching and asked for it.
 	const heard = readSetting().VOICE_LOG_TRANSCRIPTS

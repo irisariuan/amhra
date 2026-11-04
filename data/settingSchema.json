@@ -292,7 +292,7 @@
   "VOICE_INTENT_MODEL_URL": {
    "type": "string",
    "default": "",
-   "description": "An OpenAI-compatible server on this machine (mlx_lm.server, LM Studio, Ollama), as http://host:port/v1, whose language model decides what each voice command asks for. Empty, or when the server does not answer within 3 seconds: only a command's own name said first (\"skip\", \"play <song>\") is understood"
+   "description": "An OpenAI-compatible server on this machine (mlx_lm.server, LM Studio, Ollama), as http://host:port/v1, whose language model decides what each voice command asks for. Commands said plainly (the phrases under voicePatterns in data/lang) run without asking it. Empty, or when the server does not answer in time: only those, and a command's own name said first (\"skip\", \"play <song>\"), are understood. With qwen3 as VOICE_RECOGNISER, the model can also have a command heard again in a language it names"
   },
   "VOICE_INTENT_MODEL": {
    "type": "string",

@@ -407,6 +407,14 @@
 					"description": "音声コマンドの動作を声で伝えます"
 				}
 			}
+		},
+		"voicelanguage": {
+			"description": "あなたの声を聞き取る言語と、答える言語を選びます",
+			"options": {
+				"language": {
+					"description": "あなたの言語(中国語は普通話と広東語で別です)"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "違う曲でしたか？下から別の検索結果を選べます。",
@@ -534,5 +542,89 @@
 	"QUEUE_CHOICE_NEW": "キュー {queue}: 新しいキューを作る",
 	"QUEUE_NATIVE_ONLY": "キュー 2 以降には Rust 音声バックエンド（`USE_RUST_VOICE`）が必要です",
 	"SET_QUEUE_VOLUME": "キュー {queue} の音量を {volume}% に設定しました",
-	"SCHEDULE_QUEUE_TAG": " · キュー {queue}"
+	"SCHEDULE_QUEUE_TAG": " · キュー {queue}",
+	"VOICE_LANGUAGE_SET": "これからは{language}で聞き取り、{language}で答えます。",
+	"VOICE_LANGUAGE_ANSWERS_ONLY": "{language}で答えます。このボットの音声認識は、聞き取る言語を引き続き自動で判断します。",
+	"VOICE_LANGUAGE_AUTO": "これからは話している言語を自動で判断します。",
+	"voicePatterns": {
+		"name": [
+			"アムラ",
+			"エムハラ",
+			"アムハラ",
+			"アンラ"
+		],
+		"polite": [
+			"お願いします",
+			"お願い",
+			"ください",
+			"ちょうだい"
+		],
+		"deferStarts": [
+			"それ",
+			"これ",
+			"あれ",
+			"何か",
+			"なにか",
+			"もう一度",
+			"別の"
+		],
+		"defer": [
+			"それから",
+			"そして",
+			"あと",
+			"のあと",
+			"ライブ",
+			"カバー",
+			"アコースティック",
+			"バージョン",
+			"選"
+		],
+		"commands": {
+			"play": [
+				"再生",
+				"{search}を再生",
+				"{search}を再生して",
+				"{search}をかけて",
+				"{search}を流して",
+				"{search}再生"
+			],
+			"resume": [
+				"再開",
+				"再開して",
+				"続けて"
+			],
+			"pause": [
+				"一時停止",
+				"一時停止して"
+			],
+			"skip": [
+				"スキップ",
+				"スキップして",
+				"次へ",
+				"次",
+				"次の曲",
+				"{amount}曲スキップ"
+			],
+			"stop": [
+				"停止",
+				"停止して",
+				"止めて",
+				"ストップ"
+			],
+			"disconnect": [
+				"切断",
+				"切断して",
+				"退出して",
+				"抜けて"
+			],
+			"volume": [
+				"音量{volume}",
+				"音量を{volume}にして",
+				"音量{volume}にして"
+			],
+			"queue": [
+				"キュー"
+			]
+		}
+	}
 }

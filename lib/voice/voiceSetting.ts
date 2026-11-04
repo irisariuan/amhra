@@ -13,6 +13,28 @@ export const DEFAULT_DUCK_VOLUME = 0.3;
 /** Where the sidecar puts the wake clips, relative to where it starts. */
 export const WAKE_CLIPS_DIR = "data/recordings/wake-clips";
 
+/**
+ * The languages someone can ask to be heard in, as the recogniser and the speech
+ * models name them, and as they are offered.
+ */
+export const VOICE_LANGUAGES = {
+	en: "English",
+	zh: "Chinese (Mandarin) 普通話",
+	yue: "Chinese (Cantonese) 廣東話",
+	ja: "Japanese 日本語",
+	ko: "Korean 한국어",
+} as const;
+export type VoiceLanguage = keyof typeof VOICE_LANGUAGES;
+
+/**
+ * The recogniser can be told the language for each window, which is what hearing
+ * a command again and a member's own language take. Only Qwen3-ASR can: the
+ * others fix theirs when they are loaded.
+ */
+export function recogniserTakesLanguage(setting: Setting = readSetting()) {
+	return (setting.VOICE_RECOGNISER ?? "qwen3") === "qwen3";
+}
+
 /** The bot's owner allows voice commands at all. */
 export function voiceCommandsAllowed(setting: Setting = readSetting()) {
 	return setting.VOICE_COMMANDS === true;

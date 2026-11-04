@@ -381,6 +381,14 @@
 					"description": "음성 명령이 하는 일을 소리로 알려 줍니다"
 				}
 			}
+		},
+		"voicelanguage": {
+			"description": "제가 알아듣고 답할 언어를 고릅니다",
+			"options": {
+				"language": {
+					"description": "사용할 언어 (중국어는 보통화와 광둥어로 나뉩니다)"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "원하는 곡이 아닌가요? 아래에서 다른 검색 결과를 선택하세요.",
@@ -508,5 +516,87 @@
 	"QUEUE_CHOICE_NEW": "대기열 {queue}: 새 대기열 만들기",
 	"QUEUE_NATIVE_ONLY": "2번 이후의 대기열은 Rust 음성 백엔드(`USE_RUST_VOICE`)가 필요합니다",
 	"SET_QUEUE_VOLUME": "대기열 {queue} 음량을 {volume}%(으)로 설정했습니다",
-	"SCHEDULE_QUEUE_TAG": " · 대기열 {queue}"
+	"SCHEDULE_QUEUE_TAG": " · 대기열 {queue}",
+	"VOICE_LANGUAGE_SET": "이제 {language}(으)로 듣고 답합니다.",
+	"VOICE_LANGUAGE_ANSWERS_ONLY": "{language}(으)로 답합니다. 이 봇의 음성 인식은 듣는 언어를 계속 자동으로 판단합니다.",
+	"VOICE_LANGUAGE_AUTO": "이제 말하는 언어를 다시 자동으로 판단합니다.",
+	"voicePatterns": {
+		"name": [
+			"엠하라",
+			"암라",
+			"암하라"
+		],
+		"polite": [
+			"주세요",
+			"부탁해",
+			"부탁해요"
+		],
+		"deferStarts": [
+			"그거",
+			"이거",
+			"저거",
+			"뭔가",
+			"아무",
+			"다른"
+		],
+		"defer": [
+			"그리고",
+			"그다음",
+			"다음에",
+			"라이브",
+			"커버",
+			"어쿠스틱",
+			"버전",
+			"골라"
+		],
+		"commands": {
+			"play": [
+				"재생",
+				"{search} 재생",
+				"{search} 재생해",
+				"{search} 재생해줘",
+				"{search} 틀어",
+				"{search} 틀어줘",
+				"{search} 틀어 줘"
+			],
+			"resume": [
+				"다시 재생",
+				"계속",
+				"계속 재생"
+			],
+			"pause": [
+				"일시정지",
+				"일시정지해",
+				"일시 정지",
+				"멈춰"
+			],
+			"skip": [
+				"스킵",
+				"스킵해",
+				"건너뛰기",
+				"건너뛰어",
+				"다음",
+				"다음 곡",
+				"{amount}곡 스킵"
+			],
+			"stop": [
+				"정지",
+				"정지해",
+				"그만"
+			],
+			"disconnect": [
+				"연결 끊기",
+				"나가",
+				"나가줘"
+			],
+			"volume": [
+				"볼륨 {volume}",
+				"볼륨 {volume}으로",
+				"볼륨 {volume}로"
+			],
+			"queue": [
+				"대기열"
+			]
+		}
+	}
 }

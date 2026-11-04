@@ -57,8 +57,31 @@ the bot. Voice commands require `USE_RUST_VOICE` and `VOICE_COMMANDS` to be enab
 Whisper transcribes in the source language. The existing recogniser thread and
 provider settings also apply. Qwen3 remains the default.
 
+Each Whisper transcription takes about 1.5s on 4 threads of an M5 Pro however short
+the command, since it needs a stretch of silence after the audio not to repeat
+itself. On synthesised speech it also heard Cantonese as Mandarin, which Qwen3 and
+SenseVoice told apart.
+
 For the sidecar directly, use `--recogniser whisper-v3-turbo`. The download flag
 can be combined with `--speech` to include the models for spoken answers.
+
+### How a voice command is read
+
+1. **Plain phrases run at once**, with no model: `play <song>`, `skip`, `次の曲`,
+   `<song>を再生して`, `볼륨 40`, `播放<song>`. They are all data, under
+   `voicePatterns` in `data/lang/*.json`, so a phrase or a language is added there:
+   `{option}` stands for that option of the command, wherever the language puts it.
+   What was said has to fit a phrase whole; anything else goes to the model.
+2. **The model reads the rest.** With Qwen3-ASR it may answer
+   `{"command": "retranscribe", "language": "en"}` when the recogniser guessed the
+   wrong language. The window is kept in memory until the bot has read it, 30s at
+   most, and heard again with the same model, so this takes no extra memory.
+3. **`/voicelanguage`** lets each member choose the language they are heard and
+   answered in, with Mandarin and Cantonese separate. Only Qwen3-ASR can be told per
+   member; SenseVoice and Whisper fix their language at load, so with those the
+   choice only sets the language of the answers.
+4. **`/transcript`** also shows the words as they are said, re-recognised about once
+   a second, only for members who turned it on and only when the recogniser is idle.
 
 ### Misc
 This project is built with [Amhra Dashboard](https://github.com/irisariuan/amhraDashboard), make sure you check out the dashboard there!

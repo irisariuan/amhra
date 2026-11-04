@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { SlashCommandBuilder } from "discord.js";
 import { type Command, Language } from "../lib/interaction";
+import { languagePatterns } from "../lib/language";
 import {
 	catalogue,
 	DEFAULT_INTENT_MODEL,
 	intentFrom,
 	intentPrompt,
 	intentsFrom,
+	quickIntent,
 	MAX_ACTIONS,
 	MAX_SEARCHES,
 	MAX_SPOKEN,
@@ -424,6 +426,132 @@ describe("who reads the command", () => {
 		expect(asked[0].body.messages).toContainEqual({
 			role: "user",
 			content: "A play expectations by Olro Drigo.",
+		});
+	});
+
+	test("it can have them heard again, in a language it has to name, once", async () => {
+		const answers = ['{"command": "retranscribe", "language": "en"}', '{"command": "skip"}'];
+		const sent: { role: string; content: string }[][] = [];
+		globalThis.fetch = (async (_url: string, init: RequestInit) => {
+			sent.push(JSON.parse(String(init.body)).messages);
+			return Response.json({ choices: [{ message: { content: answers.shift() } }] });
+		}) as unknown as typeof fetch;
+		const asked: string[] = [];
+		const reading = await readIntent("스킵 더 송", "ko", lookup, MODEL, {
+			retranscribe: async (language) => {
+				asked.push(language);
+				return { text: "skip the song", lang: "en" };
+			},
+		});
+		expect(asked).toEqual(["en"]);
+		expect(reading.intents[0]).toMatchObject({ command: "skip", language: Language.English });
+		expect(reading.heard).toEqual({ text: "skip the song", lang: "en" });
+		expect(sent[1]?.at(-1)?.content).toBe('Heard again in en: "skip the song"');
+		expect(sent[0]?.[0]?.content).toContain("yue for Chinese (Cantonese)");
+	});
+
+	test("hearing again without a language, or when it cannot be done, is no action", async () => {
+		answering('{"command": "retranscribe"}');
+		let heard = 0;
+		const retranscribe = async () => {
+			heard++;
+			return null;
+		};
+		expect(await readIntent("gibberish", "en", lookup, MODEL, { retranscribe })).toMatchObject({ intents: [], by: "model" });
+		answering('{"command": "retranscribe", "language": "xx"}');
+		expect((await readIntent("gibberish", "en", lookup, MODEL, { retranscribe })).intents).toEqual([]);
+		expect(heard).toBe(0);
+		answering('{"command": "retranscribe", "language": "ja"}');
+		expect((await readIntent("gibberish", "en", lookup, MODEL)).intents).toEqual([]);
+		const prompt = (await import("../lib/voice/intentModel")).intentPrompt(lookup);
+		expect(prompt).not.toContain("retranscribe");
+		// It keeps asking: it is asked once, and that answer is its last.
+		expect((await readIntent("gibberish", "en", lookup, MODEL, { retranscribe })).intents).toEqual([]);
+		expect(heard).toBe(1);
+	});
+
+	describe("said plainly, nothing asks the model", () => {
+		const quick = (text: string, lang: string | null = "en") => quickIntent(text, lang, lookup);
+		const cases: [string, string | null, Record<string, unknown>][] = [
+			["Play shape of you.", "en", { command: "play", query: "shape of you", language: Language.English }],
+			["Amra, play bad guy please", "en", { command: "play", query: "bad guy" }],
+			["I'm, play bad guy", "en", { command: "play", query: "bad guy" }],
+			["Ehara skip.", "en", { command: "skip" }],
+			["skip this song", "en", { command: "skip" }],
+			["next", "en", { command: "skip" }],
+			["skip 2 songs", "en", { command: "skip", options: { amount: 2 } }],
+			["set the volume to 40", "en", { command: "volume", options: { volume: 40 } }],
+			["Play.", "en", { command: "resume" }],
+			["pause the music", "en", { command: "pause" }],
+			// As Qwen3-ASR wrote them, from real speech.
+			["播放《晴天》。", "zh", { command: "play", query: "晴天" }],
+			["播放《晴天》，唔该。", "yue", { command: "play", query: "晴天" }],
+			["次の曲。", "ja", { command: "skip", language: Language.Japanese }],
+			["Skip the song.", "en", { command: "skip" }],
+			["次の曲", "ja", { command: "skip", language: Language.Japanese }],
+			["晴天を再生して", "ja", { command: "play", query: "晴天", language: Language.Japanese }],
+			["音量を40にして", "ja", { command: "volume", options: { volume: 40 } }],
+			["晴天 재생해줘", "ko", { command: "play", query: "晴天", language: Language.Korean }],
+			["볼륨 40", "ko", { command: "volume", options: { volume: 40 } }],
+			["다음 곡", "ko", { command: "skip", language: Language.Korean }],
+			["播放晴天", "zh", { command: "play", query: "晴天", language: Language.TraditionalChinese }],
+			["播放晴天", "yue", { command: "play", query: "晴天", language: Language.TraditionalChinese }],
+			["下一首", "zh", { command: "skip" }],
+			["暂停", "zh", { command: "pause" }],
+			["請暫停", "yue", { command: "pause" }],
+			// English words, heard in another language, answer in that one.
+			["skip", "ja", { command: "skip", language: Language.Japanese }],
+		];
+		for (const [text, lang, expected] of cases) {
+			test(`${text} [${lang}]`, () => {
+				const reading = quick(text, lang);
+				expect(reading?.by).toBe("pattern");
+				expect(reading?.intents).toHaveLength(1);
+				expect(reading?.intents[0]).toMatchObject(expected);
+				expect(reading?.turns?.[0]?.role).toBe("assistant");
+			});
+		}
+
+		for (const text of [
+			"I'll play football later",
+			"stop talking about it",
+			"can you play something by olivia",
+			"play it again",
+			"play the live version of hotel california",
+			"play bad guy and put it on repeat",
+			"play bad guy next",
+			"play the second one",
+			"skip this and turn it down to 40",
+			"what song is this",
+			"skip?",
+			"volume up",
+			"set the volume to 900",
+			"player",
+			"don't, skip",
+			"Stop. Play hello",
+			"晴天をライブで再生して",
+			"播放晴天然後暫停",
+			"그거 재생해줘",
+			"",
+		]) {
+			test(`goes to the model: ${JSON.stringify(text)}`, () => {
+				expect(quick(text)).toBeNull();
+			});
+		}
+
+		test("a phrase is data: a new one needs no code", () => {
+			const patterns = languagePatterns(Language.English);
+			const said = patterns?.commands?.pause;
+			said?.push("hold on");
+			try {
+				expect(quick("hold on")?.intents[0]).toMatchObject({ command: "pause" });
+			} finally {
+				said?.pop();
+			}
+		});
+
+		test("a command the bot does not have is no match", () => {
+			expect(quickIntent("skip", "en", () => undefined)).toBeNull();
 		});
 	});
 

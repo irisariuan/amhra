@@ -261,6 +261,11 @@ impl Gate {
 		matches!(self.state, State::Listening)
 	}
 
+	/// All of the window so far, while they are talking in a command.
+	pub fn being_said(&self) -> Option<&[f32]> {
+		matches!(self.state, State::Capturing { silence: 0, .. }).then_some(self.window.as_slice())
+	}
+
 	/// Hear `samples`, reporting whatever they complete.
 	pub fn push(&mut self, samples: &[f32], events: &mut dyn FnMut(GateEvent)) {
 		match self.state {

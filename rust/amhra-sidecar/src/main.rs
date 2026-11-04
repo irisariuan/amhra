@@ -558,6 +558,21 @@ async fn dispatch(
 				engine.understood(&guild_id, user_id, command);
 			}
 		}
+		Command::SetMemberLanguage { user_id, language } => {
+			if let (Some(engine), Ok(user_id)) = (voice, user_id.parse()) {
+				engine.set_language(user_id, language);
+			}
+		}
+		Command::StreamTranscript { guild_id, user_id } => {
+			if let (Some(engine), Ok(user_id)) = (voice, user_id.parse()) {
+				engine.stream_transcript(&guild_id, user_id);
+			}
+		}
+		Command::Retranscribe { guild_id, user_id, language } => {
+			if let (Some(engine), Ok(user_id)) = (voice, user_id.parse()) {
+				engine.retranscribe(&guild_id, user_id, language);
+			}
+		}
 		Command::PrepareSpeech { phrases } => {
 			for phrase in phrases {
 				if let Some(speech) = speech {
@@ -1053,6 +1068,14 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 				wake_keyword: keyword,
 				latency_ms,
 			});
+		}
+		// Like the utterance, what was said goes to the bot only.
+		Notice::Partial { guild_id, user_id, text } => {
+			let _ = events.send(Event::Partial { guild_id, user_id: user_id.to_string(), text });
+		}
+		Notice::Retranscribed { guild_id, user_id, text, lang } => {
+			eprintln!("[{guild_id}] voice: heard {user_id} again, {}", if text.is_some() { "with words" } else { "with nothing" });
+			let _ = events.send(Event::Retranscribed { guild_id, user_id: user_id.to_string(), text, lang });
 		}
 		Notice::Woke { guild_id, user_id, keyword } => {
 			eprintln!("[{guild_id}] voice: {user_id} said {keyword}");

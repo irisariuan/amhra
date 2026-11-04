@@ -105,6 +105,12 @@ pub struct Transcript {
 /// Offline speech recognition: a whole window in, text out.
 pub trait Transcriber: Send {
 	fn transcribe(&mut self, samples: &[f32]) -> Result<Transcript, ModelError>;
+	/// The same, told the language where the recogniser can be told it per
+	/// window; Qwen3-ASR can. The others hear it as they did the first time.
+	fn transcribe_in(&mut self, samples: &[f32], language: Option<&str>) -> Result<Transcript, ModelError> {
+		let _ = language;
+		self.transcribe(samples)
+	}
 }
 
 /// Makes the per-speaker models. Shared by every gate thread, so whatever is

@@ -38,6 +38,9 @@ struct Speaker {
 	last_heard: Instant,
 	/// Frames of silence fed since they last sent something.
 	filled: u32,
+	/// How much of their command has been taken down so far, if what they say
+	/// is to be reported as they say it.
+	streamed: Option<usize>,
 }
 
 /// The gates for one call.
@@ -122,6 +125,32 @@ impl Speakers {
 		self.speakers.remove(&user_id);
 	}
 
+	/// Report what `user_id` says as they say it, until their command ends.
+	pub fn stream(&mut self, user_id: u64) {
+		if let Some(speaker) = self.speakers.get_mut(&user_id) {
+			speaker.streamed = Some(0);
+		}
+	}
+
+	/// Offer `take` the command of everyone being reported on who has said at
+	/// least `every` samples more. It answers whether it took it; if not it is
+	/// offered again next time.
+	pub fn partials(&mut self, every: usize, take: &mut dyn FnMut(u64, &[f32]) -> bool) {
+		for (&user_id, speaker) in &mut self.speakers {
+			let Some(streamed) = speaker.streamed else { continue };
+			if speaker.gate.is_listening() {
+				speaker.streamed = None;
+				continue;
+			}
+			if let Some(window) = speaker.gate.being_said()
+				&& window.len() >= streamed + every
+				&& take(user_id, window)
+			{
+				speaker.streamed = Some(window.len());
+			}
+		}
+	}
+
 	/// Fill in the silence Discord did not send, and release anyone long gone.
 	/// Call every frame or so.
 	pub fn tick(&mut self, now: Instant, events: &mut dyn FnMut(u64, GateEvent)) {
@@ -153,7 +182,7 @@ fn speaker<'a>(
 	Ok(match speakers.entry(user_id) {
 		std::collections::hash_map::Entry::Occupied(entry) => entry.into_mut(),
 		std::collections::hash_map::Entry::Vacant(entry) => {
-			entry.insert(Speaker { gate: Gate::new(config, models.spotter()?, models.vad()?), last_heard: now, filled: 0 })
+			entry.insert(Speaker { gate: Gate::new(config, models.spotter()?, models.vad()?), last_heard: now, filled: 0, streamed: None })
 		}
 	})
 }
