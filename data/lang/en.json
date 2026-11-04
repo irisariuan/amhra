@@ -341,27 +341,7 @@
 			}
 		},
 		"voicelanguage": {
-			"description": "Order the languages you speak, and choose the one I answer you in",
-			"options": {
-				"first": {
-					"description": "The language you're most likely to speak; Automatic to have me guess"
-				},
-				"second": {
-					"description": "The next most likely"
-				},
-				"third": {
-					"description": "The next most likely"
-				},
-				"fourth": {
-					"description": "The next most likely"
-				},
-				"fifth": {
-					"description": "The least likely"
-				},
-				"output": {
-					"description": "The language I answer you in; Chinese is separate for Mandarin and Cantonese"
-				}
-			}
+			"description": "Choose the languages you speak, in order, and the one I answer you in"
 		}
 	},
 	"SEARCH_PICK": "Not the right song? Pick another result below.",
@@ -495,6 +475,11 @@
 	"VOICE_LANGUAGE_INPUT_GUESSES": "🎙️ You chose {language}, but this bot's speech recogniser can't be told a language, so it still guesses what it hears.",
 	"VOICE_LANGUAGE_OUTPUT": "🗣️ I answer you in: {language}",
 	"VOICE_LANGUAGE_OUTPUT_AUTO": "🗣️ I answer you in: whichever language I heard",
+	"VOICE_LANGUAGE_ADD": "Add the next language you speak, likeliest first",
+	"VOICE_LANGUAGE_OUTPUT_PICK": "Choose the language I answer you in",
+	"VOICE_LANGUAGE_OUTPUT_HEARD": "The language I heard",
+	"VOICE_LANGUAGE_CLEAR": "Clear my languages",
+	"VOICE_LANGUAGE_DONE": "Done",
 	"voicePatterns": {
 		"name": [
 			"amhra",

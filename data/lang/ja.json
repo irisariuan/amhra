@@ -409,27 +409,7 @@
 			}
 		},
 		"voicelanguage": {
-			"description": "話す言語を順に並べ、答える言語を選びます",
-			"options": {
-				"first": {
-					"description": "最もよく話す言語(自動にすると判断を任せます)"
-				},
-				"second": {
-					"description": "次によく話す言語"
-				},
-				"third": {
-					"description": "次によく話す言語"
-				},
-				"fourth": {
-					"description": "次によく話す言語"
-				},
-				"fifth": {
-					"description": "最も話さない言語"
-				},
-				"output": {
-					"description": "私が答える言語(中国語は普通話と広東語で別です)"
-				}
-			}
+			"description": "話す言語を順に選び、私が答える言語を選びます"
 		}
 	},
 	"SEARCH_PICK": "違う曲でしたか？下から別の検索結果を選べます。",
@@ -563,6 +543,11 @@
 	"VOICE_LANGUAGE_INPUT_GUESSES": "🎙️ {language}が選ばれましたが、このボットの音声認識は言語を指定できないため、引き続き自動で判断します。",
 	"VOICE_LANGUAGE_OUTPUT": "🗣️ 答える言語:{language}",
 	"VOICE_LANGUAGE_OUTPUT_AUTO": "🗣️ 答える言語:聞き取った言語と同じ",
+	"VOICE_LANGUAGE_ADD": "次に話す言語を追加(よく話す順に)",
+	"VOICE_LANGUAGE_OUTPUT_PICK": "私が答える言語を選ぶ",
+	"VOICE_LANGUAGE_OUTPUT_HEARD": "聞き取った言語",
+	"VOICE_LANGUAGE_CLEAR": "言語をすべて消す",
+	"VOICE_LANGUAGE_DONE": "完了",
 	"voicePatterns": {
 		"name": [
 			"アムラ",

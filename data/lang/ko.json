@@ -383,27 +383,7 @@
 			}
 		},
 		"voicelanguage": {
-			"description": "사용하는 언어를 순서대로 정하고 제가 답할 언어를 고릅니다",
-			"options": {
-				"first": {
-					"description": "가장 많이 쓰는 언어 (자동이면 제가 판단합니다)"
-				},
-				"second": {
-					"description": "그다음으로 많이 쓰는 언어"
-				},
-				"third": {
-					"description": "그다음으로 많이 쓰는 언어"
-				},
-				"fourth": {
-					"description": "그다음으로 많이 쓰는 언어"
-				},
-				"fifth": {
-					"description": "가장 적게 쓰는 언어"
-				},
-				"output": {
-					"description": "제가 답할 언어 (중국어는 보통화와 광둥어로 나뉩니다)"
-				}
-			}
+			"description": "사용하는 언어를 순서대로 고르고 제가 답할 언어를 고릅니다"
 		}
 	},
 	"SEARCH_PICK": "원하는 곡이 아닌가요? 아래에서 다른 검색 결과를 선택하세요.",
@@ -537,6 +517,11 @@
 	"VOICE_LANGUAGE_INPUT_GUESSES": "🎙️ {language}을(를) 고르셨지만, 이 봇의 음성 인식은 언어를 지정할 수 없어 계속 자동으로 판단합니다.",
 	"VOICE_LANGUAGE_OUTPUT": "🗣️ 답하는 언어: {language}",
 	"VOICE_LANGUAGE_OUTPUT_AUTO": "🗣️ 답하는 언어: 들은 언어와 같음",
+	"VOICE_LANGUAGE_ADD": "다음 사용 언어 추가 (많이 쓰는 순서로)",
+	"VOICE_LANGUAGE_OUTPUT_PICK": "제가 답할 언어 고르기",
+	"VOICE_LANGUAGE_OUTPUT_HEARD": "들은 언어",
+	"VOICE_LANGUAGE_CLEAR": "언어 모두 지우기",
+	"VOICE_LANGUAGE_DONE": "완료",
 	"voicePatterns": {
 		"name": [
 			"엠하라",
