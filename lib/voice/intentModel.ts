@@ -129,6 +129,8 @@ export interface Conversation {
 	retranscribe?: Retranscribe;
 	/** What they chose to be answered in, whichever language they spoke. */
 	answerIn?: VoiceLanguage;
+	/** The languages they speak, the likeliest first. */
+	speaks?: VoiceLanguage[];
 }
 
 type Lookup = (name: string) => Command<SlashCommandBuilder> | undefined;
@@ -280,15 +282,22 @@ export function intentPrompt(
 	context?: string,
 	canRetranscribe = false,
 	answerIn?: VoiceLanguage,
+	speaks: VoiceLanguage[] = [],
 ): string {
 	const told = context ? `\nThe bot right now:\n${context}\n` : "";
-	const state = answerIn
-		? `${told}\nThey chose to be answered in ${VOICE_LANGUAGES[answerIn]}: write every "text" in it, whatever language they spoke.\n`
-		: told;
+	const ranked = speaks.map((language) => `${language} (${VOICE_LANGUAGES[language]})`).join(" > ");
+	const spoken = speaks.length ? `\nThe languages they speak, the likeliest first: ${ranked}.\n` : "";
+	const answers = answerIn
+		? `\nThey chose to be answered in ${VOICE_LANGUAGES[answerIn]}: write every "text" in it, whatever language they spoke.\n`
+		: "";
+	const state = `${told}${spoken}${answers}`;
+	const choosing = speaks.length
+		? ` Choose by the languages they speak, given below: the first of them the transcript could be a mishearing of. A transcript in a language they do not speak is very likely a wrong guess; one in a language they do speak that makes sense is not.`
+		: "";
 	const again = canRetranscribe
 		? `\n- ${RETRANSCRIBE}: Have the speech recogniser hear them again, when the transcript makes no sense because it guessed the wrong language: gibberish, or a script that fits nothing they would ask. Give "language", which is required: ${Object.entries(VOICE_LANGUAGES)
 				.map(([code, name]) => `${code} for ${name}`)
-				.join(", ")}. Answer with it alone, and at most once. What it hears comes back as the next message, 'Heard again in …: "…"': read that instead of the transcript. Do not use it for words that are merely misheard, which you can work out.`
+				.join(", ")}. Answer with it alone, and at most once. What it hears comes back as the next message, 'Heard again in …: "…"': read that instead of the transcript. Do not use it for words that are merely misheard, which you can work out.${choosing}`
 		: "";
 	const againExamples = canRetranscribe
 		? `\n"스킵 더 송" -> {"command": "${RETRANSCRIBE}", "language": "en"}\n  Heard again in en: "skip the song" -> {"command": "skip"}\n"pose zan ting" -> {"command": "${RETRANSCRIBE}", "language": "zh"}`
@@ -473,7 +482,7 @@ export async function readIntent(
 	lang: string | null,
 	lookup: Lookup,
 	setting: Setting = readSetting(),
-	{ context, history = [], search = searchYouTube, retranscribe, answerIn }: Conversation = {},
+	{ context, history = [], search = searchYouTube, retranscribe, answerIn, speaks }: Conversation = {},
 ): Promise<IntentReading> {
 	let again: Heard | undefined;
 	const chosen = recogniserLanguage(answerIn ?? null);
@@ -489,7 +498,7 @@ export async function readIntent(
 		let askedAgain = false;
 		for (;;) {
 			const messages = [
-				{ role: "system", content: intentPrompt(lookup, context, retranscribe !== undefined, answerIn) },
+				{ role: "system", content: intentPrompt(lookup, context, retranscribe !== undefined, answerIn, speaks) },
 				...history,
 				{ role: "user", content: text },
 				...turns,

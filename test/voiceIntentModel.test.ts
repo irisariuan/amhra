@@ -15,6 +15,7 @@ import {
 	readIntent,
 	searchResults,
 } from "../lib/voice/intentModel";
+import { heardAs, pinnedLanguage, rankedLanguages, speaksIt } from "../lib/voice/voiceSetting";
 import type { YouTubeVideo } from "../lib/youtube";
 
 /**
@@ -594,6 +595,58 @@ describe("who reads the command", () => {
 
 	test("without a choice the model is told nothing about it", () => {
 		expect(intentPrompt(lookup)).not.toContain("chose to be answered");
+		expect(intentPrompt(lookup, undefined, true)).not.toContain("languages they speak");
+	});
+
+	test("the model is given the languages they speak, in their order, to choose from", async () => {
+		const asked: string[] = [];
+		answering('{"command": "skip"}');
+		const fetched = globalThis.fetch;
+		globalThis.fetch = (async (url: string, init: RequestInit) => {
+			asked.push(JSON.parse(String(init.body)).messages[0].content);
+			return fetched(url, init);
+		}) as unknown as typeof fetch;
+		await readIntent("gibberish", "ko", lookup, MODEL, {
+			speaks: ["en", "yue", "zh", "ja", "ko"],
+			retranscribe: async () => null,
+		});
+		expect(asked[0]).toContain(
+			"the likeliest first: en (English) > yue (Chinese (Cantonese) 廣東話) > zh (Chinese (Mandarin) 普通話) > ja (Japanese 日本語) > ko (Korean 한국어).",
+		);
+		expect(asked[0]).toContain("Choose by the languages they speak");
+		// Told even where it cannot have them heard again: it helps to read them.
+		const without = intentPrompt(lookup, undefined, false, undefined, ["ja"]);
+		expect(without).toContain("the likeliest first: ja (Japanese 日本語).");
+		expect(without).not.toContain("Choose by the languages");
+	});
+
+	describe("the languages someone speaks", () => {
+		test("their choices become a list in order, without repeats", () => {
+			expect(rankedLanguages(["en", "yue", null, "zh", "en"], "auto")).toEqual(["en", "yue", "zh"]);
+			expect(rankedLanguages(["auto", "yue", null, null, null], "auto")).toEqual([]);
+			expect(rankedLanguages(["xx", "ja"], "auto")).toEqual(["ja"]);
+		});
+
+		test("the recogniser is told only when there is one", () => {
+			expect(pinnedLanguage()).toBeNull();
+			expect(pinnedLanguage(["yue"])).toBe("yue");
+			expect(pinnedLanguage(["en", "yue"])).toBeNull();
+		});
+
+		test("a guess at Chinese is the one of the two they speak, the first if both", () => {
+			expect(heardAs("zh", ["en", "yue", "zh"])).toBe("yue");
+			expect(heardAs("yue", ["zh", "yue"])).toBe("zh");
+			expect(heardAs("yue", ["en"])).toBe("yue");
+			expect(heardAs("en", ["yue"])).toBe("en");
+			expect(heardAs(null, ["yue"])).toBeNull();
+		});
+
+		test("a language they did not list is not one they speak", () => {
+			expect(speaksIt("ko", ["en", "yue"])).toBe(false);
+			expect(speaksIt("en", ["en", "yue"])).toBe(true);
+			expect(speaksIt("ko")).toBe(true);
+			expect(speaksIt(null, ["en"])).toBe(true);
+		});
 	});
 
 	test("the model's no is final, even where the fallback would match", async () => {

@@ -341,10 +341,22 @@
 			}
 		},
 		"voicelanguage": {
-			"description": "Choose the language I hear you in, and the one I answer you in",
+			"description": "Order the languages you speak, and choose the one I answer you in",
 			"options": {
-				"input": {
-					"description": "The language you speak; Chinese is separate for Mandarin and Cantonese"
+				"first": {
+					"description": "The language you're most likely to speak; Automatic to have me guess"
+				},
+				"second": {
+					"description": "The next most likely"
+				},
+				"third": {
+					"description": "The next most likely"
+				},
+				"fourth": {
+					"description": "The next most likely"
+				},
+				"fifth": {
+					"description": "The least likely"
 				},
 				"output": {
 					"description": "The language I answer you in; Chinese is separate for Mandarin and Cantonese"
@@ -478,7 +490,7 @@
 	"QUEUE_NATIVE_ONLY": "Queues past 1 need the Rust voice backend (`USE_RUST_VOICE`)",
 	"SET_QUEUE_VOLUME": "Set queue {queue} to {volume}%",
 	"SCHEDULE_QUEUE_TAG": " · on queue {queue}",
-	"VOICE_LANGUAGE_INPUT": "🎙️ I hear you in: {language}",
+	"VOICE_LANGUAGE_INPUT": "🎙️ Your languages, most likely first: {language}",
 	"VOICE_LANGUAGE_INPUT_AUTO": "🎙️ I hear you in: whichever language you speak",
 	"VOICE_LANGUAGE_INPUT_GUESSES": "🎙️ You chose {language}, but this bot's speech recogniser can't be told a language, so it still guesses what it hears.",
 	"VOICE_LANGUAGE_OUTPUT": "🗣️ I answer you in: {language}",

@@ -409,10 +409,22 @@
 			}
 		},
 		"voicelanguage": {
-			"description": "あなたの声を聞き取る言語と、答える言語を選びます",
+			"description": "話す言語を順に並べ、答える言語を選びます",
 			"options": {
-				"input": {
-					"description": "あなたが話す言語(中国語は普通話と広東語で別です)"
+				"first": {
+					"description": "最もよく話す言語(自動にすると判断を任せます)"
+				},
+				"second": {
+					"description": "次によく話す言語"
+				},
+				"third": {
+					"description": "次によく話す言語"
+				},
+				"fourth": {
+					"description": "次によく話す言語"
+				},
+				"fifth": {
+					"description": "最も話さない言語"
 				},
 				"output": {
 					"description": "私が答える言語(中国語は普通話と広東語で別です)"
@@ -546,7 +558,7 @@
 	"QUEUE_NATIVE_ONLY": "キュー 2 以降には Rust 音声バックエンド（`USE_RUST_VOICE`）が必要です",
 	"SET_QUEUE_VOLUME": "キュー {queue} の音量を {volume}% に設定しました",
 	"SCHEDULE_QUEUE_TAG": " · キュー {queue}",
-	"VOICE_LANGUAGE_INPUT": "🎙️ 聞き取る言語:{language}",
+	"VOICE_LANGUAGE_INPUT": "🎙️ あなたの言語(よく話す順):{language}",
 	"VOICE_LANGUAGE_INPUT_AUTO": "🎙️ 聞き取る言語:話している言語を自動で判断",
 	"VOICE_LANGUAGE_INPUT_GUESSES": "🎙️ {language}が選ばれましたが、このボットの音声認識は言語を指定できないため、引き続き自動で判断します。",
 	"VOICE_LANGUAGE_OUTPUT": "🗣️ 答える言語:{language}",
