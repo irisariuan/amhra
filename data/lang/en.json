@@ -341,10 +341,13 @@
 			}
 		},
 		"voicelanguage": {
-			"description": "Choose the language I hear you in, and answer you in",
+			"description": "Choose the language I hear you in, and the one I answer you in",
 			"options": {
-				"language": {
-					"description": "Your language; Chinese is separate for Mandarin and Cantonese"
+				"input": {
+					"description": "The language you speak; Chinese is separate for Mandarin and Cantonese"
+				},
+				"output": {
+					"description": "The language I answer you in; Chinese is separate for Mandarin and Cantonese"
 				}
 			}
 		}
@@ -475,9 +478,11 @@
 	"QUEUE_NATIVE_ONLY": "Queues past 1 need the Rust voice backend (`USE_RUST_VOICE`)",
 	"SET_QUEUE_VOLUME": "Set queue {queue} to {volume}%",
 	"SCHEDULE_QUEUE_TAG": " · on queue {queue}",
-	"VOICE_LANGUAGE_SET": "I'll hear you in {language} from now on, and answer in it.",
-	"VOICE_LANGUAGE_ANSWERS_ONLY": "I'll answer you in {language}. This bot's speech recogniser still guesses the language it hears.",
-	"VOICE_LANGUAGE_AUTO": "I'll work out which language you're speaking again.",
+	"VOICE_LANGUAGE_INPUT": "🎙️ I hear you in: {language}",
+	"VOICE_LANGUAGE_INPUT_AUTO": "🎙️ I hear you in: whichever language you speak",
+	"VOICE_LANGUAGE_INPUT_GUESSES": "🎙️ You chose {language}, but this bot's speech recogniser can't be told a language, so it still guesses what it hears.",
+	"VOICE_LANGUAGE_OUTPUT": "🗣️ I answer you in: {language}",
+	"VOICE_LANGUAGE_OUTPUT_AUTO": "🗣️ I answer you in: whichever language I heard",
 	"voicePatterns": {
 		"name": [
 			"amhra",

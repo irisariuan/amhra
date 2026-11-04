@@ -76,10 +76,11 @@ can be combined with `--speech` to include the models for spoken answers.
    `{"command": "retranscribe", "language": "en"}` when the recogniser guessed the
    wrong language. The window is kept in memory until the bot has read it, 30s at
    most, and heard again with the same model, so this takes no extra memory.
-3. **`/voicelanguage`** lets each member choose the language they are heard and
-   answered in, with Mandarin and Cantonese separate. Only Qwen3-ASR can be told per
-   member; SenseVoice and Whisper fix their language at load, so with those the
-   choice only sets the language of the answers.
+3. **`/voicelanguage`** lets each member choose separately the language they speak
+   (`input`) and the one they are answered in (`output`), with Mandarin and Cantonese
+   separate in both. Only Qwen3-ASR can be told `input` per member; SenseVoice and
+   Whisper fix their language at load and keep guessing. `output` works with any of
+   them, and left automatic follows the language heard.
 4. **`/transcript`** also shows the words as they are said, re-recognised about once
    a second, only for members who turned it on and only when the recogniser is idle.
 

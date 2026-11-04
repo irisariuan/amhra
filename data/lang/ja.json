@@ -411,8 +411,11 @@
 		"voicelanguage": {
 			"description": "あなたの声を聞き取る言語と、答える言語を選びます",
 			"options": {
-				"language": {
-					"description": "あなたの言語(中国語は普通話と広東語で別です)"
+				"input": {
+					"description": "あなたが話す言語(中国語は普通話と広東語で別です)"
+				},
+				"output": {
+					"description": "私が答える言語(中国語は普通話と広東語で別です)"
 				}
 			}
 		}
@@ -543,9 +546,11 @@
 	"QUEUE_NATIVE_ONLY": "キュー 2 以降には Rust 音声バックエンド（`USE_RUST_VOICE`）が必要です",
 	"SET_QUEUE_VOLUME": "キュー {queue} の音量を {volume}% に設定しました",
 	"SCHEDULE_QUEUE_TAG": " · キュー {queue}",
-	"VOICE_LANGUAGE_SET": "これからは{language}で聞き取り、{language}で答えます。",
-	"VOICE_LANGUAGE_ANSWERS_ONLY": "{language}で答えます。このボットの音声認識は、聞き取る言語を引き続き自動で判断します。",
-	"VOICE_LANGUAGE_AUTO": "これからは話している言語を自動で判断します。",
+	"VOICE_LANGUAGE_INPUT": "🎙️ 聞き取る言語:{language}",
+	"VOICE_LANGUAGE_INPUT_AUTO": "🎙️ 聞き取る言語:話している言語を自動で判断",
+	"VOICE_LANGUAGE_INPUT_GUESSES": "🎙️ {language}が選ばれましたが、このボットの音声認識は言語を指定できないため、引き続き自動で判断します。",
+	"VOICE_LANGUAGE_OUTPUT": "🗣️ 答える言語:{language}",
+	"VOICE_LANGUAGE_OUTPUT_AUTO": "🗣️ 答える言語:聞き取った言語と同じ",
 	"voicePatterns": {
 		"name": [
 			"アムラ",
