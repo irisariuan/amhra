@@ -127,6 +127,8 @@ export interface Conversation {
 	search?: Search;
 	/** How they are heard again; without it the model is not told it can. */
 	retranscribe?: Retranscribe;
+	/** What they chose to be answered in, whichever language they spoke. */
+	answerIn?: VoiceLanguage;
 }
 
 type Lookup = (name: string) => Command<SlashCommandBuilder> | undefined;
@@ -273,8 +275,16 @@ export function catalogue(lookup: Lookup): string {
  * object a line and answered "skip this and turn it down to 40" with one
  * object holding both commands, of which only the last was kept.
  */
-export function intentPrompt(lookup: Lookup, context?: string, canRetranscribe = false): string {
-	const state = context ? `\nThe bot right now:\n${context}\n` : "";
+export function intentPrompt(
+	lookup: Lookup,
+	context?: string,
+	canRetranscribe = false,
+	answerIn?: VoiceLanguage,
+): string {
+	const told = context ? `\nThe bot right now:\n${context}\n` : "";
+	const state = answerIn
+		? `${told}\nThey chose to be answered in ${VOICE_LANGUAGES[answerIn]}: write every "text" in it, whatever language they spoke.\n`
+		: told;
 	const again = canRetranscribe
 		? `\n- ${RETRANSCRIBE}: Have the speech recogniser hear them again, when the transcript makes no sense because it guessed the wrong language: gibberish, or a script that fits nothing they would ask. Give "language", which is required: ${Object.entries(VOICE_LANGUAGES)
 				.map(([code, name]) => `${code} for ${name}`)
@@ -440,9 +450,15 @@ function played(raw: Record<string, unknown>, search: string, listed: Listed): s
  * A command said so plainly that no model has to read it, held to the commands
  * and their options as the model's answer is; null for anything else.
  */
-export function quickIntent(text: string, lang: string | null, lookup: Lookup): IntentReading | null {
+export function quickIntent(
+	text: string,
+	lang: string | null,
+	lookup: Lookup,
+	answerIn?: VoiceLanguage,
+): IntentReading | null {
+	const chosen = recogniserLanguage(answerIn ?? null);
 	for (const { raw, language } of quickMatches(text, lang)) {
-		const action = actionFrom(raw, language, lookup, listedIn([]));
+		const action = actionFrom(raw, chosen ?? language, lookup, listedIn([]));
 		if (!action || action.command === SEARCH || action.command === RETRANSCRIBE) continue;
 		// As the model's own answer, so what follows on from it can lean on it.
 		const answer = JSON.stringify(raw);
@@ -457,22 +473,23 @@ export async function readIntent(
 	lang: string | null,
 	lookup: Lookup,
 	setting: Setting = readSetting(),
-	{ context, history = [], search = searchYouTube, retranscribe }: Conversation = {},
+	{ context, history = [], search = searchYouTube, retranscribe, answerIn }: Conversation = {},
 ): Promise<IntentReading> {
 	let again: Heard | undefined;
+	const chosen = recogniserLanguage(answerIn ?? null);
 	const url = setting.VOICE_INTENT_MODEL_URL;
 	const server = intentServer();
 	// Still starting: nothing is gained by asking it, or by saying so each time.
 	if (url && server?.ready !== false) {
 		const model =
 			setting.VOICE_INTENT_MODEL ?? defaultIntentModel(process.platform, process.arch, intentRuntime(setting));
-		let language = recogniserLanguage(lang) ?? Language.English;
+		let language = chosen ?? recogniserLanguage(lang) ?? Language.English;
 		const turns: Turn[] = [];
 		let searches = 0;
 		let askedAgain = false;
 		for (;;) {
 			const messages = [
-				{ role: "system", content: intentPrompt(lookup, context, retranscribe !== undefined) },
+				{ role: "system", content: intentPrompt(lookup, context, retranscribe !== undefined, answerIn) },
 				...history,
 				{ role: "user", content: text },
 				...turns,
@@ -487,7 +504,7 @@ export async function readIntent(
 				const heard = await retranscribe(hearAgain.language);
 				if (heard) {
 					again = heard;
-					language = recogniserLanguage(heard.lang) ?? language;
+					language = chosen ?? recogniserLanguage(heard.lang) ?? language;
 				}
 				turns.push({
 					role: "user",
@@ -507,7 +524,11 @@ export async function readIntent(
 		server?.notAnswering();
 	}
 	const intent = parseVoiceCommand(again?.text ?? text, again ? again.lang : lang);
-	return { intents: intent ? [intent] : [], by: "fallback", ...(again ? { heard: again } : {}) };
+	return {
+		intents: intent ? [chosen ? { ...intent, language: chosen } : intent] : [],
+		by: "fallback",
+		...(again ? { heard: again } : {}),
+	};
 }
 
 /** The model's answer, or undefined when there was none to be had. */

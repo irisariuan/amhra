@@ -15,11 +15,16 @@ export interface UserSetting {
 	 */
 	spokenAnswers?: boolean;
 	/**
-	 * The language to hear this user in and answer them in, instead of guessing
-	 * it from each command. Mandarin and Cantonese are separate: the recogniser
-	 * is told which, and each has its own voice.
+	 * The language this user speaks, for the recogniser to hear them in instead
+	 * of guessing it from each command. Mandarin and Cantonese are separate: it
+	 * is told which.
 	 */
-	voiceLanguage?: VoiceLanguage;
+	voiceInputLanguage?: VoiceLanguage;
+	/**
+	 * The language to answer this user in, whichever they spoke. Unset, in the
+	 * one heard. Mandarin and Cantonese are separate: each has its own voice.
+	 */
+	voiceOutputLanguage?: VoiceLanguage;
 }
 
 const store = settingStore<UserSetting>(`${process.cwd()}/data/userSetting.json`);

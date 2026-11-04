@@ -193,7 +193,7 @@ async function onWoke(
 ) {
 	// Each time, as a sidecar that restarted has forgotten: it is in time, since
 	// what they say cannot end for half a second yet.
-	sidecar().send({ type: "setMemberLanguage", userId, language: userSetting(userId).voiceLanguage ?? null });
+	sidecar().send({ type: "setMemberLanguage", userId, language: userSetting(userId).voiceInputLanguage ?? null });
 	if (!userSetting(userId).showTranscript) {
 		dcb.log(`(Guild ID: ${guildId}) No transcript for ${userId}: /transcript is off for them`);
 		return;
@@ -283,8 +283,8 @@ async function handleUtterance(
 ): Promise<boolean> {
 	const key = listeningKey(guildId, userId);
 	let { text } = said;
-	// The language they chose, whichever the recogniser could be told.
-	let lang = userSetting(userId).voiceLanguage ?? said.lang;
+	let { lang } = said;
+	const answerIn = userSetting(userId).voiceOutputLanguage;
 	const found = await speaker(client, guildId, userId);
 	if (!found) {
 		await takeListening(guildId, userId);
@@ -294,7 +294,7 @@ async function handleUtterance(
 	const showTranscript = userSetting(userId).showTranscript === true;
 
 	// Said plainly, it runs now: no model, no reading of the bot's state.
-	let read = quickIntent(text, lang, lookup);
+	let read = quickIntent(text, lang, lookup, answerIn);
 	if (!read) {
 		const status = listening.get(key);
 		status?.heard(saidLine(text));
@@ -304,6 +304,7 @@ async function handleUtterance(
 			read = await readIntent(text, lang, lookup, readSetting(), {
 				context,
 				history: memory.recall(key),
+				answerIn,
 				retranscribe: recogniserTakesLanguage()
 					? async (language) => {
 							status?.set("transcribing");
@@ -338,6 +339,8 @@ async function handleUtterance(
 		? `: [${lang ?? "?"}] ${JSON.stringify(text)} (read by the ${by})`
 		: "";
 	const channel = replyChannel(client, guild, member);
+	// Which of Mandarin and Cantonese to answer in comes from this.
+	const answerLang = answerIn ?? lang;
 
 	if (!intents.length) {
 		dcb.log(`(Guild ID: ${guildId}) Heard the name, then no command${heard}`);
@@ -378,7 +381,7 @@ async function handleUtterance(
 				channel,
 				waiting: message,
 				transcript,
-				lang,
+				lang: answerLang,
 				listen: last && intent.command === REQUEST_INPUT,
 			});
 			answered ||= spoken;
@@ -395,14 +398,14 @@ async function handleUtterance(
 		// Said as it starts, not once it is done: "Leaving the channel" after
 		// leaving would never be heard. A command that is then refused says
 		// why in the chat. Play is said once its search has found something.
-		const said = speaks ? announcement(intent, lang) : null;
+		const said = speaks ? announcement(intent, answerLang) : null;
 		if (said) say(said);
 		try {
 			await command.execute({
 				interaction: voiceInteraction(member, channel, intent, {
 					message,
 					transcript,
-					onFound: speaks ? (found) => say(foundAnnouncement(found, intent.language, lang)) : undefined,
+					onFound: speaks ? (found) => say(foundAnnouncement(found, intent.language, answerLang)) : undefined,
 				}),
 				client,
 				language: intent.language,

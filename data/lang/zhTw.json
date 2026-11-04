@@ -409,10 +409,13 @@
 			}
 		},
 		"voicelanguage": {
-			"description": "選擇我聽你說話及回答你時用的語言",
+			"description": "選擇我聽你說話及回答你時分別用的語言",
 			"options": {
-				"language": {
-					"description": "你的語言,中文分為普通話及粵語"
+				"input": {
+					"description": "你說的語言,中文分為普通話及粵語"
+				},
+				"output": {
+					"description": "我回答你時用的語言,中文分為普通話及粵語"
 				}
 			}
 		}
@@ -543,9 +546,11 @@
 	"QUEUE_NATIVE_ONLY": "佇列 2 以後需要 Rust 語音後端（`USE_RUST_VOICE`）",
 	"SET_QUEUE_VOLUME": "已將佇列 {queue} 的音量設為 {volume}%",
 	"SCHEDULE_QUEUE_TAG": " · 佇列 {queue}",
-	"VOICE_LANGUAGE_SET": "從現在起,我會以{language}聽你說話並回答你。",
-	"VOICE_LANGUAGE_ANSWERS_ONLY": "我會以{language}回答你。這個機器人的語音辨識仍會自行判斷聽到的語言。",
-	"VOICE_LANGUAGE_AUTO": "我會重新自動判斷你說的語言。",
+	"VOICE_LANGUAGE_INPUT": "🎙️ 聽你說話的語言:{language}",
+	"VOICE_LANGUAGE_INPUT_AUTO": "🎙️ 聽你說話的語言:自動判斷你說的語言",
+	"VOICE_LANGUAGE_INPUT_GUESSES": "🎙️ 你選了{language},但這個機器人的語音辨識無法指定語言,仍會自行判斷聽到的語言。",
+	"VOICE_LANGUAGE_OUTPUT": "🗣️ 回答你的語言:{language}",
+	"VOICE_LANGUAGE_OUTPUT_AUTO": "🗣️ 回答你的語言:與聽到的語言相同",
 	"voicePatterns": {
 		"name": [
 			"安赫拉",

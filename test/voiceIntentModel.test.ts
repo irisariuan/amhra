@@ -539,6 +539,15 @@ describe("who reads the command", () => {
 			});
 		}
 
+		test("the answer goes in the language they chose, not the one heard", () => {
+			expect(quickIntent("skip", "en", lookup, "ja")?.intents[0]?.language).toBe(Language.Japanese);
+			expect(quickIntent("次の曲", "ja", lookup, "en")?.intents[0]?.language).toBe(Language.English);
+			expect(quickIntent("播放晴天", "zh", lookup, "ko")?.intents[0]).toMatchObject({
+				query: "晴天",
+				language: Language.Korean,
+			});
+		});
+
 		test("a phrase is data: a new one needs no code", () => {
 			const patterns = languagePatterns(Language.English);
 			const said = patterns?.commands?.pause;
@@ -553,6 +562,38 @@ describe("who reads the command", () => {
 		test("a command the bot does not have is no match", () => {
 			expect(quickIntent("skip", "en", () => undefined)).toBeNull();
 		});
+	});
+
+	test("the language they chose to be answered in holds, whatever was heard", async () => {
+		answering('{"command": "speak", "text": "三首。"}');
+		let prompt = "";
+		const fetched = globalThis.fetch;
+		globalThis.fetch = (async (url: string, init: RequestInit) => {
+			prompt = JSON.parse(String(init.body)).messages[0].content;
+			return fetched(url, init);
+		}) as unknown as typeof fetch;
+		const reading = await readIntent("how many songs are left", "en", lookup, MODEL, { answerIn: "yue" });
+		expect(reading.intents[0]?.language).toBe(Language.TraditionalChinese);
+		expect(prompt).toContain("answered in Chinese (Cantonese)");
+
+		// Hearing them again in another language does not change it.
+		const answers = ['{"command": "retranscribe", "language": "ko"}', '{"command": "skip"}'];
+		globalThis.fetch = (async () =>
+			Response.json({ choices: [{ message: { content: answers.shift() } }] })) as unknown as typeof fetch;
+		const again = await readIntent("gibberish", "en", lookup, MODEL, {
+			answerIn: "ja",
+			retranscribe: async () => ({ text: "스킵", lang: "ko" }),
+		});
+		expect(again.intents[0]).toMatchObject({ command: "skip", language: Language.Japanese });
+
+		// Nor does the fallback, with no model to read it.
+		globalThis.fetch = (async () => new Response("", { status: 503 })) as unknown as typeof fetch;
+		const fallback = await readIntent("pause", "en", lookup, MODEL, { answerIn: "ko" });
+		expect(fallback).toMatchObject({ by: "fallback", intents: [{ command: "pause", language: Language.Korean }] });
+	});
+
+	test("without a choice the model is told nothing about it", () => {
+		expect(intentPrompt(lookup)).not.toContain("chose to be answered");
 	});
 
 	test("the model's no is final, even where the fallback would match", async () => {
