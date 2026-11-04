@@ -26,6 +26,21 @@ export interface CommandLocale {
 	options?: Record<string, CommandLocale>;
 }
 
+/** Commands said plainly enough to need no model; see lib/voice/quickMatch.ts. */
+export interface VoicePatterns {
+	name?: string[];
+	polite?: string[];
+	defer?: string[];
+	deferStarts?: string[];
+	commands?: Record<string, string[]>;
+}
+
+/** A language's plain phrasings of commands. */
+export function languagePatterns(language: Language): VoicePatterns | undefined {
+	const loaded = languages[language] as unknown as { voicePatterns?: VoicePatterns } | null;
+	return loaded?.voicePatterns;
+}
+
 function loadLanguage(
 	lang: Language,
 ): { commands: Record<string, CommandLocale> } & Record<

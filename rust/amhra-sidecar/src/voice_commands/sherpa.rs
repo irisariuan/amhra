@@ -528,6 +528,36 @@ pub struct OfflineRecogniser {
 /// 30ms more recognition time.
 const PADDING_MS: u32 = 300;
 
+/// Frames of silence after the audio for Whisper to hear, each 10ms.
+///
+/// sherpa-onnx's own default for a multilingual model. Whisper expects 30s of
+/// audio, and with too little after a short command it says the command over
+/// until its tokens run out. Measured on synthesised commands: at 100 and 300,
+/// "pause" came back "Pause Pause Pause Pause Pause Pause Pause" and "skip the
+/// song" as "Skip the song. Skip the song. Skip the"; at 1000 both came back
+/// once. The encoder's time goes up with it, from about 650ms to 1500ms on 4
+/// threads, and 2000 costs twice that again for little more.
+const WHISPER_TAIL_FRAMES: i32 = 1000;
+
+/// A transcript that only says one thing over, as that thing said once: the
+/// whole of it has to repeat, at least twice, the last time perhaps cut short.
+/// Whisper still does this now and then ("次の曲。次の曲。").
+fn without_repeats(text: &str) -> &str {
+	let characters: Vec<(usize, char)> = text.char_indices().collect();
+	for period in 1..characters.len() {
+		let repeats = (period..characters.len()).all(|at| characters[at].1 == characters[at - period].1);
+		if !repeats {
+			continue;
+		}
+		// What ends each saying is not needed the last time.
+		let separator = characters[..period].iter().rev().take_while(|(_, c)| !c.is_alphanumeric()).count();
+		if characters.len() + separator >= 2 * period {
+			return text[..characters[period].0].trim_end();
+		}
+	}
+	text
+}
+
 /// Qwen3-ASR's name for each of [`LANGUAGES`], as its prompt spells it.
 fn qwen3_language(code: &str) -> Option<&'static str> {
 	Some(match code {
@@ -623,8 +653,7 @@ impl OfflineRecogniser {
 					config.model_config.tokens = strings[2].as_ptr();
 					whisper.language = strings[3].as_ptr();
 					whisper.task = strings[4].as_ptr();
-					// Recommended tail padding for multilingual Whisper models.
-					whisper.tail_paddings = 300;
+					whisper.tail_paddings = WHISPER_TAIL_FRAMES;
 				}
 				Recogniser::SenseVoice => {
 					config.feat_config.feature_dim = 80;
@@ -675,6 +704,23 @@ impl Drop for OfflineRecogniser {
 
 impl Transcriber for OfflineRecogniser {
 	fn transcribe(&mut self, window: &[f32]) -> Result<Transcript, ModelError> {
+		let pinned = self.pinned.clone();
+		self.recognise(window, pinned.as_ref())
+	}
+
+	fn transcribe_in(&mut self, window: &[f32], language: Option<&str>) -> Result<Transcript, ModelError> {
+		let code = language.and_then(|language| LANGUAGES.iter().find(|code| **code == language));
+		let name = code.and_then(|code| qwen3_language(code)).and_then(|name| CString::new(name).ok());
+		match (self.model, code, name) {
+			(Recogniser::Qwen3, Some(code), Some(name)) => self.recognise(window, Some(&(*code, name))),
+			_ => self.transcribe(window),
+		}
+	}
+}
+
+impl OfflineRecogniser {
+	/// Recognise a window, for Qwen3-ASR in the language given if one is.
+	fn recognise(&mut self, window: &[f32], pinned: Option<&(&'static str, CString)>) -> Result<Transcript, ModelError> {
 		let padding = super::samples(PADDING_MS);
 		self.padded.clear();
 		self.padded.resize(padding, 0.0);
@@ -692,7 +738,7 @@ impl Transcriber for OfflineRecogniser {
 			if stream.is_null() {
 				return Err(ModelError::Recognition("could not make a stream".to_owned()));
 			}
-			if let Some((_, name)) = &self.pinned {
+			if let Some((_, name)) = pinned {
 				sys::SherpaOnnxOfflineStreamSetOption(stream, c"language".as_ptr(), name.as_ptr());
 			}
 			sys::SherpaOnnxAcceptWaveformOffline(stream, SAMPLE_RATE as i32, samples.as_ptr(), length);
@@ -712,11 +758,19 @@ impl Transcriber for OfflineRecogniser {
 			// sherpa-onnx strips the "language English" Qwen3-ASR writes
 			// before the text and keeps nothing of it, so the language is
 			// the pinned one, or read off the writing.
-			transcript.lang = match &self.pinned {
+			transcript.lang = match pinned {
 				Some((code, _)) if !transcript.text.is_empty() => Some((*code).to_owned()),
 				Some(_) => None,
 				None => script_language(&transcript.text).map(str::to_owned),
 			};
+		}
+		if self.model == Recogniser::WhisperTurbo {
+			transcript.text = without_repeats(transcript.text.trim()).to_owned();
+		}
+		// Every answer in the bot's language depends on this: a recogniser that
+		// did not say has it read off the writing too.
+		if transcript.lang.is_none() {
+			transcript.lang = script_language(&transcript.text).map(str::to_owned);
 		}
 		Ok(transcript)
 	}
@@ -780,6 +834,31 @@ fn parse_result(json: &str) -> Result<Transcript, ModelError> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn a_transcript_saying_one_thing_over_is_said_once() {
+		for (heard, once) in [
+			("Pause Pause Pause Pause Pause Pause Pause", "Pause"),
+			("Skip the song. Skip the song. Skip the", "Skip the song."),
+			("Skip the song. Skip the song.", "Skip the song."),
+			("次の曲。次の曲。", "次の曲。"),
+			("次の曲次の曲次の曲", "次の曲"),
+			("播放天播放天播", "播放天"),
+		] {
+			assert_eq!(without_repeats(heard), once, "{heard}");
+		}
+		for kept in [
+			"Skip the song.",
+			"Play Shape of You by Ed Sheeran",
+			"play bye bye bye",
+			// Starting and ending alike is not saying it twice.
+			"abca",
+			"を再生して、を",
+			"",
+		] {
+			assert_eq!(without_repeats(kept), kept);
+		}
+	}
 
 	#[test]
 	fn whisper_turbo_names_select_the_same_model() {

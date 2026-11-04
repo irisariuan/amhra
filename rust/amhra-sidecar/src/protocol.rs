@@ -177,10 +177,35 @@ pub enum Command {
 	#[serde(rename_all = "camelCase")]
 	Settle { guild_id: String, user_id: String },
 	/// What the bot made of a member's last `Utterance`: whether it found a
-	/// command in it. Only used to label the wake saved with `--wake-clips`;
-	/// ignored otherwise, and for an utterance that was not after the name.
+	/// command in it. Labels the wake saved with `--wake-clips`, unless the
+	/// utterance was not after the name. The bot is done with it, so its audio
+	/// can no longer be asked for with `Retranscribe`.
 	#[serde(rename_all = "camelCase")]
 	Understood { guild_id: String, user_id: String, command: bool },
+	/// The language to hear a member in from now on: `en`, `ja`, `ko`, `zh`
+	/// (Mandarin) or `yue` (Cantonese), or null to guess. Kept until the process
+	/// ends; only Qwen3-ASR can be told per member. Sent with each `Woke`.
+	#[serde(rename_all = "camelCase")]
+	SetMemberLanguage {
+		user_id: String,
+		#[serde(default)]
+		language: Option<String>,
+	},
+	/// Report what this member says as they say it, with `Partial` events, until
+	/// their command ends. Sent after their `Woke`; only for someone who asked
+	/// to see their words.
+	#[serde(rename_all = "camelCase")]
+	StreamTranscript { guild_id: String, user_id: String },
+	/// Hear this member's last `Utterance` again. `language` is what to hear it
+	/// in, where the recogniser can be told: `en`, `ja`, `ko`, `zh` or `yue`.
+	/// Answered with `Retranscribed`.
+	#[serde(rename_all = "camelCase")]
+	Retranscribe {
+		guild_id: String,
+		user_id: String,
+		#[serde(default)]
+		language: Option<String>,
+	},
 	/// Have these phrases ready, so saying them never waits on the model:
 	/// what is not yet saved is synthesised in the background, once.
 	#[serde(rename_all = "camelCase")]
@@ -248,6 +273,14 @@ pub enum Event {
 	/// recogniser was too far behind to take.
 	#[serde(rename_all = "camelCase")]
 	Captured { guild_id: String, user_id: String },
+	/// What they have said so far of a command they are still saying. Only
+	/// after `StreamTranscript`, and may be wrong: only the `Utterance` counts.
+	#[serde(rename_all = "camelCase")]
+	Partial { guild_id: String, user_id: String, text: String },
+	/// The answer to `Retranscribe`. No text if their audio is gone, or nothing
+	/// could be made of it this time.
+	#[serde(rename_all = "camelCase")]
+	Retranscribed { guild_id: String, user_id: String, text: Option<String>, lang: Option<String> },
 	/// The wake came to nothing: no speech followed it, or none that could be
 	/// made out. Also sent for a `Speak` that was to listen to its member
 	/// again and could not be said: nothing will be listened for.
@@ -333,8 +366,10 @@ impl Command {
 			| Self::SetListen { guild_id, .. }
 			| Self::Speak { guild_id, .. }
 			| Self::Settle { guild_id, .. }
-			| Self::Understood { guild_id, .. } => Some(guild_id),
-			Self::SetTimings { .. } | Self::PrepareSpeech { .. } | Self::ListSessions | Self::Shutdown => None,
+			| Self::Understood { guild_id, .. }
+			| Self::StreamTranscript { guild_id, .. }
+			| Self::Retranscribe { guild_id, .. } => Some(guild_id),
+			Self::SetTimings { .. } | Self::SetMemberLanguage { .. } | Self::PrepareSpeech { .. } | Self::ListSessions | Self::Shutdown => None,
 		}
 	}
 }

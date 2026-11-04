@@ -46,6 +46,10 @@ export class TranscriptStatus<M extends EditableMessage> {
 	/** Edits run one after another, so they land in the order they were made. */
 	private edits: Promise<void> = Promise.resolve();
 	private finished = false;
+	/** What they have said so far, shown under the wording. */
+	private said: string | null = null;
+	/** An edit showing them is waiting its turn, and will show the latest. */
+	private heardQueued = false;
 
 	/**
 	 * `message` is the status already posted, at its first wording of
@@ -70,6 +74,25 @@ export class TranscriptStatus<M extends EditableMessage> {
 		this.variant = 0;
 		this.show();
 		// Each stage gets its first wording for a whole turn.
+		this.rotate();
+	}
+
+	/**
+	 * Show `line`, what they have said so far, under the wording, in place of the
+	 * last. Each resets the rotation, so words coming in are all that changes.
+	 */
+	heard(line: string) {
+		if (this.finished) return;
+		this.said = line;
+		// Behind a slow edit only the latest counts: a queue of them would only
+		// get further behind what is being said.
+		if (!this.heardQueued) {
+			this.heardQueued = true;
+			this.queue(() => {
+				this.heardQueued = false;
+				return this.current();
+			});
+		}
 		this.rotate();
 	}
 
@@ -99,15 +122,25 @@ export class TranscriptStatus<M extends EditableMessage> {
 	}
 
 	private show() {
+		const content = this.current();
+		if (content !== undefined) this.queue(() => content);
+	}
+
+	/** The line as it stands: the wording, and what they have said under it. */
+	private current() {
 		const wordings = this.wordings(this.stage);
-		const content = wordings[this.variant % wordings.length];
-		if (content === undefined) return;
+		const wording = wordings[this.variant % wordings.length];
+		return wording !== undefined && this.said ? `${wording}\n${this.said}` : wording;
+	}
+
+	private queue(content: () => string | undefined) {
 		this.edits = this.edits.then(async () => {
+			const latest = content();
 			// Checked when the edit's turn comes, not when it was made: one
 			// queued behind a slow edit must not land after the answer.
-			if (this.finished) return;
+			if (this.finished || latest === undefined) return;
 			const message = await this.message;
-			await message?.edit({ content, allowedMentions: { parse: [] } }).catch(() => {});
+			await message?.edit({ content: latest, allowedMentions: { parse: [] } }).catch(() => {});
 		});
 	}
 }

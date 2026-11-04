@@ -13,16 +13,25 @@
 //! Both queues drop rather than block. The receive thread must keep reading
 //! its socket whatever happens downstream, and a command that waited behind a
 //! backlog would be acted on long after the user gave up on it.
+//!
+//! The recogniser has two more jobs, both only when the bot asks. It takes down
+//! what someone is still saying, for a member who asked to see their words, at
+//! most every [`PARTIAL_EVERY_MS`] and only while it has nothing else to do, so
+//! a partial never costs anyone's command its place. And it keeps each command's
+//! window for [`KEEP_WINDOW`], or until the bot has read it, so the bot can have
+//! it heard again in another language: the recogniser's guess is the likeliest
+//! thing to be wrong in a short command, and hearing it again takes no second
+//! model in memory.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, SyncSender, TrySendError};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use super::gate::{GateConfig, GateEvent};
 use super::speakers::Speakers;
-use super::{Models, Transcriber, milliseconds};
+use super::{Models, Transcriber, milliseconds, samples};
 use crate::listen::{Heard, VoiceSink};
 
 /// Frames queued for a guild's gate thread: two seconds of five people.
@@ -36,6 +45,12 @@ const TICK: Duration = Duration::from_millis(20);
 const REPORT_DROPS_EVERY: Duration = Duration::from_secs(10);
 /// Both threads only call into the models; neither recurses.
 const STACK_SIZE: usize = 2 * 1024 * 1024;
+/// How much more someone has to say before what they have said so far is taken
+/// down again. Discord allows one edit a second, and the bot makes one of each.
+pub const PARTIAL_EVERY_MS: u32 = 1000;
+/// How long a command's window is kept to be heard again, at most. The bot asks
+/// within seconds or not at all.
+const KEEP_WINDOW: Duration = Duration::from_secs(30);
 
 /// What stands in for the wake word when someone is listened to again after
 /// the bot answered them (see [`Engine::follow_up`]).
@@ -54,6 +69,12 @@ pub enum Notice {
 	NearMiss { guild_id: String, user_id: u64, samples: Vec<f32>, score: f32, before_ms: u32 },
 	/// …and then nothing.
 	TimedOut { guild_id: String, user_id: u64, keyword: String },
+	/// What they have said so far, while they are still saying it, for a member
+	/// whose words were asked for ([`Engine::stream_transcript`]).
+	Partial { guild_id: String, user_id: u64, text: String },
+	/// Their last command heard again ([`Engine::retranscribe`]). `None` if it
+	/// has gone, or nothing could be made of it this time.
+	Retranscribed { guild_id: String, user_id: u64, text: Option<String>, lang: Option<String> },
 	/// What followed it has been taken down and is being recognised. An
 	/// `Utterance` or `Unintelligible` follows, unless it was dropped.
 	Captured { guild_id: String, user_id: u64, keyword: String },
@@ -92,6 +113,44 @@ struct Job {
 	samples: Vec<f32>,
 	/// When they stopped talking, as best the gate can tell.
 	speech_ended: Instant,
+	/// What they chose to be heard in, if they did.
+	language: Option<String>,
+}
+
+/// What the recogniser thread is given to do.
+enum Work {
+	Command(Job),
+	Partial { guild_id: String, user_id: u64, samples: Vec<f32>, language: Option<String> },
+	Again { guild_id: String, user_id: u64, language: Option<String> },
+	Forget { guild_id: String, user_id: u64 },
+}
+
+/// The way to the recogniser thread, counting what it has yet to finish.
+#[derive(Clone)]
+struct Queue {
+	work: SyncSender<Work>,
+	unfinished: Arc<AtomicUsize>,
+	/// The language each member chose to be heard in.
+	languages: Arc<Mutex<HashMap<u64, String>>>,
+}
+
+impl Queue {
+	fn language(&self, user_id: u64) -> Option<String> {
+		self.languages.lock().ok()?.get(&user_id).cloned()
+	}
+
+	// Handed straight back to the one caller that looks, never carried further.
+	#[allow(clippy::result_large_err)]
+	fn offer(&self, work: Work) -> Result<(), TrySendError<Work>> {
+		self.unfinished.fetch_add(1, Ordering::Relaxed);
+		self.work.try_send(work).inspect_err(|_| {
+			self.unfinished.fetch_sub(1, Ordering::Relaxed);
+		})
+	}
+
+	fn idle(&self) -> bool {
+		self.unfinished.load(Ordering::Relaxed) == 0
+	}
 }
 
 /// Voice commands for the whole process.
@@ -99,7 +158,7 @@ pub struct Engine {
 	models: Arc<dyn Models>,
 	/// What new gates start with; see [`Engine::set_config`].
 	config: Mutex<GateConfig>,
-	jobs: SyncSender<Job>,
+	queue: Queue,
 	report: Report,
 	/// Each listening guild's gate thread, for [`Engine::follow_up`] and
 	/// [`Engine::set_config`]. A guild whose call ended keeps its entry until
@@ -113,6 +172,8 @@ enum Control {
 	FollowUp(u64),
 	/// New timings for everyone in the guild.
 	Config(GateConfig),
+	/// Take down what this member says as they say it, until their command ends.
+	Stream(u64),
 }
 
 impl Engine {
@@ -124,13 +185,15 @@ impl Engine {
 		config: GateConfig,
 		report: Report,
 	) -> std::io::Result<Self> {
-		let (jobs, queue) = std::sync::mpsc::sync_channel(JOB_QUEUE);
+		let (work, inbox) = std::sync::mpsc::sync_channel(JOB_QUEUE);
+		let queue = Queue { work, unfinished: Arc::default(), languages: Arc::default() };
 		let thread_report = Arc::clone(&report);
+		let unfinished = Arc::clone(&queue.unfinished);
 		std::thread::Builder::new()
 			.name("recogniser".to_owned())
 			.stack_size(STACK_SIZE)
-			.spawn(move || recognise(queue, transcriber, thread_report))?;
-		Ok(Self { models, config: Mutex::new(config), jobs, report, controls: Mutex::default() })
+			.spawn(move || recognise(inbox, transcriber, thread_report, unfinished))?;
+		Ok(Self { models, config: Mutex::new(config), queue, report, controls: Mutex::default() })
 	}
 
 	/// Start gating one guild's voice. Hand the returned sink to the receive
@@ -142,7 +205,7 @@ impl Engine {
 		let gate = GateThread {
 			guild_id: guild_id.to_owned(),
 			speakers: Speakers::new(Arc::clone(&self.models), self.config()),
-			jobs: self.jobs.clone(),
+			queue: self.queue.clone(),
 			report: Arc::clone(&self.report),
 			dropped: Arc::clone(&dropped),
 		};
@@ -171,9 +234,40 @@ impl Engine {
 	}
 
 	/// The bot has read what `user_id` said after the name, and found a
-	/// command in it or not. Only reported on, for labelling the wake.
+	/// command in it or not: reported on, for labelling the wake, and its window
+	/// is no longer kept.
 	pub fn understood(&self, guild_id: &str, user_id: u64, command: bool) {
 		(self.report)(Notice::Understood { guild_id: guild_id.to_owned(), user_id, command });
+		// If the queue is full it goes when its time is up instead.
+		let _ = self.queue.offer(Work::Forget { guild_id: guild_id.to_owned(), user_id });
+	}
+
+	/// What `user_id` is to be heard in from now on, or `None` to guess, where
+	/// the recogniser can be told (see [`Transcriber::transcribe_in`]).
+	pub fn set_language(&self, user_id: u64, language: Option<String>) {
+		if let Ok(mut languages) = self.queue.languages.lock() {
+			match language {
+				Some(language) => languages.insert(user_id, language),
+				None => languages.remove(&user_id),
+			};
+		}
+	}
+
+	/// Report what `user_id` says as they say it, until their command ends.
+	/// Nothing, if they have no command open by the time this arrives.
+	pub fn stream_transcript(&self, guild_id: &str, user_id: u64) {
+		if let Some(gate) = self.controls.lock().ok().and_then(|map| map.get(guild_id).cloned()) {
+			let _ = gate.send(Control::Stream(user_id));
+		}
+	}
+
+	/// Hear the last command of `user_id` again, in `language` if the recogniser
+	/// can be told one. Always answered with a [`Notice::Retranscribed`].
+	pub fn retranscribe(&self, guild_id: &str, user_id: u64, language: Option<String>) {
+		let work = Work::Again { guild_id: guild_id.to_owned(), user_id, language };
+		if self.queue.offer(work).is_err() {
+			(self.report)(Notice::Retranscribed { guild_id: guild_id.to_owned(), user_id, text: None, lang: None });
+		}
 	}
 
 	/// The timings gates start with now.
@@ -198,7 +292,7 @@ impl Engine {
 struct GateThread {
 	guild_id: String,
 	speakers: Speakers,
-	jobs: SyncSender<Job>,
+	queue: Queue,
 	report: Report,
 	/// Counted by the sink, on the receive thread.
 	dropped: Arc<AtomicU64>,
@@ -218,8 +312,8 @@ impl GateThread {
 				Err(RecvTimeoutError::Disconnected) => return,
 			};
 			let now = Instant::now();
-			let Self { guild_id, speakers, jobs, report, .. } = &mut self;
-			let mut handle = |user_id, event| handle(guild_id, jobs, report, user_id, event, now);
+			let Self { guild_id, speakers, queue, report, .. } = &mut self;
+			let mut handle = |user_id, event| handle(guild_id, queue, report, user_id, event, now);
 
 			match heard {
 				Some(Heard::Voice(frame)) => {
@@ -242,9 +336,21 @@ impl GateThread {
 						}
 					}
 					Control::Config(config) => speakers.set_config(config),
+					Control::Stream(user_id) => speakers.stream(user_id),
 				}
 			}
 			speakers.tick(now, &mut handle);
+			speakers.partials(samples(PARTIAL_EVERY_MS), &mut |user_id, window| {
+				queue.idle()
+					&& queue
+						.offer(Work::Partial {
+							guild_id: guild_id.clone(),
+							user_id,
+							samples: window.to_vec(),
+							language: queue.language(user_id),
+						})
+						.is_ok()
+			});
 
 			if now.duration_since(last_drop_report) >= REPORT_DROPS_EVERY {
 				let dropped = self.dropped.load(Ordering::Relaxed);
@@ -264,7 +370,7 @@ impl GateThread {
 
 fn handle(
 	guild_id: &str,
-	jobs: &SyncSender<Job>,
+	queue: &Queue,
 	report: &Report,
 	user_id: u64,
 	event: GateEvent,
@@ -288,9 +394,10 @@ fn handle(
 				keyword: capture.keyword,
 				samples: capture.samples,
 				speech_ended: now.checked_sub(since).unwrap_or(now),
+				language: queue.language(user_id),
 			};
 			let keyword = job.keyword.clone();
-			match jobs.try_send(job) {
+			match queue.offer(Work::Command(job)) {
 				Ok(()) => report(Notice::Captured { guild_id, user_id, keyword }),
 				Err(TrySendError::Full(_)) => {
 					report(Notice::Dropped { guild_id, what: "commands", count: 1 })
@@ -302,18 +409,77 @@ fn handle(
 	}
 }
 
-fn recognise(queue: Receiver<Job>, mut transcriber: Box<dyn Transcriber>, report: Report) {
-	for job in queue {
-		let started = Instant::now();
-		let outcome = transcriber.transcribe(&job.samples);
-		let done = Instant::now();
-		let Job { guild_id, user_id, keyword, samples, speech_ended } = job;
-		match outcome {
-			Ok(transcript) if transcript.text.trim().is_empty() => {
-				report(Notice::Unintelligible { guild_id, user_id, keyword })
+fn recognise(inbox: Receiver<Work>, mut transcriber: Box<dyn Transcriber>, report: Report, unfinished: Arc<AtomicUsize>) {
+	// The last command of each member, to hear again if the bot asks.
+	let mut kept: HashMap<(String, u64), (Vec<f32>, Instant)> = HashMap::new();
+	loop {
+		let work = match inbox.recv_timeout(KEEP_WINDOW) {
+			Ok(work) => Some(work),
+			Err(RecvTimeoutError::Timeout) => None,
+			Err(RecvTimeoutError::Disconnected) => return,
+		};
+		kept.retain(|_, (_, at)| at.elapsed() < KEEP_WINDOW);
+		match work {
+			Some(Work::Command(job)) => {
+				if let Some(window) = recognise_command(job, transcriber.as_mut(), &report) {
+					kept.insert(window.0, (window.1, Instant::now()));
+				}
 			}
-			Ok(transcript) => report(Notice::Utterance {
-				guild_id,
+			Some(Work::Partial { guild_id, user_id, samples, language }) => {
+				// The whole command is recognised when it ends, and a failure is
+				// reported then.
+				if let Ok(transcript) = transcriber.transcribe_in(&samples, language.as_deref()) {
+					let text = transcript.text.trim();
+					if !text.is_empty() {
+						report(Notice::Partial { guild_id, user_id, text: text.to_owned() });
+					}
+				}
+			}
+			Some(Work::Again { guild_id, user_id, language }) => {
+				let outcome = kept
+					.get(&(guild_id.clone(), user_id))
+					.map(|(samples, _)| transcriber.transcribe_in(samples, language.as_deref()));
+				let heard = match outcome {
+					Some(Ok(transcript)) if !transcript.text.trim().is_empty() => Some(transcript),
+					Some(Err(error)) => {
+						report(Notice::Failed { guild_id: guild_id.clone(), message: error.to_string() });
+						None
+					}
+					_ => None,
+				};
+				let (text, lang) = heard.map_or((None, None), |heard| (Some(heard.text.trim().to_owned()), heard.lang));
+				report(Notice::Retranscribed { guild_id, user_id, text, lang });
+			}
+			Some(Work::Forget { guild_id, user_id }) => {
+				kept.remove(&(guild_id, user_id));
+			}
+			None => continue,
+		}
+		unfinished.fetch_sub(1, Ordering::Relaxed);
+	}
+}
+
+/// Recognise a command and report it. Its window, if it came to words.
+fn recognise_command(
+	job: Job,
+	transcriber: &mut dyn Transcriber,
+	report: &Report,
+) -> Option<((String, u64), Vec<f32>)> {
+	let started = Instant::now();
+	let outcome = match &job.language {
+		Some(language) => transcriber.transcribe_in(&job.samples, Some(language)),
+		None => transcriber.transcribe(&job.samples),
+	};
+	let done = Instant::now();
+	let Job { guild_id, user_id, keyword, samples, speech_ended, .. } = job;
+	match outcome {
+		Ok(transcript) if transcript.text.trim().is_empty() => {
+			report(Notice::Unintelligible { guild_id, user_id, keyword });
+			None
+		}
+		Ok(transcript) => {
+			report(Notice::Utterance {
+				guild_id: guild_id.clone(),
 				user_id,
 				keyword,
 				text: transcript.text.trim().to_owned(),
@@ -321,11 +487,13 @@ fn recognise(queue: Receiver<Job>, mut transcriber: Box<dyn Transcriber>, report
 				latency_ms: millis(done.duration_since(speech_ended)),
 				recognition_ms: millis(done.duration_since(started)),
 				audio_ms: milliseconds(samples.len()),
-			}),
-			Err(error) => {
-				report(Notice::Failed { guild_id: guild_id.clone(), message: error.to_string() });
-				report(Notice::Unintelligible { guild_id, user_id, keyword });
-			}
+			});
+			Some(((guild_id, user_id), samples))
+		}
+		Err(error) => {
+			report(Notice::Failed { guild_id: guild_id.clone(), message: error.to_string() });
+			report(Notice::Unintelligible { guild_id, user_id, keyword });
+			None
 		}
 	}
 }
@@ -359,6 +527,13 @@ mod tests {
 	impl Transcriber for FakeTranscriber {
 		fn transcribe(&mut self, samples: &[f32]) -> Result<Transcript, ModelError> {
 			Ok(Transcript { text: format!(" {} samples ", samples.len()), lang: Some("en".to_owned()) })
+		}
+
+		fn transcribe_in(&mut self, samples: &[f32], language: Option<&str>) -> Result<Transcript, ModelError> {
+			if language.is_none() {
+				return self.transcribe(samples);
+			}
+			Ok(Transcript { text: format!("{} samples again", samples.len()), lang: language.map(str::to_owned) })
 		}
 	}
 
@@ -444,6 +619,106 @@ mod tests {
 		wait_for(&notices, |notice| matches!(notice, Notice::Utterance { keyword, .. } if keyword == FOLLOW_UP));
 		// A guild nobody is listening in is not an error.
 		engine.follow_up("8", 42);
+	}
+
+	fn engine() -> (Engine, Arc<Mutex<Vec<Notice>>>) {
+		let notices = Arc::new(Mutex::new(Vec::new()));
+		let sink_notices = Arc::clone(&notices);
+		let engine = Engine::start(
+			Arc::new(FakeModels),
+			Box::new(FakeTranscriber),
+			GateConfig::default(),
+			Arc::new(move |notice| sink_notices.lock().unwrap().push(notice)),
+		)
+		.unwrap();
+		(engine, notices)
+	}
+
+	fn retranscribed(notices: &Mutex<Vec<Notice>>) -> Vec<(Option<String>, Option<String>)> {
+		notices
+			.lock()
+			.unwrap()
+			.iter()
+			.filter_map(|notice| match notice {
+				Notice::Retranscribed { text, lang, .. } => Some((text.clone(), lang.clone())),
+				_ => None,
+			})
+			.collect()
+	}
+
+	#[test]
+	fn a_command_is_heard_again_until_the_bot_has_read_it() {
+		let (engine, notices) = engine();
+		let mut sink = engine.listen("7").unwrap();
+		sink(voice(42, &keyword_frame()));
+		for _ in 0..10 {
+			sink(voice(42, &[LOUD; FRAME_SAMPLES]));
+		}
+		wait_for(&notices, |notice| matches!(notice, Notice::Utterance { .. }));
+
+		engine.retranscribe("7", 42, Some("ja".to_owned()));
+		wait_for(&notices, |notice| matches!(notice, Notice::Retranscribed { .. }));
+		let heard = retranscribed(&notices);
+		assert!(heard[0].0.as_deref().is_some_and(|text| text.ends_with("samples again")), "{heard:?}");
+		assert_eq!(heard[0].1.as_deref(), Some("ja"));
+
+		// Someone else's voice is not theirs to hear again.
+		engine.retranscribe("7", 43, None);
+		// Read: nothing is kept of it.
+		engine.understood("7", 42, true);
+		engine.retranscribe("7", 42, None);
+		let deadline = Instant::now() + Duration::from_secs(5);
+		while retranscribed(&notices).len() < 3 {
+			assert!(Instant::now() < deadline);
+			std::thread::sleep(Duration::from_millis(20));
+		}
+		let heard = retranscribed(&notices);
+		assert_eq!(&heard[1..], [(None, None), (None, None)]);
+	}
+
+	#[test]
+	fn a_member_is_heard_in_the_language_they_chose() {
+		let (engine, notices) = engine();
+		let mut sink = engine.listen("7").unwrap();
+		engine.set_language(42, Some("yue".to_owned()));
+		sink(voice(42, &keyword_frame()));
+		for _ in 0..10 {
+			sink(voice(42, &[LOUD; FRAME_SAMPLES]));
+		}
+		wait_for(&notices, |notice| matches!(notice, Notice::Utterance { lang: Some(lang), .. } if lang == "yue"));
+	}
+
+	#[test]
+	fn what_is_being_said_is_only_taken_down_when_asked_for() {
+		let (engine, notices) = engine();
+		let mut sink = engine.listen("7").unwrap();
+		let say = |sink: &mut crate::listen::VoiceSink, user_id| {
+			sink(voice(user_id, &keyword_frame()));
+			for _ in 0..80 {
+				sink(voice(user_id, &[LOUD; FRAME_SAMPLES]));
+				std::thread::sleep(Duration::from_millis(2));
+			}
+		};
+		say(&mut sink, 42);
+		wait_for(&notices, |notice| matches!(notice, Notice::Utterance { user_id: 42, .. }));
+		assert!(!notices.lock().unwrap().iter().any(|notice| matches!(notice, Notice::Partial { .. })));
+
+		sink(voice(43, &keyword_frame()));
+		wait_for(&notices, |notice| matches!(notice, Notice::Woke { user_id: 43, .. }));
+		engine.stream_transcript("7", 43);
+		std::thread::sleep(Duration::from_millis(100));
+		for _ in 0..80 {
+			sink(voice(43, &[LOUD; FRAME_SAMPLES]));
+			std::thread::sleep(Duration::from_millis(2));
+		}
+		wait_for(&notices, |notice| matches!(notice, Notice::Partial { user_id: 43, .. }));
+		wait_for(&notices, |notice| matches!(notice, Notice::Utterance { user_id: 43, .. }));
+		let notices = notices.lock().unwrap();
+		let at = |found: fn(&Notice) -> bool| notices.iter().position(found).unwrap();
+		assert!(
+			at(|notice| matches!(notice, Notice::Partial { .. }))
+				< at(|notice| matches!(notice, Notice::Utterance { user_id: 43, .. }))
+		);
 	}
 
 	#[test]

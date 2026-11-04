@@ -86,6 +86,40 @@ describe("TranscriptStatus", () => {
 		expect(contents).toEqual(["transcribing", "writing it down", "model generating"]);
 	});
 
+	test("what they have said goes under the wording, the latest only, and stops the rotation", async () => {
+		const { clock, advance } = fakeClock();
+		const contents: string[] = [];
+		let release = () => {};
+		const message: EditableMessage = {
+			edit: ({ content }) =>
+				new Promise<void>((resolve) => {
+					contents.push(content);
+					release = resolve;
+				}),
+		};
+		const status = new TranscriptStatus(Promise.resolve(message), "listening", (stage) => WORDINGS[stage], clock);
+		status.heard("play");
+		await settle();
+		expect(contents).toEqual(["listening\nplay"]);
+		// Two more behind the slow edit: the first never shows.
+		status.heard("play bad");
+		status.heard("play bad guy");
+		release();
+		await settle();
+		expect(contents).toEqual(["listening\nplay", "listening\nplay bad guy"]);
+		release();
+		advance(ROTATE_MS - 1);
+		status.heard("play bad guy now");
+		advance(ROTATE_MS - 1);
+		await settle();
+		expect(contents.at(-1)).toBe("listening\nplay bad guy now");
+		release();
+		// Moving on keeps the words.
+		status.set("transcribing");
+		await settle();
+		expect(contents.at(-1)).toBe("transcribing\nplay bad guy now");
+	});
+
 	test("nothing lands after finish, even an edit queued behind a slow one", async () => {
 		const { clock, advance } = fakeClock();
 		const contents: string[] = [];

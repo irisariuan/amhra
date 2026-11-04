@@ -16,6 +16,8 @@ import {
 } from "./intent";
 import type { YouTubeVideo } from "../youtube";
 import { defaultIntentModel, intentRuntime, intentServer } from "./intentServer";
+import { quickMatches } from "./quickMatch";
+import { VOICE_LANGUAGES, type VoiceLanguage } from "./voiceSetting";
 
 /**
  * Reading a command with a language model running on the bot's own machine.
@@ -44,6 +46,12 @@ import { defaultIntentModel, intentRuntime, intentServer } from "./intentServer"
  * One request may ask for several things ("skip this and turn it down to
  * 40"): the model answers with a list of actions, done in turn, each as a
  * command typed on its own would be.
+ *
+ * Told it can, it may also `retranscribe`: have the recogniser hear them again
+ * in a language it names, when what it was sent looks like a wrong guess at the
+ * language. It reads what comes back in place of the first.
+ *
+ * Commands said plainly never come here (see `quickMatch.ts`).
  *
  * Unset, or when the server does not answer in time, the plain fallback in
  * `intent.ts` reads the command: a command's own name, said first. A server
@@ -93,6 +101,16 @@ export type Action = VoiceIntent | SpokenReply;
 export const SEARCH = "search";
 type SearchRequest = { command: typeof SEARCH; query: string };
 
+/** The model's fourth command: hear them again, in a language it must name. */
+export const RETRANSCRIBE = "retranscribe";
+type RetranscribeRequest = { command: typeof RETRANSCRIBE; language: VoiceLanguage };
+
+/** What the recogniser made of them. */
+export type Heard = { text: string; lang: string | null };
+
+/** Hear their last command again in `language`; null if nothing came of it. */
+export type Retranscribe = (language: VoiceLanguage) => Promise<Heard | null>;
+
 /** Songs found for a search, best first. */
 export type Search = (query: string) => Promise<YouTubeVideo[]>;
 
@@ -107,6 +125,8 @@ export interface Conversation {
 	history?: Turn[];
 	/** How the model's searches are made; YouTube unless told otherwise. */
 	search?: Search;
+	/** How they are heard again; without it the model is not told it can. */
+	retranscribe?: Retranscribe;
 }
 
 type Lookup = (name: string) => Command<SlashCommandBuilder> | undefined;
@@ -253,15 +273,23 @@ export function catalogue(lookup: Lookup): string {
  * object a line and answered "skip this and turn it down to 40" with one
  * object holding both commands, of which only the last was kept.
  */
-export function intentPrompt(lookup: Lookup, context?: string): string {
+export function intentPrompt(lookup: Lookup, context?: string, canRetranscribe = false): string {
 	const state = context ? `\nThe bot right now:\n${context}\n` : "";
+	const again = canRetranscribe
+		? `\n- ${RETRANSCRIBE}: Have the speech recogniser hear them again, when the transcript makes no sense because it guessed the wrong language: gibberish, or a script that fits nothing they would ask. Give "language", which is required: ${Object.entries(VOICE_LANGUAGES)
+				.map(([code, name]) => `${code} for ${name}`)
+				.join(", ")}. Answer with it alone, and at most once. What it hears comes back as the next message, 'Heard again in …: "…"': read that instead of the transcript. Do not use it for words that are merely misheard, which you can work out.`
+		: "";
+	const againExamples = canRetranscribe
+		? `\n"스킵 더 송" -> {"command": "${RETRANSCRIBE}", "language": "en"}\n  Heard again in en: "skip the song" -> {"command": "skip"}\n"pose zan ting" -> {"command": "${RETRANSCRIBE}", "language": "zh"}`
+		: "";
 	return `You read voice commands for a Discord music bot named Amhra. The input is a speech-recognition transcript of what someone said right after saying the bot's name, or of their reply when the bot has just answered them aloud. It is often garbled: what is left of the name may appear at the start, misspelled ("I'm Har", "Ehara", "hammer", "Em,"), and words may be misheard ("pay" for "play", "pre" for "pause").
 
 Decide which of these commands they meant, and its options:
 ${catalogue(lookup)}
 - ${SPEAK}: Answer them aloud instead of running a command: a question about what is playing, the queue, the volume or the settings, answered from the state below. Give "text": what to say, one or two short sentences, in the language they spoke. The bot does not listen after it.
 - ${REQUEST_INPUT}: Ask them something aloud and listen for their answer, which they give without saying the name: when what they want is unclear, or a command needs something they did not say. Give "text": the question, one short sentence, in the language they spoke.
-- ${SEARCH}: Look songs up on YouTube before deciding, when a plain play would not do: they want a particular version (live, acoustic, a cover, by someone), describe a song without naming it, or ask about a song that is not playing (who sings it, how long it is). Never answer about such a song from memory: search. Give "search": what to look up. Answer with it alone, not in a list. A plain "play" with a song's name needs no search.
+- ${SEARCH}: Look songs up on YouTube before deciding, when a plain play would not do: they want a particular version (live, acoustic, a cover, by someone), describe a song without naming it, or ask about a song that is not playing (who sings it, how long it is). Never answer about such a song from memory: search. Give "search": what to look up. Answer with it alone, not in a list. A plain "play" with a song's name needs no search.${again}
 The results come back as the next message, numbered, each with its title, channel, length and link. Then answer what they asked: a question with ${SPEAK}, from the results; a song to play with play and "result": the number of the one they meant, in place of "search". Play the best fit, usually the first that matches: the official one for a song they named, the first live or acoustic one when they asked for that. Only when they asked to choose, or the results are different songs and nothing says which, ask with ${REQUEST_INPUT}, naming two or three briefly. When they answer such a question, or say "the other one", play from the results already shown by "result", never by "search".
 ${state}
 Messages before the last one are what they said to the bot in the last minute, and how it answered: they are done. Use them only to understand the last one ("a bit louder", "play it again", "no, the other one", "a bit more" after turning it down, which means down again, the answer to a question you asked), and answer only what the last one asks: never do again what an earlier one asked.
@@ -314,7 +342,7 @@ Other examples:
 "how many songs are left" -> {"command": "${SPEAK}", "text": "Three more after this one."}
 "play that one again" -> {"command": "${REQUEST_INPUT}", "text": "Which song do you want to hear again?"}
 "put something on" -> {"command": "${REQUEST_INPUT}", "text": "What would you like to hear?"}
-"Ok." -> []
+"Ok." -> []${againExamples}
 "thank you" -> []
 "cool, thanks" -> []
 "never mind" -> []
@@ -329,8 +357,10 @@ Other examples:
 export type IntentReading = {
 	/** What to do, in order. None when they asked for nothing the bot does. */
 	intents: Action[];
-	/** Who decided: the model, or the fallback. */
-	by: "model" | "fallback";
+	/** Who decided: a plain phrase, the model, or the fallback. */
+	by: "pattern" | "model" | "fallback";
+	/** What they said, when it was heard again and that is what was read. */
+	heard?: Heard;
 	/** The model's answer as it gave it. */
 	answer?: string;
 	/**
@@ -406,25 +436,43 @@ function played(raw: Record<string, unknown>, search: string, listed: Listed): s
 	return /youtu\.?be/.test(search) ? null : search;
 }
 
+/**
+ * A command said so plainly that no model has to read it, held to the commands
+ * and their options as the model's answer is; null for anything else.
+ */
+export function quickIntent(text: string, lang: string | null, lookup: Lookup): IntentReading | null {
+	for (const { raw, language } of quickMatches(text, lang)) {
+		const action = actionFrom(raw, language, lookup, listedIn([]));
+		if (!action || action.command === SEARCH || action.command === RETRANSCRIBE) continue;
+		// As the model's own answer, so what follows on from it can lean on it.
+		const answer = JSON.stringify(raw);
+		return { intents: [action], by: "pattern", answer, turns: [{ role: "assistant", content: answer }] };
+	}
+	return null;
+}
+
 /** What someone asked for, read by the model when there is one. */
 export async function readIntent(
 	text: string,
 	lang: string | null,
 	lookup: Lookup,
 	setting: Setting = readSetting(),
-	{ context, history = [], search = searchYouTube }: Conversation = {},
+	{ context, history = [], search = searchYouTube, retranscribe }: Conversation = {},
 ): Promise<IntentReading> {
+	let again: Heard | undefined;
 	const url = setting.VOICE_INTENT_MODEL_URL;
 	const server = intentServer();
 	// Still starting: nothing is gained by asking it, or by saying so each time.
 	if (url && server?.ready !== false) {
 		const model =
 			setting.VOICE_INTENT_MODEL ?? defaultIntentModel(process.platform, process.arch, intentRuntime(setting));
-		const language = recogniserLanguage(lang) ?? Language.English;
+		let language = recogniserLanguage(lang) ?? Language.English;
 		const turns: Turn[] = [];
-		for (let searches = 0; ; searches++) {
+		let searches = 0;
+		let askedAgain = false;
+		for (;;) {
 			const messages = [
-				{ role: "system", content: intentPrompt(lookup, context) },
+				{ role: "system", content: intentPrompt(lookup, context, retranscribe !== undefined) },
 				...history,
 				{ role: "user", content: text },
 				...turns,
@@ -433,18 +481,33 @@ export async function readIntent(
 			if (answer === undefined) break;
 			turns.push({ role: "assistant", content: answer });
 			const actions = parsedActions(answer, language, lookup, listedIn([...history, ...turns]));
+			const hearAgain = actions.find((action): action is RetranscribeRequest => action.command === RETRANSCRIBE);
+			if (hearAgain && retranscribe && !askedAgain) {
+				askedAgain = true;
+				const heard = await retranscribe(hearAgain.language);
+				if (heard) {
+					again = heard;
+					language = recogniserLanguage(heard.lang) ?? language;
+				}
+				turns.push({
+					role: "user",
+					content: `Heard again in ${hearAgain.language}: ${heard ? JSON.stringify(heard.text) : "nothing."}`,
+				});
+				continue;
+			}
 			const asked = actions.find((action): action is SearchRequest => action.command === SEARCH);
 			// Searched enough: what it does with what it has found is its answer.
 			if (!asked || searches >= MAX_SEARCHES) {
-				const intents = actions.filter((action): action is Action => action.command !== SEARCH);
-				return { intents: intents.slice(0, MAX_ACTIONS), by: "model", answer, turns };
+				const intents = actions.filter(isAction);
+				return { intents: intents.slice(0, MAX_ACTIONS), by: "model", answer, turns, ...(again ? { heard: again } : {}) };
 			}
+			searches++;
 			turns.push({ role: "user", content: searchResults(asked.query, await search(asked.query)) });
 		}
 		server?.notAnswering();
 	}
-	const intent = parseVoiceCommand(text, lang);
-	return { intents: intent ? [intent] : [], by: "fallback" };
+	const intent = parseVoiceCommand(again?.text ?? text, again ? again.lang : lang);
+	return { intents: intent ? [intent] : [], by: "fallback", ...(again ? { heard: again } : {}) };
 }
 
 /** The model's answer, or undefined when there was none to be had. */
@@ -519,7 +582,7 @@ function jsonIn(answer: string): unknown {
  */
 export function intentsFrom(answer: string, language: Language, lookup: Lookup): Action[] {
 	return parsedActions(answer, language, lookup)
-		.filter((action): action is Action => action.command !== SEARCH)
+		.filter(isAction)
 		.slice(0, MAX_ACTIONS);
 }
 
@@ -529,7 +592,12 @@ function parsedActions(answer: string, language: Language, lookup: Lookup, liste
 	const items = Array.isArray(json) ? json : [json];
 	return items
 		.map((item) => actionFrom(item, language, lookup, listed))
-		.filter((action): action is Action | SearchRequest => action !== null);
+		.filter((action): action is Action | SearchRequest | RetranscribeRequest => action !== null);
+}
+
+/** Something to do, rather than something the model wanted to know first. */
+function isAction(action: Action | SearchRequest | RetranscribeRequest): action is Action {
+	return action.command !== SEARCH && action.command !== RETRANSCRIBE;
 }
 
 /**
@@ -540,16 +608,26 @@ function parsedActions(answer: string, language: Language, lookup: Lookup, liste
  */
 export function intentFrom(answer: string, language: Language, lookup: Lookup): Action | null {
 	const action = actionFrom(jsonIn(answer), language, lookup, listedIn([]));
-	return action?.command === SEARCH ? null : (action as Action | null);
+	return action && isAction(action) ? action : null;
 }
 
-function actionFrom(json: unknown, language: Language, lookup: Lookup, listed: Listed): Action | SearchRequest | null {
+function actionFrom(
+	json: unknown,
+	language: Language,
+	lookup: Lookup,
+	listed: Listed,
+): Action | SearchRequest | RetranscribeRequest | null {
 	if (!json || typeof json !== "object" || Array.isArray(json)) return null;
 	const raw = json as Record<string, unknown>;
 	const name = typeof raw.command === "string" ? raw.command.trim().toLowerCase() : "";
 	if (name === SEARCH) {
 		const query = typeof raw.search === "string" ? raw.search.trim() : "";
 		return query ? { command: SEARCH, query } : null;
+	}
+	if (name === RETRANSCRIBE) {
+		// No language, no point: hearing it the same way hears the same thing.
+		const asked = typeof raw.language === "string" ? raw.language.trim().toLowerCase() : "";
+		return asked in VOICE_LANGUAGES ? { command: RETRANSCRIBE, language: asked as VoiceLanguage } : null;
 	}
 	if (name === SPEAK || name === REQUEST_INPUT) {
 		const text = typeof raw.text === "string" ? raw.text.trim() : "";

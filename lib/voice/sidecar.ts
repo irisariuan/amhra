@@ -99,6 +99,16 @@ const event = z.discriminatedUnion("type", [
 	// What they said after it has ended and is being transcribed.
 	z.object({ type: z.literal("captured"), guildId: z.string(), userId: z.string() }),
 	z.object({ type: z.literal("nothingHeard"), guildId: z.string(), userId: z.string() }),
+	// What they have said so far, for someone who asked to see their words.
+	z.object({ type: z.literal("partial"), guildId: z.string(), userId: z.string(), text: z.string() }),
+	// Their last command heard again, when the model asked.
+	z.object({
+		type: z.literal("retranscribed"),
+		guildId: z.string(),
+		userId: z.string(),
+		text: z.string().nullable(),
+		lang: z.string().nullable(),
+	}),
 	// Only from a sidecar started with --voice-commands, and only for guilds
 	// that opted in. What was heard after the wake word, as text; turned into a
 	// command by lib/voice/voiceCommands.ts.

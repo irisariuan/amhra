@@ -339,6 +339,14 @@
 					"description": "Say aloud what your voice commands do"
 				}
 			}
+		},
+		"voicelanguage": {
+			"description": "Choose the language I hear you in, and answer you in",
+			"options": {
+				"language": {
+					"description": "Your language; Chinese is separate for Mandarin and Cantonese"
+				}
+			}
 		}
 	},
 	"SEARCH_PICK": "Not the right song? Pick another result below.",
@@ -466,5 +474,140 @@
 	"QUEUE_CHOICE_NEW": "Queue {queue}: start a new queue",
 	"QUEUE_NATIVE_ONLY": "Queues past 1 need the Rust voice backend (`USE_RUST_VOICE`)",
 	"SET_QUEUE_VOLUME": "Set queue {queue} to {volume}%",
-	"SCHEDULE_QUEUE_TAG": " · on queue {queue}"
+	"SCHEDULE_QUEUE_TAG": " · on queue {queue}",
+	"VOICE_LANGUAGE_SET": "I'll hear you in {language} from now on, and answer in it.",
+	"VOICE_LANGUAGE_ANSWERS_ONLY": "I'll answer you in {language}. This bot's speech recogniser still guesses the language it hears.",
+	"VOICE_LANGUAGE_AUTO": "I'll work out which language you're speaking again.",
+	"voicePatterns": {
+		"name": [
+			"amhra",
+			"emhara",
+			"amra",
+			"emra",
+			"ehara"
+		],
+		"polite": [
+			"please",
+			"thanks",
+			"thank you",
+			"now"
+		],
+		"deferStarts": [
+			"it",
+			"that",
+			"this",
+			"something",
+			"anything",
+			"some",
+			"another",
+			"more",
+			"one",
+			"number",
+			"them",
+			"those",
+			"these",
+			"what",
+			"the other",
+			"the next",
+			"the last",
+			"the first",
+			"the second",
+			"the third",
+			"the same",
+			"the previous",
+			"a song",
+			"a track",
+			"a different"
+		],
+		"defer": [
+			"and",
+			"then",
+			"after",
+			"next",
+			"before",
+			"but",
+			"also",
+			"plus",
+			"version",
+			"live",
+			"acoustic",
+			"cover",
+			"remix",
+			"instrumental",
+			"karaoke",
+			"pick",
+			"choose",
+			"queue",
+			"volume",
+			"later",
+			"again",
+			"don't",
+			"do not",
+			"not"
+		],
+		"commands": {
+			"play": [
+				"play",
+				"play {search}",
+				"put on {search}"
+			],
+			"resume": [
+				"resume",
+				"resume the music",
+				"continue",
+				"unpause"
+			],
+			"pause": [
+				"pause",
+				"pause it",
+				"pause this",
+				"pause the music",
+				"pause the song"
+			],
+			"skip": [
+				"skip",
+				"skip it",
+				"skip this",
+				"skip this one",
+				"skip this song",
+				"skip the song",
+				"next",
+				"next one",
+				"next song",
+				"skip {amount}",
+				"skip {amount} songs"
+			],
+			"stop": [
+				"stop",
+				"stop it",
+				"stop the music",
+				"stop playing"
+			],
+			"disconnect": [
+				"disconnect",
+				"leave",
+				"leave the call",
+				"leave the channel"
+			],
+			"volume": [
+				"volume {volume}",
+				"volume to {volume}",
+				"set volume to {volume}",
+				"set the volume to {volume}",
+				"turn it to {volume}"
+			],
+			"loop": [
+				"loop",
+				"loop this",
+				"loop this song"
+			],
+			"queue": [
+				"queue",
+				"show the queue"
+			],
+			"nowplaying": [
+				"now playing"
+			]
+		}
+	}
 }
