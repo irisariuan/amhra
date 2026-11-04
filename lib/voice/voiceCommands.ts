@@ -25,8 +25,11 @@ import { REMEMBER_FOR_MS, VoiceMemory } from "./voiceMemory";
 import {
 	collectsWakeClips,
 	guildListens,
+	heardAs,
+	pinnedLanguage,
 	recogniserTakesLanguage,
 	speaksAnswers,
+	speaksIt,
 	type VoiceLanguage,
 } from "./voiceSetting";
 
@@ -193,7 +196,7 @@ async function onWoke(
 ) {
 	// Each time, as a sidecar that restarted has forgotten: it is in time, since
 	// what they say cannot end for half a second yet.
-	sidecar().send({ type: "setMemberLanguage", userId, language: userSetting(userId).voiceInputLanguage ?? null });
+	sidecar().send({ type: "setMemberLanguage", userId, language: pinnedLanguage(userSetting(userId).voiceLanguages) });
 	if (!userSetting(userId).showTranscript) {
 		dcb.log(`(Guild ID: ${guildId}) No transcript for ${userId}: /transcript is off for them`);
 		return;
@@ -283,8 +286,8 @@ async function handleUtterance(
 ): Promise<boolean> {
 	const key = listeningKey(guildId, userId);
 	let { text } = said;
-	let { lang } = said;
-	const answerIn = userSetting(userId).voiceOutputLanguage;
+	const { voiceLanguages, voiceOutputLanguage: answerIn } = userSetting(userId);
+	let lang = heardAs(said.lang, voiceLanguages);
 	const found = await speaker(client, guildId, userId);
 	if (!found) {
 		await takeListening(guildId, userId);
@@ -293,8 +296,9 @@ async function handleUtterance(
 	const { guild, member } = found;
 	const showTranscript = userSetting(userId).showTranscript === true;
 
-	// Said plainly, it runs now: no model, no reading of the bot's state.
-	let read = quickIntent(text, lang, lookup, answerIn);
+	// Said plainly, it runs now: no model, no reading of the bot's state. Unless
+	// it is in a language they do not speak: that is for the model to look at.
+	let read = speaksIt(lang, voiceLanguages) ? quickIntent(text, lang, lookup, answerIn) : null;
 	if (!read) {
 		const status = listening.get(key);
 		status?.heard(saidLine(text));
@@ -305,6 +309,7 @@ async function handleUtterance(
 				context,
 				history: memory.recall(key),
 				answerIn,
+				speaks: voiceLanguages,
 				retranscribe: recogniserTakesLanguage()
 					? async (language) => {
 							status?.set("transcribing");

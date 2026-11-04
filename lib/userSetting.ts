@@ -15,11 +15,11 @@ export interface UserSetting {
 	 */
 	spokenAnswers?: boolean;
 	/**
-	 * The language this user speaks, for the recogniser to hear them in instead
-	 * of guessing it from each command. Mandarin and Cantonese are separate: it
-	 * is told which.
+	 * The languages this user speaks, the likeliest first, Mandarin and Cantonese
+	 * apart. The model goes by them to decide what to have them heard in again;
+	 * only one, and the recogniser just hears them in it.
 	 */
-	voiceInputLanguage?: VoiceLanguage;
+	voiceLanguages?: VoiceLanguage[];
 	/**
 	 * The language to answer this user in, whichever they spoke. Unset, in the
 	 * one heard. Mandarin and Cantonese are separate: each has its own voice.

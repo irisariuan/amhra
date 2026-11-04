@@ -35,6 +35,40 @@ export function recogniserTakesLanguage(setting: Setting = readSetting()) {
 	return (setting.VOICE_RECOGNISER ?? "qwen3") === "qwen3";
 }
 
+/** The ranked choices of a language someone gave, as a list; automatic is none. */
+export function rankedLanguages(choices: (string | null)[], auto: string): VoiceLanguage[] {
+	const given = choices.filter((choice): choice is string => choice !== null);
+	if (given.includes(auto)) return [];
+	return [...new Set(given)].filter((choice): choice is VoiceLanguage => choice in VOICE_LANGUAGES);
+}
+
+/**
+ * The language to tell the recogniser to hear someone in: only when they speak
+ * just the one. With more it has to guess, as told one it can translate what is
+ * said in another rather than write it down.
+ */
+export function pinnedLanguage(speaks: VoiceLanguage[] = []) {
+	return speaks.length === 1 ? (speaks[0] ?? null) : null;
+}
+
+/**
+ * What the recogniser reported, in terms of what they speak. Guessing, it tells
+ * Mandarin from Cantonese by a few written characters, so "暫停" reads as Mandarin
+ * from someone who put Cantonese first.
+ */
+export function heardAs(lang: string | null, speaks: VoiceLanguage[] = []) {
+	if (lang !== "zh" && lang !== "yue") return lang;
+	return speaks.find((language) => language === "zh" || language === "yue") ?? lang;
+}
+
+/**
+ * Whether what was reported is something they speak. If not it may well be a
+ * wrong guess, for the model to look at. They may have said nothing about it.
+ */
+export function speaksIt(lang: string | null, speaks: VoiceLanguage[] = []) {
+	return !speaks.length || lang === null || speaks.some((language) => language === lang);
+}
+
 /** The bot's owner allows voice commands at all. */
 export function voiceCommandsAllowed(setting: Setting = readSetting()) {
 	return setting.VOICE_COMMANDS === true;

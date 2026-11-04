@@ -1,26 +1,36 @@
-import { MessageFlags, SlashCommandBuilder } from "discord.js";
+import { MessageFlags, type SlashCommandStringOption, SlashCommandBuilder } from "discord.js";
 import { type Command } from "../../lib/interaction";
 import { languageText } from "../../lib/language";
 import { setUserSetting, userSetting } from "../../lib/userSetting";
 import { sidecar } from "../../lib/voice/sidecar";
-import { recogniserTakesLanguage, VOICE_LANGUAGES, type VoiceLanguage } from "../../lib/voice/voiceSetting";
+import {
+	pinnedLanguage,
+	rankedLanguages,
+	recogniserTakesLanguage,
+	VOICE_LANGUAGES,
+} from "../../lib/voice/voiceSetting";
 
 const AUTO = "auto";
 const LANGUAGE_CHOICES = Object.entries(VOICE_LANGUAGES).map(([value, name]) => ({ name, value }));
+const RANKS = ["first", "second", "third", "fourth", "fifth"];
 
-/** A choice as it is kept: automatic is no choice at all. */
-const chosen = (choice: string) => (choice === AUTO ? undefined : (choice as VoiceLanguage));
+const rank = (name: string, description: string) => (option: SlashCommandStringOption) =>
+	option.setName(name).setDescription(description).addChoices(...LANGUAGE_CHOICES);
 
 export default {
 	data: new SlashCommandBuilder()
 		.setName("voicelanguage")
-		.setDescription("Choose the language I hear you in, and the one I answer you in")
+		.setDescription("Order the languages you speak, and choose the one I answer you in")
 		.addStringOption((option) =>
-			option
-				.setName("input")
-				.setDescription("The language you speak; Chinese is separate for Mandarin and Cantonese")
-				.addChoices({ name: "Automatic", value: AUTO }, ...LANGUAGE_CHOICES),
+			rank("first", "The language you're most likely to speak; Automatic to have me guess")(option).addChoices({
+				name: "Automatic",
+				value: AUTO,
+			}),
 		)
+		.addStringOption(rank("second", "The next most likely"))
+		.addStringOption(rank("third", "The next most likely"))
+		.addStringOption(rank("fourth", "The next most likely"))
+		.addStringOption(rank("fifth", "The least likely"))
 		.addStringOption((option) =>
 			option
 				.setName("output")
@@ -28,21 +38,28 @@ export default {
 				.addChoices({ name: "The language I heard", value: AUTO }, ...LANGUAGE_CHOICES),
 		),
 	async execute({ interaction, language }) {
-		// Anyone's own choice, about their own voice, wherever they are. Each
-		// left out stays as it is, so with neither this only says what they are.
+		// Anyone's own choice, about their own voice, wherever they are. Any rank
+		// given replaces the whole order. With nothing given this only says what
+		// they are.
 		const userId = interaction.user.id;
-		const input = interaction.options.getString("input");
+		const ranks = RANKS.map((name) => interaction.options.getString(name));
 		const output = interaction.options.getString("output");
-		if (input !== null) {
-			setUserSetting(userId, { voiceInputLanguage: chosen(input) });
-			sidecar().send({ type: "setMemberLanguage", userId, language: chosen(input) ?? null });
+		if (ranks.some((choice) => choice !== null)) {
+			const voiceLanguages = rankedLanguages(ranks, AUTO);
+			setUserSetting(userId, { voiceLanguages });
+			sidecar().send({ type: "setMemberLanguage", userId, language: pinnedLanguage(voiceLanguages) });
 		}
-		if (output !== null) setUserSetting(userId, { voiceOutputLanguage: chosen(output) });
+		if (output !== null) {
+			setUserSetting(userId, {
+				voiceOutputLanguage: output === AUTO ? undefined : rankedLanguages([output], AUTO)[0],
+			});
+		}
 
-		const { voiceInputLanguage: hears, voiceOutputLanguage: answers } = userSetting(userId);
-		const inputLine = hears
+		const { voiceLanguages: speaks = [], voiceOutputLanguage: answers } = userSetting(userId);
+		const named = speaks.map((spoken) => VOICE_LANGUAGES[spoken]).join(" > ");
+		const inputLine = speaks.length
 			? languageText(recogniserTakesLanguage() ? "voice_language_input" : "voice_language_input_guesses", language, {
-					language: VOICE_LANGUAGES[hears],
+					language: named,
 				})
 			: languageText("voice_language_input_auto", language);
 		const outputLine = answers

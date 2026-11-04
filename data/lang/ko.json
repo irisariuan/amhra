@@ -383,10 +383,22 @@
 			}
 		},
 		"voicelanguage": {
-			"description": "제가 알아들을 언어와 답할 언어를 고릅니다",
+			"description": "사용하는 언어를 순서대로 정하고 제가 답할 언어를 고릅니다",
 			"options": {
-				"input": {
-					"description": "당신이 말하는 언어 (중국어는 보통화와 광둥어로 나뉩니다)"
+				"first": {
+					"description": "가장 많이 쓰는 언어 (자동이면 제가 판단합니다)"
+				},
+				"second": {
+					"description": "그다음으로 많이 쓰는 언어"
+				},
+				"third": {
+					"description": "그다음으로 많이 쓰는 언어"
+				},
+				"fourth": {
+					"description": "그다음으로 많이 쓰는 언어"
+				},
+				"fifth": {
+					"description": "가장 적게 쓰는 언어"
 				},
 				"output": {
 					"description": "제가 답할 언어 (중국어는 보통화와 광둥어로 나뉩니다)"
@@ -520,7 +532,7 @@
 	"QUEUE_NATIVE_ONLY": "2번 이후의 대기열은 Rust 음성 백엔드(`USE_RUST_VOICE`)가 필요합니다",
 	"SET_QUEUE_VOLUME": "대기열 {queue} 음량을 {volume}%(으)로 설정했습니다",
 	"SCHEDULE_QUEUE_TAG": " · 대기열 {queue}",
-	"VOICE_LANGUAGE_INPUT": "🎙️ 듣는 언어: {language}",
+	"VOICE_LANGUAGE_INPUT": "🎙️ 사용 언어 (많이 쓰는 순): {language}",
 	"VOICE_LANGUAGE_INPUT_AUTO": "🎙️ 듣는 언어: 말하는 언어를 자동으로 판단",
 	"VOICE_LANGUAGE_INPUT_GUESSES": "🎙️ {language}을(를) 고르셨지만, 이 봇의 음성 인식은 언어를 지정할 수 없어 계속 자동으로 판단합니다.",
 	"VOICE_LANGUAGE_OUTPUT": "🗣️ 답하는 언어: {language}",
