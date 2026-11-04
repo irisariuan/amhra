@@ -1,70 +1,62 @@
-import { MessageFlags, type SlashCommandStringOption, SlashCommandBuilder } from "discord.js";
+import { MessageFlags, SlashCommandBuilder } from "discord.js";
 import { type Command } from "../../lib/interaction";
-import { languageText } from "../../lib/language";
 import { setUserSetting, userSetting } from "../../lib/userSetting";
 import { sidecar } from "../../lib/voice/sidecar";
 import {
-	pinnedLanguage,
-	rankedLanguages,
-	recogniserTakesLanguage,
-	VOICE_LANGUAGES,
-} from "../../lib/voice/voiceSetting";
+	afterClick,
+	DONE,
+	type LanguageChoice,
+	panelComponents,
+	panelContent,
+} from "../../lib/voice/voiceLanguagePanel";
+import { pinnedLanguage, recogniserTakesLanguage } from "../../lib/voice/voiceSetting";
 
-const AUTO = "auto";
-const LANGUAGE_CHOICES = Object.entries(VOICE_LANGUAGES).map(([value, name]) => ({ name, value }));
-const RANKS = ["first", "second", "third", "fourth", "fifth"];
-
-const rank = (name: string, description: string) => (option: SlashCommandStringOption) =>
-	option.setName(name).setDescription(description).addChoices(...LANGUAGE_CHOICES);
+/** How long the panel stays usable after its last click. */
+const PANEL_IDLE_MS = 5 * 60 * 1000;
 
 export default {
 	data: new SlashCommandBuilder()
 		.setName("voicelanguage")
-		.setDescription("Order the languages you speak, and choose the one I answer you in")
-		.addStringOption((option) =>
-			rank("first", "The language you're most likely to speak; Automatic to have me guess")(option).addChoices({
-				name: "Automatic",
-				value: AUTO,
-			}),
-		)
-		.addStringOption(rank("second", "The next most likely"))
-		.addStringOption(rank("third", "The next most likely"))
-		.addStringOption(rank("fourth", "The next most likely"))
-		.addStringOption(rank("fifth", "The least likely"))
-		.addStringOption((option) =>
-			option
-				.setName("output")
-				.setDescription("The language I answer you in; Chinese is separate for Mandarin and Cantonese")
-				.addChoices({ name: "The language I heard", value: AUTO }, ...LANGUAGE_CHOICES),
-		),
+		.setDescription("Choose the languages you speak, in order, and the one I answer you in"),
 	async execute({ interaction, language }) {
-		// Anyone's own choice, about their own voice, wherever they are. Any rank
-		// given replaces the whole order. With nothing given this only says what
-		// they are.
+		// Anyone's own choice, about their own voice, wherever they are. Read
+		// afresh for each click, so a second panel left open does not undo a first.
 		const userId = interaction.user.id;
-		const ranks = RANKS.map((name) => interaction.options.getString(name));
-		const output = interaction.options.getString("output");
-		if (ranks.some((choice) => choice !== null)) {
-			const voiceLanguages = rankedLanguages(ranks, AUTO);
-			setUserSetting(userId, { voiceLanguages });
-			sidecar().send({ type: "setMemberLanguage", userId, language: pinnedLanguage(voiceLanguages) });
-		}
-		if (output !== null) {
-			setUserSetting(userId, {
-				voiceOutputLanguage: output === AUTO ? undefined : rankedLanguages([output], AUTO)[0],
-			});
-		}
+		const choice = (): LanguageChoice => {
+			const { voiceLanguages, voiceOutputLanguage } = userSetting(userId);
+			return { speaks: voiceLanguages ?? [], answers: voiceOutputLanguage };
+		};
+		const panel = (current: LanguageChoice) => ({
+			content: panelContent(current, language, recogniserTakesLanguage()),
+			components: panelComponents(current, language),
+		});
 
-		const { voiceLanguages: speaks = [], voiceOutputLanguage: answers } = userSetting(userId);
-		const named = speaks.map((spoken) => VOICE_LANGUAGES[spoken]).join(" > ");
-		const inputLine = speaks.length
-			? languageText(recogniserTakesLanguage() ? "voice_language_input" : "voice_language_input_guesses", language, {
-					language: named,
-				})
-			: languageText("voice_language_input_auto", language);
-		const outputLine = answers
-			? languageText("voice_language_output", language, { language: VOICE_LANGUAGES[answers] })
-			: languageText("voice_language_output_auto", language);
-		await interaction.reply({ content: `${inputLine}\n${outputLine}`, flags: MessageFlags.Ephemeral });
+		const response = await interaction.reply({
+			...panel(choice()),
+			flags: MessageFlags.Ephemeral,
+			withResponse: true,
+		});
+		const collector = response.resource?.message?.createMessageComponentCollector({
+			idle: PANEL_IDLE_MS,
+			filter: (component) => component.user.id === userId,
+		});
+		collector?.on("collect", async (component) => {
+			if (component.customId === DONE) {
+				collector.stop("done");
+				await component.update({ content: panelContent(choice(), language, recogniserTakesLanguage()), components: [] });
+				return;
+			}
+			const before = choice();
+			const after = afterClick(before, component.customId, component.isStringSelectMenu() ? component.values : []);
+			setUserSetting(userId, { voiceLanguages: after.speaks, voiceOutputLanguage: after.answers });
+			if (pinnedLanguage(after.speaks) !== pinnedLanguage(before.speaks)) {
+				sidecar().send({ type: "setMemberLanguage", userId, language: pinnedLanguage(after.speaks) });
+			}
+			await component.update(panel(after));
+		});
+		// Left as it stands, but no longer offering clicks that would do nothing.
+		collector?.on("end", (_collected, reason) => {
+			if (reason !== "done") interaction.editReply({ components: [] }).catch(() => {});
+		});
 	},
 } as Command<SlashCommandBuilder>;

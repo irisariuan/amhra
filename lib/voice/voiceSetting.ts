@@ -35,13 +35,6 @@ export function recogniserTakesLanguage(setting: Setting = readSetting()) {
 	return (setting.VOICE_RECOGNISER ?? "qwen3") === "qwen3";
 }
 
-/** The ranked choices of a language someone gave, as a list; automatic is none. */
-export function rankedLanguages(choices: (string | null)[], auto: string): VoiceLanguage[] {
-	const given = choices.filter((choice): choice is string => choice !== null);
-	if (given.includes(auto)) return [];
-	return [...new Set(given)].filter((choice): choice is VoiceLanguage => choice in VOICE_LANGUAGES);
-}
-
 /**
  * The language to tell the recogniser to hear someone in: only when they speak
  * just the one. With more it has to guess, as told one it can translate what is

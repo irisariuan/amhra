@@ -15,7 +15,7 @@ import {
 	readIntent,
 	searchResults,
 } from "../lib/voice/intentModel";
-import { heardAs, pinnedLanguage, rankedLanguages, speaksIt } from "../lib/voice/voiceSetting";
+import { heardAs, pinnedLanguage, speaksIt } from "../lib/voice/voiceSetting";
 import type { YouTubeVideo } from "../lib/youtube";
 
 /**
@@ -621,12 +621,6 @@ describe("who reads the command", () => {
 	});
 
 	describe("the languages someone speaks", () => {
-		test("their choices become a list in order, without repeats", () => {
-			expect(rankedLanguages(["en", "yue", null, "zh", "en"], "auto")).toEqual(["en", "yue", "zh"]);
-			expect(rankedLanguages(["auto", "yue", null, null, null], "auto")).toEqual([]);
-			expect(rankedLanguages(["xx", "ja"], "auto")).toEqual(["ja"]);
-		});
-
 		test("the recogniser is told only when there is one", () => {
 			expect(pinnedLanguage()).toBeNull();
 			expect(pinnedLanguage(["yue"])).toBe("yue");

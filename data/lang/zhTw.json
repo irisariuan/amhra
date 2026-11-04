@@ -409,27 +409,7 @@
 			}
 		},
 		"voicelanguage": {
-			"description": "依序排列你說的語言,並選擇我回答你時用的語言",
-			"options": {
-				"first": {
-					"description": "你最常說的語言(選自動則由我判斷)"
-				},
-				"second": {
-					"description": "其次常說的語言"
-				},
-				"third": {
-					"description": "其次常說的語言"
-				},
-				"fourth": {
-					"description": "其次常說的語言"
-				},
-				"fifth": {
-					"description": "最少說的語言"
-				},
-				"output": {
-					"description": "我回答你時用的語言,中文分為普通話及粵語"
-				}
-			}
+			"description": "依序選擇你說的語言,並選擇我回答你時用的語言"
 		}
 	},
 	"SEARCH_PICK": "不是想要的歌嗎？可以從下面選擇其他搜尋結果。",
@@ -563,6 +543,11 @@
 	"VOICE_LANGUAGE_INPUT_GUESSES": "🎙️ 你選了{language},但這個機器人的語音辨識無法指定語言,仍會自行判斷聽到的語言。",
 	"VOICE_LANGUAGE_OUTPUT": "🗣️ 回答你的語言:{language}",
 	"VOICE_LANGUAGE_OUTPUT_AUTO": "🗣️ 回答你的語言:與聽到的語言相同",
+	"VOICE_LANGUAGE_ADD": "加入你說的下一種語言(最常說的在前)",
+	"VOICE_LANGUAGE_OUTPUT_PICK": "選擇我回答你時用的語言",
+	"VOICE_LANGUAGE_OUTPUT_HEARD": "聽到的語言",
+	"VOICE_LANGUAGE_CLEAR": "清除我的語言",
+	"VOICE_LANGUAGE_DONE": "完成",
 	"voicePatterns": {
 		"name": [
 			"安赫拉",
