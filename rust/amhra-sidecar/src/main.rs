@@ -70,6 +70,10 @@
 //! Supertonic 3 for English, Japanese and Korean, Kokoro for Mandarin, a VITS
 //! voice for Cantonese), on `--speech-threads <n>` threads, default 1, and on
 //! `--speech-provider cpu|gpu|coreml`, as for recognition.
+//! `--speech-model-en|ja|ko|zh|yue <model>` chooses which model says a
+//! language instead: `auto` (the default), `off`, or one that can say it,
+//! `supertonic` or `kokoro` for English, `supertonic` for Japanese and
+//! Korean, `kokoro` for Mandarin, `vits` or `kokoro` for Cantonese.
 //! Phrases are saved under `<cache-dir>/speech` and each model is loaded only
 //! to make new ones (see `speech`). It needs the `voice-commands` feature and
 //! lowers the music to `--wake-duck` meanwhile. A `Speak` that answers a
@@ -1222,7 +1226,38 @@ fn start_speech(
 	let dir = option("--voice-models").unwrap_or_else(|| "models/voice".to_owned());
 	let threads = option("--speech-threads").and_then(|threads| threads.parse().ok()).filter(|n| *n >= 1).unwrap_or(1);
 	let provider = provider(events, "--speech-provider", "speech");
-	let found = models::under(std::path::Path::new(&dir), threads, provider);
+	// `--speech-model-<lang> <model>`: which model says a language, or off;
+	// see `speech::models::able`.
+	let chosen: HashMap<Voice, models::Choice> = Voice::ALL
+		.into_iter()
+		.filter_map(|voice| {
+			let flag = format!("--speech-model-{}", voice.name());
+			let name = option(&flag)?;
+			match models::Choice::parse(voice, &name) {
+				Ok(choice) => Some((voice, choice)),
+				Err(error) => {
+					let message = format!("{flag}: {error}; using the default");
+					eprintln!("{message}");
+					let _ = events.send(Event::Error { guild_id: None, message });
+					None
+				}
+			}
+		})
+		.collect();
+	let found = models::under(
+		std::path::Path::new(&dir),
+		threads,
+		provider,
+		&|voice| chosen.get(&voice).copied().unwrap_or(models::Choice::Auto),
+		&mut |voice, model| {
+			let message = format!(
+				"speech: {model} was chosen for {} but is not in {dir}; run scripts/download-voice-models.sh --speech",
+				voice.name()
+			);
+			eprintln!("{message}");
+			let _ = events.send(Event::Error { guild_id: None, message });
+		},
+	);
 	if found.is_empty() {
 		eprintln!(
 			"speech is off: none of {}, {} or {} is in {dir}; run scripts/download-voice-models.sh --speech",

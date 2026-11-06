@@ -9,7 +9,8 @@
 //! not saved, so the store stays the size of the fixed phrases.
 //!
 //! Each language has its own model (see [`models`]): Supertonic for English,
-//! Japanese and Korean, Kokoro for Mandarin, a VITS voice for Cantonese. Each
+//! Japanese and Korean, Kokoro for Mandarin, a VITS voice for Cantonese, unless
+//! the settings choose another for a language or none. Each
 //! is loaded only to say something new in its language, and let go after a
 //! minute of nothing new in it.
 //!
@@ -70,6 +71,9 @@ impl Voice {
 		}
 	}
 
+	/// Every voice, in the order they are listed.
+	pub const ALL: [Self; 5] = [Self::English, Self::Japanese, Self::Korean, Self::Mandarin, Self::Cantonese];
+
 	pub fn name(self) -> &'static str {
 		match self {
 			Self::English => "en",
@@ -78,13 +82,6 @@ impl Voice {
 			Self::Mandarin => "zh",
 			Self::Cantonese => "yue",
 		}
-	}
-
-	/// What says this voice's text when no model speaks it. Cantonese is
-	/// answered in written Chinese, which a Mandarin voice can read; kana and
-	/// hangul have nothing else to read them.
-	fn fallback(self) -> Option<Self> {
-		(self == Self::Cantonese).then_some(Self::Mandarin)
 	}
 }
 
@@ -212,10 +209,11 @@ impl Slot {
 	}
 }
 
-/// The slot that says `voice`, and the voice it says it in.
+/// The slot that says `voice`. Which model says which voice, and whether
+/// Kokoro reads Cantonese when there is no Cantonese voice, is settled in
+/// [`models::under`].
 fn speaker(slots: &[Slot], voice: Voice) -> Option<(usize, Voice)> {
-	let find = |voice: Voice| slots.iter().position(|slot| slot.model.voices.contains(&voice)).map(|at| (at, voice));
-	find(voice).or_else(|| voice.fallback().and_then(find))
+	slots.iter().position(|slot| slot.model.voices.contains(&voice)).map(|at| (at, voice))
 }
 
 fn run(inbox: &Receiver<Request>, models: Vec<Model>, store: Option<PathBuf>, deliver: &Deliver) {
@@ -382,21 +380,95 @@ pub mod models {
 	/// af_heart in pitch (about 190 Hz against 210).
 	const SUPERTONIC_VOICE: i32 = 0;
 
-	/// The speech models unpacked under `dir`, each to speak what it says
-	/// best: Supertonic before Kokoro, so English is Supertonic's when both
-	/// are there.
-	pub fn under(dir: &Path, threads: i32, provider: Provider) -> Vec<Model> {
-		let mut models = Vec::new();
-		let mut add = |name: &str, voices: Vec<Voice>, load: fn(PathBuf, i32, Provider) -> Load| {
-			let path = dir.join(name);
-			if path.is_dir() {
-				models.push(Model { name: name.to_owned(), voices, load: load(path, threads, provider) });
+	/// A speech model as the settings name it: its short name, its folder
+	/// and what loads it.
+	struct Known {
+		short: &'static str,
+		folder: &'static str,
+		load: fn(PathBuf, i32, Provider) -> Load,
+	}
+
+	const KNOWN: [Known; 3] = [
+		Known { short: "supertonic", folder: SUPERTONIC, load: supertonic },
+		Known { short: "kokoro", folder: KOKORO, load: kokoro },
+		Known { short: "vits", folder: CANTONESE, load: cantonese },
+	];
+
+	/// The models that can say `voice`, best first: what is used when no
+	/// model is chosen for it. Cantonese is answered in written Chinese, which
+	/// Kokoro's Mandarin voice can read; kana and hangul have only Supertonic.
+	pub fn able(voice: Voice) -> &'static [&'static str] {
+		match voice {
+			Voice::English => &["supertonic", "kokoro"],
+			Voice::Japanese | Voice::Korean => &["supertonic"],
+			Voice::Mandarin => &["kokoro"],
+			Voice::Cantonese => &["vits", "kokoro"],
+		}
+	}
+
+	/// What is chosen to say a voice.
+	#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+	pub enum Choice {
+		/// The best of [`able`] that is unpacked.
+		Auto,
+		/// Not said at all.
+		Off,
+		/// This model, by its short name.
+		Model(&'static str),
+	}
+
+	impl Choice {
+		/// `auto`, `off`, or a model in [`able`] for `voice`.
+		pub fn parse(voice: Voice, name: &str) -> Result<Self, String> {
+			match name {
+				"auto" => Ok(Self::Auto),
+				"off" => Ok(Self::Off),
+				name => able(voice).iter().find(|able| **able == name).map(|able| Self::Model(able)).ok_or_else(|| {
+					format!("{} cannot be said by {name:?}; use auto, off or {}", voice.name(), able(voice).join(", "))
+				}),
 			}
-		};
-		add(SUPERTONIC, vec![Voice::English, Voice::Japanese, Voice::Korean], supertonic);
-		add(KOKORO, vec![Voice::Mandarin, Voice::English], kokoro);
-		add(CANTONESE, vec![Voice::Cantonese], cantonese);
-		models
+		}
+	}
+
+	/// The speech models unpacked under `dir`, each with the voices it is to
+	/// say: the one `chosen` for a voice, or by default the best of [`able`]
+	/// that is there, so English is Supertonic's when both it and Kokoro are.
+	/// A chosen model that is not unpacked is reported in `missing`, and the
+	/// voice goes to the default.
+	pub fn under(
+		dir: &Path,
+		threads: i32,
+		provider: Provider,
+		chosen: &dyn Fn(Voice) -> Choice,
+		missing: &mut dyn FnMut(Voice, &str),
+	) -> Vec<Model> {
+		let there = |short: &str| KNOWN.iter().any(|known| known.short == short && dir.join(known.folder).is_dir());
+		let mut voices: Vec<(&str, Vec<Voice>)> = KNOWN.iter().map(|known| (known.short, Vec::new())).collect();
+		for voice in Voice::ALL {
+			let by = match chosen(voice) {
+				Choice::Off => None,
+				Choice::Model(short) if there(short) => Some(short),
+				choice => {
+					if let Choice::Model(short) = choice {
+						missing(voice, short);
+					}
+					able(voice).iter().copied().find(|short| there(short))
+				}
+			};
+			if let Some((_, said)) = voices.iter_mut().find(|(short, _)| Some(*short) == by) {
+				said.push(voice);
+			}
+		}
+		KNOWN
+			.iter()
+			.zip(voices)
+			.filter(|(_, (_, said))| !said.is_empty())
+			.map(|(known, (_, said))| Model {
+				name: known.folder.to_owned(),
+				voices: said,
+				load: (known.load)(dir.join(known.folder), threads, provider),
+			})
+			.collect()
 	}
 
 	fn runtime(threads: i32, provider: &str) -> OfflineTtsModelConfig {
@@ -503,10 +575,11 @@ pub mod models {
 
 	impl Synthesiser for Kokoro {
 		fn speak(&mut self, text: &str, voice: Voice) -> Result<(Vec<f32>, u32), String> {
-			// af_heart and zf_xiaoxiao.
+			// af_heart and zf_xiaoxiao, which also reads Cantonese answers:
+			// they are written Chinese.
 			let sid = match voice {
 				Voice::English => 3,
-				Voice::Mandarin => 47,
+				Voice::Mandarin | Voice::Cantonese => 47,
 				other => return Err(format!("Kokoro does not speak {}", other.name())),
 			};
 			say(&self.0, text, &GenerationConfig { sid, ..GenerationConfig::default() })
@@ -673,18 +746,64 @@ mod tests {
 		let (first, second) = (Counts::default(), Counts::default());
 		let models = vec![
 			fake("supertonic", vec![Voice::English, Voice::Japanese, Voice::Korean], &first),
-			fake("kokoro", vec![Voice::Mandarin, Voice::English], &second),
+			fake("kokoro", vec![Voice::Mandarin, Voice::English, Voice::Cantonese], &second),
 		];
 		let (heard, deliver) = listener();
 		let speech = Speech::start(models, None, deliver).unwrap();
 		speech.say("g".into(), "Skipping.".into(), Voice::English);
 		speech.say("g".into(), "スキップします。".into(), Voice::Japanese);
 		speech.say("g".into(), "跳過。".into(), Voice::Mandarin);
-		// No Cantonese model: the Mandarin voice reads it.
 		speech.say("g".into(), "已暫停。".into(), Voice::Cantonese);
 		settle(&heard, 4);
 		assert_eq!(*first.voices.lock().unwrap(), vec![Voice::English, Voice::Japanese]);
-		assert_eq!(*second.voices.lock().unwrap(), vec![Voice::Mandarin, Voice::Mandarin]);
+		assert_eq!(*second.voices.lock().unwrap(), vec![Voice::Mandarin, Voice::Cantonese]);
+	}
+
+	#[cfg(feature = "voice-commands")]
+	#[test]
+	fn the_settings_choose_a_model_for_each_language() {
+		use models::{CANTONESE, Choice, KOKORO, SUPERTONIC, under};
+		use crate::voice_commands::sherpa::Provider;
+		let dir = std::env::temp_dir().join(format!("amhra-speech-models-{}", std::process::id()));
+		let _ = std::fs::remove_dir_all(&dir);
+		for folder in [SUPERTONIC, KOKORO] {
+			std::fs::create_dir_all(dir.join(folder)).unwrap();
+		}
+		let said = |chosen: &dyn Fn(Voice) -> Choice| -> (Vec<(String, Vec<Voice>)>, Vec<Voice>) {
+			let mut missing = Vec::new();
+			let models = under(&dir, 1, Provider::Cpu, chosen, &mut |voice, _| missing.push(voice));
+			(models.into_iter().map(|model| (model.name, model.voices)).collect(), missing)
+		};
+		use Voice::*;
+
+		// By default: Supertonic for English, and Kokoro reads Cantonese
+		// when there is no Cantonese voice.
+		let (models, _) = said(&|_| Choice::Auto);
+		assert_eq!(
+			models,
+			vec![(SUPERTONIC.to_owned(), vec![English, Japanese, Korean]), (KOKORO.to_owned(), vec![Mandarin, Cantonese])]
+		);
+
+		// English back on Kokoro, Japanese and Cantonese not said.
+		let (models, _) = said(&|voice| match voice {
+			English => Choice::Model("kokoro"),
+			Japanese | Cantonese => Choice::Off,
+			_ => Choice::Auto,
+		});
+		assert_eq!(models, vec![(SUPERTONIC.to_owned(), vec![Korean]), (KOKORO.to_owned(), vec![English, Mandarin])]);
+
+		// A chosen model that is not there is reported, and the default used.
+		let (models, missing) = said(&|voice| if voice == Cantonese { Choice::Model("vits") } else { Choice::Auto });
+		assert_eq!(missing, vec![Cantonese]);
+		assert_eq!(models[1], (KOKORO.to_owned(), vec![Mandarin, Cantonese]));
+
+		std::fs::create_dir_all(dir.join(CANTONESE)).unwrap();
+		let (models, _) = said(&|_| Choice::Auto);
+		assert_eq!(models[2], (CANTONESE.to_owned(), vec![Cantonese]));
+
+		assert!(Choice::parse(Japanese, "kokoro").is_err());
+		assert_eq!(Choice::parse(Cantonese, "kokoro"), Ok(Choice::Model("kokoro")));
+		let _ = std::fs::remove_dir_all(&dir);
 	}
 
 	#[test]
