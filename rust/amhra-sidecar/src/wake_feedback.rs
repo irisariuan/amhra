@@ -12,15 +12,17 @@
 //!
 //! ```text
 //! "Amhra"  ─▶ start chime ─▶ they speak ─▶ end chime ─▶ processing ─▶ answer
-//!             (rising)                    (falling)    (once)
+//!           (start.wav)                  (end.wav)  (waiting.wav,
+//!                                                      once)
 //! ```
 //!
 //! Overlapping requests share one processing sound. Ready answers interrupt
 //! it and play in turn; start and end chimes mix over all other audio.
 //!
-//! They are synthesised, not sound files: soft sine notes, rising for the
-//! start the way an assistant answers to its name, falling for the end, and a
-//! single low one while waiting. Nothing to ship, license or load.
+//! They are sound files in `assets/sounds`, built into the binary: 48kHz
+//! stereo 16-bit PCM WAV, the rate and layout the call is sent at, so they
+//! play as they are. Each is scaled to a set peak level, since it is mixed
+//! over the music, and gets a short fade at either end so it cannot click.
 
 use std::collections::VecDeque;
 use std::sync::{Arc, OnceLock};
@@ -36,73 +38,116 @@ pub const FRAME_PCM: usize = FRAME_SIZE as usize * CHANNELS as usize;
 /// this, whatever was meant to bring the music back has been lost.
 const MAX_DUCK: Duration = Duration::from_secs(10);
 
-/// A synthesised sound: notes, each from a time in seconds at a pitch.
-struct Sound {
-	notes: &'static [(f32, f32)],
-	/// How long the whole sound lasts.
-	length: f32,
-	/// Peak level, as a fraction of full scale. It is mixed over the music,
-	/// which is lowered at the same moment, so it does not need to be loud.
-	level: f32,
-	/// How quickly a note fades: its level falls by e every this many seconds.
-	decay: f32,
-}
+/// The name was heard.
+const START: &[u8] = include_bytes!("../assets/sounds/start.wav");
+/// What followed it has been taken down.
+const END: &[u8] = include_bytes!("../assets/sounds/end.wav");
+/// Still working on it.
+const WAITING: &[u8] = include_bytes!("../assets/sounds/waiting.wav");
 
-/// The name was heard: E6 then A6.
-const START: Sound = Sound { notes: &[(0.0, 1318.51), (0.11, 1760.0)], length: 0.5, level: 0.18, decay: 0.14 };
-/// What followed it has been taken down: the same notes, falling.
-const END: Sound = Sound { notes: &[(0.0, 1760.0), (0.11, 1318.51)], length: 0.5, level: 0.15, decay: 0.14 };
-/// Still working on it: one soft, low A5, short enough not to be talked over.
-const WAITING: Sound = Sound { notes: &[(0.0, 880.0)], length: 0.3, level: 0.08, decay: 0.08 };
+/// Peak levels, as a fraction of full scale. They are mixed over the music,
+/// which is lowered at the same moment, so they need not be loud; the
+/// waiting sound is quietest, being background feedback.
+const START_LEVEL: f32 = 0.18;
+const END_LEVEL: f32 = 0.15;
+const WAITING_LEVEL: f32 = 0.08;
 
-/// A note's rise, so it starts without a click.
+/// The fade in at the start of a sound, so it starts without a click.
 const ATTACK: f32 = 0.004;
-/// The last stretch, faded to nothing so a sound ends without a click.
+/// The fade out at the end, so it ends without a click.
 const RELEASE: f32 = 0.03;
 
-/// The start chime as interleaved stereo PCM at the Opus rate, rendered once.
+/// The start chime as interleaved stereo PCM at the Opus rate, decoded once.
 pub fn chime() -> Arc<[i16]> {
 	static CHIME: OnceLock<Arc<[i16]>> = OnceLock::new();
-	Arc::clone(CHIME.get_or_init(|| render(&START).into()))
+	Arc::clone(CHIME.get_or_init(|| load(START, "start.wav", START_LEVEL)))
 }
 
-/// The end chime, rendered once.
+/// The end chime, decoded once.
 pub fn end_chime() -> Arc<[i16]> {
 	static CHIME: OnceLock<Arc<[i16]>> = OnceLock::new();
-	Arc::clone(CHIME.get_or_init(|| render(&END).into()))
+	Arc::clone(CHIME.get_or_init(|| load(END, "end.wav", END_LEVEL)))
 }
 
-/// The waiting sound, rendered once.
+/// The waiting sound, decoded once.
 pub fn waiting() -> Arc<[i16]> {
 	static SOUND: OnceLock<Arc<[i16]>> = OnceLock::new();
-	Arc::clone(SOUND.get_or_init(|| render(&WAITING).into()))
+	Arc::clone(SOUND.get_or_init(|| load(WAITING, "waiting.wav", WAITING_LEVEL)))
 }
 
-fn render(sound: &Sound) -> Vec<i16> {
-	let rate = SAMPLE_RATE as f32;
-	let frames = (sound.length * rate) as usize;
-	let mut pcm = Vec::with_capacity(frames * CHANNELS as usize);
-	for index in 0..frames {
-		let t = index as f32 / rate;
-		let mut value = 0.0;
-		for &(start, pitch) in sound.notes {
-			let since = t - start;
-			if since < 0.0 {
-				continue;
+fn load(wav: &[u8], name: &str, level: f32) -> Arc<[i16]> {
+	let mut pcm = decode(wav).unwrap_or_else(|error| panic!("assets/sounds/{name}: {error}"));
+	scale(&mut pcm, level);
+	fade(&mut pcm);
+	pcm.into()
+}
+
+/// The samples of a 16-bit PCM WAV at the call's rate and channel count.
+fn decode(wav: &[u8]) -> Result<Vec<i16>, String> {
+	if wav.len() < 12 || &wav[..4] != b"RIFF" || &wav[8..12] != b"WAVE" {
+		return Err("not a WAV file".into());
+	}
+	let u16_at = |at: usize| u16::from_le_bytes([wav[at], wav[at + 1]]);
+	let u32_at = |at: usize| u32::from_le_bytes([wav[at], wav[at + 1], wav[at + 2], wav[at + 3]]);
+	let mut format = None;
+	let mut at = 12;
+	while at + 8 <= wav.len() {
+		let id = &wav[at..at + 4];
+		let size = u32_at(at + 4) as usize;
+		let body = at + 8;
+		let end = body.checked_add(size).filter(|end| *end <= wav.len()).ok_or("a chunk runs past the end")?;
+		match id {
+			b"fmt " if size >= 16 => {
+				format = Some((u16_at(body), u16_at(body + 2), u32_at(body + 4), u16_at(body + 14)));
 			}
-			let envelope = (since / ATTACK).min(1.0) * (-since / sound.decay).exp();
-			let phase = std::f32::consts::TAU * pitch * since;
-			// A touch of the octave makes it a bell rather than a beep.
-			value += envelope * (phase.sin() + 0.25 * (2.0 * phase).sin());
+			b"data" => {
+				let expected = (1, u16::from(CHANNELS), SAMPLE_RATE, 16);
+				match format {
+					Some(found) if found == expected => {}
+					Some((tag, channels, rate, bits)) => {
+						return Err(format!(
+							"format {tag}, {channels} channels, {rate}Hz, {bits} bits; needs PCM, {CHANNELS} channels, {SAMPLE_RATE}Hz, 16 bits"
+						));
+					}
+					None => return Err("no format before the samples".into()),
+				}
+				return Ok(wav[body..end].as_chunks::<2>().0.iter().map(|pair| i16::from_le_bytes(*pair)).collect());
+			}
+			_ => {}
 		}
-		let release = ((sound.length - t) / RELEASE).min(1.0);
-		// Two notes and their overtones peak a little above 1 together.
-		let sample = (value / 1.6 * release * sound.level * f32::from(i16::MAX)) as i16;
-		for _ in 0..CHANNELS {
-			pcm.push(sample);
+		// Chunks are padded to an even length.
+		at = end + (size & 1);
+	}
+	Err("no samples".into())
+}
+
+/// Scale `pcm` so its loudest sample is `level` of full scale.
+fn scale(pcm: &mut [i16], level: f32) {
+	let peak = pcm.iter().map(|sample| i32::from(*sample).abs()).max().unwrap_or(0);
+	if peak == 0 {
+		return;
+	}
+	let gain = level * f32::from(i16::MAX) / peak as f32;
+	for sample in pcm {
+		*sample = (f32::from(*sample) * gain).round() as i16;
+	}
+}
+
+/// Fade the first [`ATTACK`] and last [`RELEASE`] seconds of `pcm`.
+fn fade(pcm: &mut [i16]) {
+	let channels = CHANNELS as usize;
+	let frames = pcm.len() / channels;
+	let attack = ((ATTACK * SAMPLE_RATE as f32) as usize).max(1);
+	let release = ((RELEASE * SAMPLE_RATE as f32) as usize).max(1);
+	for (index, frame) in pcm.chunks_exact_mut(channels).enumerate() {
+		let from_end = frames - 1 - index;
+		let gain = (index as f32 / attack as f32).min(from_end as f32 / release as f32).min(1.0);
+		if gain < 1.0 {
+			for sample in frame {
+				*sample = (f32::from(*sample) * gain) as i16;
+			}
 		}
 	}
-	pcm
 }
 
 /// Run when a clip has played out.
@@ -416,18 +461,18 @@ mod tests {
 		pcm.len() as f32 / CHANNELS as f32 / SAMPLE_RATE as f32
 	}
 
-	fn frames_of(sound: &Sound) -> usize {
-		(sound.length * 1000.0 / 20.0).ceil() as usize
+	fn frames_of(pcm: &[i16]) -> usize {
+		pcm.len().div_ceil(FRAME_PCM)
 	}
 
 	#[test]
-	fn each_sound_is_short_quiet_and_starts_and_ends_at_rest() {
-		for (pcm, sound) in [(chime(), &START), (end_chime(), &END), (waiting(), &WAITING)] {
+	fn each_sound_decodes_and_starts_and_ends_at_rest() {
+		for (pcm, level) in [(chime(), START_LEVEL), (end_chime(), END_LEVEL), (waiting(), WAITING_LEVEL)] {
 			let pcm = &pcm[..];
-			assert!((seconds(pcm) - sound.length).abs() < 0.01, "{}s", seconds(pcm));
+			assert!(seconds(pcm) > 0.2 && seconds(pcm) < 3.0, "{}s", seconds(pcm));
 			let peak = pcm.iter().map(|sample| i32::from(*sample).abs()).max().unwrap();
-			assert!(peak > 1_000, "audible: {peak}");
-			assert!(peak <= (f32::from(i16::MAX) * sound.level) as i32 + 1, "not loud: {peak}");
+			let target = level * f32::from(i16::MAX);
+			assert!((peak as f32 - target).abs() <= 1.0, "peak {peak}, wanted {target}");
 			// No click at either end.
 			assert!(pcm[..4].iter().all(|sample| sample.abs() < 200));
 			assert!(pcm[pcm.len() - 4..].iter().all(|sample| sample.abs() < 200));
@@ -437,8 +482,17 @@ mod tests {
 	#[test]
 	fn the_end_chime_is_not_the_start_chime() {
 		assert_ne!(&chime()[..], &end_chime()[..]);
-		// Quieter than either chime: it is background feedback.
-		const { assert!(WAITING.level < END.level && WAITING.length < END.length) };
+		assert_ne!(&waiting()[..], &end_chime()[..]);
+	}
+
+	#[test]
+	fn a_wav_in_another_format_is_refused() {
+		let mut wav = START.to_vec();
+		// The channel count, in the fmt chunk.
+		wav[22] = 1;
+		assert!(decode(&wav).unwrap_err().contains("1 channels"));
+		assert!(decode(b"RIFF\0\0\0\0WAVE").is_err());
+		assert!(decode(b"not a wav").is_err());
 	}
 
 	#[test]
@@ -449,7 +503,7 @@ mod tests {
 		while chime.next_frame(&mut frame) {
 			frames += 1;
 		}
-		assert_eq!(frames, frames_of(&START));
+		assert_eq!(frames, frames_of(&super::chime()));
 		assert!(!chime.next_frame(&mut frame), "and stays over");
 	}
 
@@ -488,11 +542,16 @@ mod tests {
 		// Cues arriving during speech start together on the very next frame.
 		clips.push(Clip::chime());
 		clips.push(Clip::end_chime());
-		for index in 0..frames_of(&START) {
+		let (start, end) = (chime(), end_chime());
+		let at_or_silence = |pcm: &[i16], at: usize| pcm.get(at).copied().map_or(0, i32::from);
+		for index in 0..frames_of(&start).max(frames_of(&end)) {
 			assert!(clips.next_frame(&mut frame, &mut duck, &mut waits, now));
 			for (offset, sample) in frame.iter().enumerate() {
 				let at = index * FRAME_PCM + offset;
-				assert_eq!(i32::from(*sample), 1000 + i32::from(chime()[at]) + i32::from(end_chime()[at]));
+				// Speech lasts 30 frames; past it, only the cues.
+				let speech = if index < 29 { 1000 } else { 0 };
+				let expected = (speech + at_or_silence(&start, at) + at_or_silence(&end, at)).clamp(i32::from(i16::MIN), i32::from(i16::MAX));
+				assert_eq!(i32::from(*sample), expected);
 			}
 		}
 	}
@@ -515,7 +574,7 @@ mod tests {
 		assert!(clips.next_frame(&mut frame, &mut duck, &mut waits, now));
 		assert!(clips.processing.is_none());
 		for (sample, cue) in frame.iter().zip(chime().iter()) {
-			assert_eq!(*sample, 1000 + cue);
+			assert_eq!(i32::from(*sample), (1000 + i32::from(*cue)).min(i32::from(i16::MAX)));
 		}
 		assert!(!waits.is_empty(), "the second user is still waiting");
 	}
