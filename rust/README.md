@@ -891,14 +891,15 @@ starts:
   this and turn it down to 40" into one object with two `command`s, of
   which only the volume was kept. They come first now.
 - **Answering the name.** The moment the spotter hears it, the guild's audio
-  thread mixes in a half-second chime (two rising sine notes, synthesised in
-  `wake_feedback.rs`), over the music or alone if nothing is playing, and
-  lowers the music until the command has been transcribed or the wake comes
+  thread mixes in a start chime (`assets/sounds/start.wav`, built into the
+  binary by `wake_feedback.rs`), over the music or alone if nothing is
+  playing, and lowers the music until the command has been transcribed or the wake comes
   to nothing. Wakes are counted, so a second speaker keeps it down, and ten
   seconds is the most one wake can hold it there. When the command has been
-  taken down, the same notes falling say so; then a soft low note every two
-  seconds until the bot answers, by saying something to them or by sending
-  `settle`, with the music held down meanwhile (twenty seconds at most).
+  taken down, `end.wav` says so; then `waiting.wav` once, two seconds on,
+  if the bot has not answered yet. The music stays down until it answers,
+  by saying something to them or by sending `settle` (twenty seconds at
+  most).
 - **Seeing what was heard.** `/transcript enabled:true` is each member's own
   choice, kept in `data/userSetting.json` (gitignored). The sidecar reports
   `woke` and `nothingHeard` as well as `utterance`; for those members the bot
