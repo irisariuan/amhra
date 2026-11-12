@@ -38,8 +38,8 @@
 //!   recogniser, default qwen3-0.6B (Qwen3-ASR; `qwen3` still means that size);
 //!   or gemma-4-E2B|gemma-4-E4B, Gemma 4 on the OpenAI-compatible server
 //!   `--recogniser-url <http://host:port/v1>` has as `--recogniser-model <name>`,
-//!   with `--recogniser-fallback <one of the others>` hearing each command too,
-//!   for when Gemma has no transcript or wrote another language; sensevoice is a quarter of the size, for small machines;
+//!   with `--recogniser-fallback <one of the others>` hearing each command
+//!   first, as a hint to Gemma and for when Gemma has no transcript; sensevoice is a quarter of the size, for small machines;
 //! - `--recogniser-threads <n>`: threads for speech recognition, default 2;
 //! - `--recogniser-language <lang>`: auto (the default), en, zh, ja, ko or
 //!   yue, for every guild;

@@ -115,6 +115,17 @@ pub trait Transcriber: Send {
 		let _ = language;
 		self.transcribe(samples)
 	}
+	/// The same, shown what another recogniser made of the window, where
+	/// the recogniser can take that into account; Gemma can.
+	fn transcribe_hinted(
+		&mut self,
+		samples: &[f32],
+		language: Option<&str>,
+		hint: Option<&Transcript>,
+	) -> Result<Transcript, ModelError> {
+		let _ = hint;
+		self.transcribe_in(samples, language)
+	}
 }
 
 /// Makes the per-speaker models. Shared by every gate thread, so whatever is

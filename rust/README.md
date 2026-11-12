@@ -626,24 +626,26 @@ read off the writing.
 
 **A second recogniser.** `--recogniser-fallback <r>` (the bot passes
 `sensevoice` unless `VOICE_RECOGNISER_FALLBACK` says another, or `none`)
-loads one of the sherpa-onnx recognisers too, and has it hear every window
-at the same time as Gemma, so it adds memory (about 250MB for SenseVoice)
-but no time. Its transcript is the one used when:
+loads one of the sherpa-onnx recognisers too, so it adds memory: about
+250MB for SenseVoice. It hears every window first, which for SenseVoice is
+30–50ms before Gemma is asked, and does two things:
 
-- Gemma has none: its server is still loading the model, did not answer,
-  or answered nothing; or
-- Gemma was told no language and wrote one the second did not hear, as when
-  it translates a Korean command into English. The second says which
-  language it heard, so it is the one believed. Han characters count as
-  Mandarin, Cantonese or Japanese alike.
+- **A hint.** What it heard, and the language it heard it in, go to Gemma
+  in the text beside the audio, as what a less accurate recogniser made of
+  it: to be corrected from the audio, and set aside if the speech is in
+  another language. Told the language already (`VOICE_LANGUAGE`, or someone
+  who speaks one), Gemma gets the words without the second's guess at the
+  language.
+- **A stand-in.** Its transcript is the one used when Gemma has none: its
+  server is still loading the model, did not answer, or answered nothing.
+  The log says each time, and why, but not the words.
 
-Otherwise the text is Gemma's and the language the second's, which tells
-Mandarin from Cantonese by ear. With `VOICE_LANGUAGE` set, or for someone
-who speaks one language, Gemma is told it and is not argued with. The log
-says each time the second's transcript was used, and why, but not the
-words. SenseVoice mishears very short English as Chinese on `auto` (see
-[Qwen3-ASR or SenseVoice](#qwen3-asr-or-sensevoice)), and here that would
-replace a transcript Gemma got right.
+When Gemma answers, the text is always Gemma's. The language is the
+second's where Gemma's writing could be it, since the second tells Mandarin
+from Cantonese by ear; where it could not be, as when SenseVoice takes
+short English for Chinese on `auto` (see
+[Qwen3-ASR or SenseVoice](#qwen3-asr-or-sensevoice)), it is read off what
+Gemma wrote. How far a wrong hint pulls Gemma has not been measured.
 
 None of this has been run against a real server here: not the time a
 command takes, nor how well it hears titles, nor how well Gemma reads
