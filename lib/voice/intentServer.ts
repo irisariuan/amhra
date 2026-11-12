@@ -48,6 +48,42 @@ export function defaultIntentModel(
 	return usesMlx(platform, arch, runtime) ? "mlx-community/Qwen3-4B-4bit" : "Qwen/Qwen3-4B-GGUF:Q4_K_M";
 }
 
+/** Where the bot starts a server when it needs one and was not told where. */
+export const DEFAULT_MODEL_URL = "http://127.0.0.1:8085/v1";
+
+/**
+ * Gemma 4 as llama.cpp fetches it, for a Gemma `VOICE_RECOGNISER`; null for
+ * any other. Q4_0 is named because the repositories have no Q4_K_M, and
+ * llama.cpp would then take their first file, the full-precision one.
+ */
+export function gemmaModel(setting: Setting = readSetting()) {
+	switch (setting.VOICE_RECOGNISER) {
+		case "gemma-4-E2B":
+			return "ggml-org/gemma-4-E2B-it-GGUF:Q4_0";
+		case "gemma-4-E4B":
+			return "ggml-org/gemma-4-E4B-it-GGUF:Q4_0";
+		default:
+			return null;
+	}
+}
+
+/**
+ * The server voice commands use and the model it should have, if there is
+ * to be one. `audio` when the model is also the recogniser, and so has to be
+ * served by something that passes audio on: `llama-server`, not MLX's.
+ */
+export function modelEndpoint(
+	setting: Setting = readSetting(),
+	platform: NodeJS.Platform = process.platform,
+	arch: string = process.arch,
+): { url: string; model: string; audio: boolean } | null {
+	const gemma = gemmaModel(setting);
+	const url = setting.VOICE_INTENT_MODEL_URL || (gemma ? DEFAULT_MODEL_URL : undefined);
+	if (!url) return null;
+	const model = setting.VOICE_INTENT_MODEL ?? gemma ?? defaultIntentModel(platform, arch, intentRuntime(setting));
+	return { url, model, audio: gemma !== null };
+}
+
 /** MLX has no CPU-only mode worth having, so the CPU is llama.cpp's. */
 function usesMlx(platform: NodeJS.Platform, arch: string, runtime: IntentRuntime) {
 	return platform === "darwin" && arch === "arm64" && runtime !== "cpu";
@@ -65,6 +101,7 @@ export function launchFor(
 	platform: NodeJS.Platform = process.platform,
 	arch: string = process.arch,
 	runtime: IntentRuntime = undefined,
+	audio = false,
 ): Launch | null {
 	let parsed: URL;
 	try {
@@ -75,7 +112,8 @@ export function launchFor(
 	if (!LOOPBACK.has(parsed.hostname)) return null;
 	const host = parsed.hostname.replace(/^\[|\]$/g, "");
 	const port = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
-	if (usesMlx(platform, arch, runtime)) {
+	// `mlx_lm.server` takes text only.
+	if (!audio && usesMlx(platform, arch, runtime)) {
 		return {
 			command: "uv",
 			args: [
@@ -226,18 +264,19 @@ export function intentServer() {
 
 /**
  * Start looking after the voice command model's server, when there is one to
- * look after: the URL is set, on this machine, and serving is not turned off.
+ * look after: the URL is set or the recogniser is a Gemma, it is on this
+ * machine, and serving is not turned off.
  */
 export function startIntentServer(setting: Setting = readSetting()) {
 	if (shared) return shared;
-	const url = setting.VOICE_INTENT_MODEL_URL;
-	if (!url || setting.VOICE_INTENT_MODEL_SERVE === false) return null;
+	const endpoint = modelEndpoint(setting);
+	if (!endpoint || setting.VOICE_INTENT_MODEL_SERVE === false) return null;
+	const { url, model, audio } = endpoint;
 	const runtime = intentRuntime(setting);
 	if (setting.VOICE_INTENT_PROVIDER === "coreml") {
 		globalApp.warn("Voice command model: neither MLX nor llama.cpp runs on Core ML; running it on the cpu");
 	}
-	const model = setting.VOICE_INTENT_MODEL ?? defaultIntentModel(process.platform, process.arch, runtime);
-	const launch = launchFor(url, model, process.platform, process.arch, runtime);
+	const launch = launchFor(url, model, process.platform, process.arch, runtime, audio);
 	if (!launch) return null;
 	shared = new IntentServer(url, launch);
 	shared.start();

@@ -187,8 +187,21 @@ export interface Setting {
 	 * machines; or "whisper-v3-turbo", Whisper large-v3-turbo with int8 encoder
 	 * and decoder. A setting saved as "qwen3", from when there was one size,
 	 * still means "qwen3-0.6B".
+	 *
+	 * Or "gemma-4-E2B" or "gemma-4-E4B": Gemma 4, a language model that takes
+	 * audio. The sidecar does not load it: it sends each command's audio to
+	 * the server at VOICE_INTENT_MODEL_URL (http://127.0.0.1:8085/v1 unless
+	 * set), which the bot starts as llama.cpp's `llama-server` with that
+	 * Gemma. With VOICE_INTENT_MODEL_URL set, the same model reads the
+	 * command too, so one model is held instead of two.
 	 */
-	VOICE_RECOGNISER?: "qwen3-0.6B" | "qwen3-1.7B" | "sensevoice" | "whisper-v3-turbo";
+	VOICE_RECOGNISER?:
+		| "qwen3-0.6B"
+		| "qwen3-1.7B"
+		| "sensevoice"
+		| "whisper-v3-turbo"
+		| "gemma-4-E2B"
+		| "gemma-4-E4B";
 	/**
 	 * Where speech recognition runs. Core ML needs a sidecar built with
 	 * `--features shared-onnxruntime`, on macOS; "gpu" is CUDA, and needs one
@@ -235,7 +248,8 @@ export interface Setting {
 	VOICE_INTENT_MODEL_URL?: string;
 	/**
 	 * The model that server should use. Defaults to Qwen3 4B: in MLX on Apple
-	 * silicon, as a llama.cpp GGUF elsewhere.
+	 * silicon, as a llama.cpp GGUF elsewhere. With a Gemma VOICE_RECOGNISER it
+	 * defaults to that Gemma, as a GGUF, and must be a model that takes audio.
 	 */
 	VOICE_INTENT_MODEL?: string;
 	/**

@@ -1,5 +1,6 @@
 import { guildSetting } from "../guildSetting";
 import { readSetting, type Setting } from "../setting";
+import { modelEndpoint } from "./intentServer";
 
 /**
  * Who may be heard, decided from the settings alone. Kept apart from the code
@@ -28,11 +29,12 @@ export type VoiceLanguage = keyof typeof VOICE_LANGUAGES;
 
 /**
  * The recogniser can be told the language for each window, which is what hearing
- * a command again and a member's own language take. Only Qwen3-ASR can: the
- * others fix theirs when they are loaded.
+ * a command again and a member's own language take. Qwen3-ASR and Gemma can:
+ * the others fix theirs when they are loaded.
  */
 export function recogniserTakesLanguage(setting: Setting = readSetting()) {
-	return voiceRecogniser(setting).startsWith("qwen3-");
+	const recogniser = voiceRecogniser(setting);
+	return recogniser.startsWith("qwen3-") || recogniser.startsWith("gemma-");
 }
 
 /**
@@ -118,6 +120,11 @@ export function voiceCommandArgs(setting: Setting = readSetting()): string[] {
 	if (duck < 1) args.push("--wake-duck", String(Math.max(0, duck)));
 	if (setting.VOICE_RECOGNISER) {
 		args.push("--recogniser", voiceRecogniser(setting));
+	}
+	// A Gemma is not the sidecar's to load: it asks the model's server.
+	const endpoint = modelEndpoint(setting);
+	if (endpoint?.audio) {
+		args.push("--recogniser-url", endpoint.url, "--recogniser-model", endpoint.model);
 	}
 	if (setting.VOICE_RECOGNISER_PROVIDER) {
 		args.push("--recogniser-provider", setting.VOICE_RECOGNISER_PROVIDER);

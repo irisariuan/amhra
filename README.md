@@ -59,6 +59,13 @@ provider settings also apply. Qwen3-ASR 0.6B (`"qwen3-0.6B"`) remains the defaul
 `"qwen3-1.7B"` is the larger one, fetched with
 `scripts/download-voice-models.sh --qwen3-1.7B` (2.4GB, and about that much memory).
 
+`"gemma-4-E2B"` and `"gemma-4-E4B"` hear commands with Gemma 4, a language model
+that takes audio, instead. The bot starts llama.cpp's `llama-server` for it
+(install llama.cpp first), which fetches the model itself: about 3.5GB for E2B and
+5.5GB for E4B, and about that much memory. Set `VOICE_INTENT_MODEL_URL` to
+`http://127.0.0.1:8085/v1` as well and the same model also reads the command. See
+[rust/README.md](rust/README.md#gemma-4).
+
 Each Whisper transcription takes about 1.5s on 4 threads of an M5 Pro however short
 the command, since it needs a stretch of silence after the audio not to repeat
 itself. On synthesised speech it also heard Cantonese as Mandarin, which Qwen3 and

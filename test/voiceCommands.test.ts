@@ -349,6 +349,29 @@ describe("sidecar flags", () => {
 		expect(GlobalSettingSchema.shape.VOICE_RECOGNISER.safeParse("qwen3-4B").success).toBe(false);
 	});
 
+	test("a Gemma recogniser is told where its server is and what it serves", () => {
+		const allowed = { ...base, VOICE_COMMANDS: true };
+		expect(voiceCommandArgs({ ...allowed, VOICE_RECOGNISER: "qwen3-1.7B" })).not.toContain("--recogniser-url");
+		expect(voiceCommandArgs({ ...allowed, VOICE_RECOGNISER: "gemma-4-E2B" }).join(" ")).toContain(
+			"--recogniser gemma-4-E2B --recogniser-url http://127.0.0.1:8085/v1 --recogniser-model ggml-org/gemma-4-E2B-it-GGUF:Q4_0",
+		);
+		const elsewhere = voiceCommandArgs({
+			...allowed,
+			VOICE_RECOGNISER: "gemma-4-E4B",
+			VOICE_INTENT_MODEL_URL: "http://127.0.0.1:9000/v1",
+			VOICE_INTENT_MODEL: "my/gemma",
+		}).join(" ");
+		expect(elsewhere).toContain(
+			"--recogniser gemma-4-E4B --recogniser-url http://127.0.0.1:9000/v1 --recogniser-model my/gemma",
+		);
+		// The text model's server is not the recogniser's.
+		expect(
+			voiceCommandArgs({ ...allowed, VOICE_INTENT_MODEL_URL: "http://127.0.0.1:8085/v1" }),
+		).not.toContain("--recogniser-url");
+		expect(recogniserTakesLanguage({ ...base, VOICE_RECOGNISER: "gemma-4-E4B" })).toBe(true);
+		expect(GlobalSettingSchema.shape.VOICE_RECOGNISER.safeParse("gemma-4-E2B").success).toBe(true);
+	});
+
 	test("both sizes of Qwen3-ASR take a language per window, the others none", () => {
 		expect(recogniserTakesLanguage(base)).toBe(true);
 		expect(recogniserTakesLanguage({ ...base, VOICE_RECOGNISER: "qwen3-1.7B" })).toBe(true);

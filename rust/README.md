@@ -595,6 +595,40 @@ handing work to another device.
 Either way, 500ms of the wait after someone stops talking is the silence
 that tells the gate they have finished.
 
+### Gemma 4
+
+`--recogniser gemma-4-E2B` or `gemma-4-E4B` hears commands with Gemma 4
+(Google DeepMind, Apache-2.0), a language model that takes audio. The
+sidecar does not load it. Each command's window goes as a WAV file, in a
+chat request, to the OpenAI-compatible server `--recogniser-url` names,
+which has the model as `--recogniser-model`; the answer is the transcript.
+The wake word and the end of speech are still sherpa-onnx's, here.
+
+The bot sets both flags from `VOICE_RECOGNISER`: the server is
+`VOICE_INTENT_MODEL_URL`, or `http://127.0.0.1:8085/v1` if that is unset,
+and the model `VOICE_INTENT_MODEL`, or `ggml-org/gemma-4-E2B-it-GGUF:Q4_0`
+(or `E4B`). It starts llama.cpp's `llama-server` there, on Apple silicon
+too, since `mlx_lm.server` takes text only; `llama-server` fetches the model
+and its audio projector the first time. With `VOICE_INTENT_MODEL_URL` set,
+the same server and model read the command afterwards, so one model is held
+where there were two.
+
+| | download | 
+| --- | --- |
+| `gemma-4-E2B` | 2.8GB and a projector of 0.6–1GB |
+| `gemma-4-E4B` | 4.6GB and a projector of 0.6–1GB |
+
+Expect about that much memory in `llama-server`, where Qwen3-ASR 0.6B and
+Qwen3 4B together take about 3.5–4GB: on an 8GB machine E2B is the one that
+fits. Gemma takes at most 30 seconds of audio; a command is at most eight.
+It reports no language, so that is the one asked for or, as for Qwen3-ASR,
+read off the writing.
+
+None of this has been run against a real server here: not the time a
+command takes, nor how well it hears titles, nor how well Gemma reads
+commands in place of Qwen3 4B. Try it on a recording with
+`wake_wav --whole --recogniser gemma-4-E2B --recogniser-url <url> --recogniser-model <name>`.
+
 ### Qwen3-ASR or SenseVoice
 
 Qwen3-ASR is an audio encoder and a 0.6B language model that writes out
@@ -780,7 +814,7 @@ starts:
 | `VOICE_LOG_TRANSCRIPTS` | off | log what was heard after the name, for tuning the matching |
 | `VOICE_WAKE_CHIME` | **on** | a chime in the call when the name is heard, another when the command has been taken down, and a soft sound every few seconds until the bot answers |
 | `VOICE_DUCK_VOLUME` | `0.3` | the music's volume from the name until the command is heard; 1 leaves it |
-| `VOICE_RECOGNISER` | `qwen3-0.6B` | `qwen3-0.6B`, `qwen3-1.7B`, `sensevoice` or `whisper-v3-turbo`, as `--recogniser`; a saved `qwen3` is read as `qwen3-0.6B` |
+| `VOICE_RECOGNISER` | `qwen3-0.6B` | `qwen3-0.6B`, `qwen3-1.7B`, `sensevoice` or `whisper-v3-turbo`, as `--recogniser`; a saved `qwen3` is read as `qwen3-0.6B`. Or `gemma-4-E2B` or `gemma-4-E4B` (see [Gemma 4](#gemma-4)) |
 | `VOICE_RECOGNISER_PROVIDER` | `cpu` | `cpu`, `gpu` or `coreml`, as `--recogniser-provider` |
 | `VOICE_WAKE_PROVIDER` | `cpu` | the same, for the keyword spotter |
 | `VOICE_SPEECH_PROVIDER` | `cpu` | the same, for speech |

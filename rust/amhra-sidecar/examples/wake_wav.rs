@@ -16,7 +16,7 @@
 //! `--end-silence-ms` and `--max-capture-ms` its other timings, and `--recogniser-threads` sets
 //! how many threads speech recognition gets, `--provider cpu|coreml` where it
 //! runs (coreml needs `--features shared-onnxruntime`), `--recogniser
-//! qwen3-0.6B|qwen3-1.7B|sensevoice|whisper-v3-turbo` which model it is, `--language <lang>`
+//! qwen3-0.6B|qwen3-1.7B|sensevoice|whisper-v3-turbo|gemma-4-E2B|gemma-4-E4B` which model it is, `--language <lang>`
 //! pins what it listens for. `--wake-model <dir>` tries a
 //! fine-tuned spotter from `training/wake/export.sh`, and `--wake-classifier
 //! <dir>` the wake word classifier from `training/wake/classifier/export.py`
@@ -40,7 +40,7 @@ use amhra_sidecar::voice_commands;
 use amhra_sidecar::voice_commands::gate::{Gate, GateConfig, GateEvent};
 use amhra_sidecar::voice_commands::sherpa::{self, SherpaConfig};
 use amhra_sidecar::voice_commands::{
-	Detection, FRAME_SAMPLES, ModelError, Models, SAMPLE_RATE, Spotter, Transcriber, Vad, milliseconds,
+	Detection, FRAME_SAMPLES, ModelError, Models, SAMPLE_RATE, Spotter, Vad, milliseconds,
 };
 
 struct Args {
@@ -51,6 +51,8 @@ struct Args {
 	threads: Option<i32>,
 	provider: Option<String>,
 	recogniser: Option<String>,
+	recogniser_url: Option<String>,
+	recogniser_model: Option<String>,
 	language: Option<String>,
 	spotter: Option<PathBuf>,
 	classifier: Option<PathBuf>,
@@ -72,6 +74,8 @@ fn args() -> Args {
 		threads: None,
 		provider: None,
 		recogniser: None,
+		recogniser_url: None,
+		recogniser_model: None,
 		language: None,
 		spotter: None,
 		classifier: None,
@@ -96,6 +100,8 @@ fn args() -> Args {
 			"--wake-classifier" => args.classifier = Some(value().into()),
 			"--provider" => args.provider = Some(value()),
 			"--recogniser" => args.recogniser = Some(value()),
+			"--recogniser-url" => args.recogniser_url = Some(value()),
+			"--recogniser-model" => args.recogniser_model = Some(value()),
 			"--language" => args.language = Some(value()),
 			"--tail-ms" => args.tail_ms = value().parse().expect("--tail-ms takes a number"),
 			"--verbose" => args.verbose = true,
@@ -184,6 +190,8 @@ fn main() {
 	if let Some(name) = &args.recogniser {
 		config.recogniser = sherpa::Recogniser::parse(name).unwrap_or_else(|| panic!("unknown recogniser {name}"));
 	}
+	config.recogniser_url = args.recogniser_url.clone();
+	config.recogniser_model = args.recogniser_model.clone();
 	if let Some(language) = &args.language {
 		config.recogniser_language = language.clone();
 	}

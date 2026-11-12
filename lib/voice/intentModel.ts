@@ -15,7 +15,7 @@ import {
 	type VoiceOptions,
 } from "./intent";
 import type { YouTubeVideo } from "../youtube";
-import { defaultIntentModel, intentRuntime, intentServer } from "./intentServer";
+import { defaultIntentModel, intentServer, modelEndpoint } from "./intentServer";
 import { quickMatches } from "./quickMatch";
 import { VOICE_LANGUAGES, type VoiceLanguage } from "./voiceSetting";
 
@@ -490,8 +490,7 @@ export async function readIntent(
 	const server = intentServer();
 	// Still starting: nothing is gained by asking it, or by saying so each time.
 	if (url && server?.ready !== false) {
-		const model =
-			setting.VOICE_INTENT_MODEL ?? defaultIntentModel(process.platform, process.arch, intentRuntime(setting));
+		const model = modelEndpoint(setting)?.model ?? defaultIntentModel();
 		let language = chosen ?? recogniserLanguage(lang) ?? Language.English;
 		const turns: Turn[] = [];
 		let searches = 0;

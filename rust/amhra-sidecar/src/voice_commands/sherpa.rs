@@ -5,7 +5,8 @@
 //! - **End of speech:** Silero VAD, one small instance per speaker.
 //! - **Speech to text:** Qwen3-ASR 0.6B, int8, by default; or Qwen3-ASR 1.7B,
 //!   int8; or SenseVoice-Small (FunASR), int8; or Whisper large-v3-turbo, int8
-//!   (see [`Recogniser`]). All with the language worked out per window.
+//!   (see [`Recogniser`]). All with the language worked out per window. Or
+//!   Gemma 4, which is not sherpa-onnx's: see `gemma.rs`.
 //!
 //! The keyword spotter and the VAD go through the `sherpa-onnx` crate's safe
 //! API. The recogniser does not: that wrapper parses the result JSON into a
@@ -32,6 +33,7 @@ use sherpa_onnx::{
 use sherpa_onnx_sys as sys;
 
 use super::classifier::Classifier;
+use super::gemma::GemmaRecogniser;
 use super::keywords::{self, Vocabulary};
 use super::{Detection, ModelError, Models, SAMPLE_RATE, Spotter, Transcriber, Transcript, Vad};
 
@@ -59,6 +61,10 @@ pub struct SherpaConfig {
 	pub vad_threshold: f32,
 	/// Which speech recogniser.
 	pub recogniser: Recogniser,
+	/// For Gemma 4: the OpenAI-compatible server that has the model, as
+	/// `http://host:port/v1`, and the name it serves it under.
+	pub recogniser_url: Option<String>,
+	pub recogniser_model: Option<String>,
 	/// Threads for the recogniser. More shortens each command; there is only
 	/// ever one being recognised at a time. Measured on an M5 Pro per command:
 	/// 294ms on one thread, 153ms on two, 83ms on four. Two leaves the cores
@@ -99,6 +105,8 @@ impl SherpaConfig {
 			keyword_threshold: 0.25,
 			vad_threshold: 0.5,
 			recogniser: Recogniser::default(),
+			recogniser_url: None,
+			recogniser_model: None,
 			recogniser_threads: 2,
 			recogniser_provider: Provider::Cpu,
 			spotter_provider: Provider::Cpu,
@@ -130,6 +138,11 @@ pub enum Recogniser {
 	SenseVoice,
 	/// Whisper large-v3-turbo, with int8 encoder and decoder.
 	WhisperTurbo,
+	/// Gemma 4 E2B (Google DeepMind): a language model that takes audio,
+	/// asked over HTTP rather than loaded here (see `gemma.rs`).
+	Gemma4E2B,
+	/// Gemma 4 E4B: the same, larger.
+	Gemma4E4B,
 }
 
 impl Recogniser {
@@ -140,6 +153,8 @@ impl Recogniser {
 			"qwen3-1.7b" | "qwen3-asr-1.7b" => Some(Self::Qwen3Large),
 			"sensevoice" | "sense-voice" => Some(Self::SenseVoice),
 			"whisper-v3-turbo" | "whisper-large-v3-turbo" | "whisper-turbo" => Some(Self::WhisperTurbo),
+			"gemma-4-e2b" => Some(Self::Gemma4E2B),
+			"gemma-4-e4b" => Some(Self::Gemma4E4B),
 			_ => None,
 		}
 	}
@@ -151,7 +166,14 @@ impl Recogniser {
 			Self::Qwen3Large => "qwen3-1.7B",
 			Self::SenseVoice => "sensevoice",
 			Self::WhisperTurbo => "whisper-v3-turbo",
+			Self::Gemma4E2B => "gemma-4-E2B",
+			Self::Gemma4E4B => "gemma-4-E4B",
 		}
+	}
+
+	/// Gemma 4, of either size: asked over HTTP, with no files of its own here.
+	pub fn is_gemma(self) -> bool {
+		matches!(self, Self::Gemma4E2B | Self::Gemma4E4B)
 	}
 
 	/// Qwen3-ASR, of either size: the one that takes a language per window.
@@ -326,6 +348,8 @@ impl ModelPaths {
 			}
 			Recogniser::Qwen3 => self.qwen3.files(),
 			Recogniser::Qwen3Large => self.qwen3_large.files(),
+			// Its server has them.
+			Recogniser::Gemma4E2B | Recogniser::Gemma4E4B => Vec::new(),
 		}
 	}
 
@@ -355,17 +379,27 @@ fn read(path: &Path) -> Result<Vec<u8>, ModelError> {
 }
 
 /// Load everything: the per-speaker model factory and the recogniser.
-pub fn load(config: &SherpaConfig) -> Result<(Arc<SherpaModels>, OfflineRecogniser), ModelError> {
+pub fn load(config: &SherpaConfig) -> Result<(Arc<SherpaModels>, Box<dyn Transcriber>), ModelError> {
 	let paths = ModelPaths::of(config);
 	paths.check(config.classifier.is_none(), config.recogniser)?;
 	let models = SherpaModels::load(&paths, config)?;
-	let recogniser = OfflineRecogniser::load(
-		&paths,
-		config.recogniser,
-		config.recogniser_threads,
-		config.recogniser_provider,
-		&config.recogniser_language,
-	)?;
+	let recogniser: Box<dyn Transcriber> = if config.recogniser.is_gemma() {
+		let missing = |what: &str| ModelError::Load {
+			what: "Gemma 4",
+			reason: format!("{} needs {what}", config.recogniser.name()),
+		};
+		let url = config.recogniser_url.as_deref().ok_or_else(|| missing("--recogniser-url, the server that has the model"))?;
+		let model = config.recogniser_model.as_deref().ok_or_else(|| missing("--recogniser-model, the name the server has it under"))?;
+		Box::new(GemmaRecogniser::new(url, model, &config.recogniser_language)?)
+	} else {
+		Box::new(OfflineRecogniser::load(
+			&paths,
+			config.recogniser,
+			config.recogniser_threads,
+			config.recogniser_provider,
+			&config.recogniser_language,
+		)?)
+	};
 	Ok((Arc::new(models), recogniser))
 }
 
@@ -590,7 +624,7 @@ fn without_repeats(text: &str) -> &str {
 }
 
 /// Qwen3-ASR's name for each of [`LANGUAGES`], as its prompt spells it.
-fn qwen3_language(code: &str) -> Option<&'static str> {
+pub(super) fn language_name(code: &str) -> Option<&'static str> {
 	Some(match code {
 		"en" => "English",
 		"zh" => "Chinese",
@@ -624,6 +658,9 @@ impl OfflineRecogniser {
 			Recogniser::Qwen3Large => "Qwen3-ASR 1.7B",
 			Recogniser::SenseVoice => "SenseVoice",
 			Recogniser::WhisperTurbo => "Whisper large-v3-turbo",
+			Recogniser::Gemma4E2B | Recogniser::Gemma4E4B => {
+				return Err(ModelError::Load { what: "Gemma 4", reason: "it is not a sherpa-onnx model".to_owned() });
+			}
 		};
 		let cstring = |text: String| {
 			CString::new(text).map_err(|_| ModelError::Load { what, reason: "a path contains a NUL byte".to_owned() })
@@ -663,11 +700,12 @@ impl OfflineRecogniser {
 					path(&qwen3.tokenizer)?,
 				]);
 				if let (Some(code), Some(name)) =
-					(LANGUAGES.iter().find(|code| **code == language), qwen3_language(language))
+					(LANGUAGES.iter().find(|code| **code == language), language_name(language))
 				{
 					pinned = Some((*code, cstring(name.to_owned())?));
 				}
 			}
+			Recogniser::Gemma4E2B | Recogniser::Gemma4E4B => {}
 		}
 
 		// SAFETY: the config is plain C data — pointers, integers and floats —
@@ -715,6 +753,7 @@ impl OfflineRecogniser {
 					qwen3.top_p = 0.8;
 					qwen3.seed = 42;
 				}
+				Recogniser::Gemma4E2B | Recogniser::Gemma4E4B => {}
 			}
 			config.model_config.num_threads = threads;
 			config.model_config.provider = provider.as_ptr();
@@ -743,7 +782,7 @@ impl Transcriber for OfflineRecogniser {
 
 	fn transcribe_in(&mut self, window: &[f32], language: Option<&str>) -> Result<Transcript, ModelError> {
 		let code = language.and_then(|language| LANGUAGES.iter().find(|code| **code == language));
-		let name = code.and_then(|code| qwen3_language(code)).and_then(|name| CString::new(name).ok());
+		let name = code.and_then(|code| language_name(code)).and_then(|name| CString::new(name).ok());
 		match (self.model.is_qwen3(), code, name) {
 			(true, Some(code), Some(name)) => self.recognise(window, Some(&(*code, name))),
 			_ => self.transcribe(window),
@@ -819,7 +858,7 @@ const CANTONESE: &str = "嘅咗佢啲冇喺嚟嘢唔噉嗰啱搵揾攞睇畀諗�
 /// Cantonese, other Han Chinese, and Latin letters English. Japanese written
 /// in kanji alone reads as Chinese, as does Cantonese that uses none of
 /// those characters ("暫停"); the Mandarin voice says it then.
-fn script_language(text: &str) -> Option<&'static str> {
+pub(super) fn script_language(text: &str) -> Option<&'static str> {
 	let (mut han, mut cantonese, mut latin) = (false, false, false);
 	for c in text.chars() {
 		match c {
@@ -906,6 +945,19 @@ mod tests {
 			assert!(model.is_qwen3());
 		}
 		assert!(!Recogniser::SenseVoice.is_qwen3());
+	}
+
+	#[test]
+	fn gemma_names_select_a_size_and_need_no_files_here() {
+		assert_eq!(Recogniser::parse("gemma-4-E2B"), Some(Recogniser::Gemma4E2B));
+		assert_eq!(Recogniser::parse("gemma-4-e4b"), Some(Recogniser::Gemma4E4B));
+		for model in [Recogniser::Gemma4E2B, Recogniser::Gemma4E4B] {
+			assert_eq!(Recogniser::parse(model.name()), Some(model));
+			assert!(model.is_gemma());
+			assert!(!model.is_qwen3());
+			assert!(ModelPaths::under(Path::new("models")).recogniser_files(model).is_empty());
+		}
+		assert!(!Recogniser::Qwen3.is_gemma());
 	}
 
 	#[test]

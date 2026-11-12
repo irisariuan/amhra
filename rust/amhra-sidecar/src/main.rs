@@ -35,7 +35,9 @@
 //! - `--wake-keywords <file>`: the wake phrases, default
 //!   `data/wake-keywords.txt`;
 //! - `--recogniser qwen3-0.6B|qwen3-1.7B|sensevoice|whisper-v3-turbo`: the speech
-//!   recogniser, default qwen3-0.6B (Qwen3-ASR; `qwen3` still means that size); sensevoice is a quarter of the size, for small machines;
+//!   recogniser, default qwen3-0.6B (Qwen3-ASR; `qwen3` still means that size);
+//!   or gemma-4-E2B|gemma-4-E4B, Gemma 4 on the OpenAI-compatible server
+//!   `--recogniser-url <http://host:port/v1>` has as `--recogniser-model <name>`; sensevoice is a quarter of the size, for small machines;
 //! - `--recogniser-threads <n>`: threads for speech recognition, default 2;
 //! - `--recogniser-language <lang>`: auto (the default), en, zh, ja, ko or
 //!   yue, for every guild;
@@ -1025,9 +1027,11 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 			}
 			if let Some(name) = option("--recogniser") {
 				config.recogniser = sherpa::Recogniser::parse(&name).ok_or_else(|| {
-					format!("unknown --recogniser {name:?}; use qwen3-0.6B, qwen3-1.7B, sensevoice or whisper-v3-turbo")
+					format!("unknown --recogniser {name:?}; use qwen3-0.6B, qwen3-1.7B, sensevoice, whisper-v3-turbo, gemma-4-E2B or gemma-4-E4B")
 				})?;
 			}
+			config.recogniser_url = option("--recogniser-url");
+			config.recogniser_model = option("--recogniser-model");
 			eprintln!("voice commands: speech recognition by {}", config.recogniser.name());
 			config.spotter = option("--wake-model").map(Into::into);
 			config.classifier = classifier.clone().map(Into::into);
@@ -1174,7 +1178,7 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 		}
 		Notice::Failed { guild_id, message } => fail(&events, &guild_id, format!("voice commands: {message}")),
 	});
-	match Engine::start(models, Box::new(recogniser), gate, report) {
+	match Engine::start(models, recogniser, gate, report) {
 		Ok(engine) => {
 			match &classifier {
 				Some(dir) => eprintln!("voice commands: models loaded in {:?}, the wake classifier from {dir}", started.elapsed()),

@@ -288,7 +288,7 @@ async fn main() {
 	let started = Instant::now();
 	let engine = Engine::start(
 		models,
-		Box::new(recogniser),
+		recogniser,
 		GateConfig::default(),
 		Arc::new(move |notice| print(started, notice)),
 	)

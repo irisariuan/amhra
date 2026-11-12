@@ -1,7 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createServer } from "node:net";
 import type { Setting } from "../lib/setting";
-import { defaultIntentModel, IntentServer, intentRuntime, launchFor } from "../lib/voice/intentServer";
+import {
+	defaultIntentModel,
+	gemmaModel,
+	IntentServer,
+	intentRuntime,
+	launchFor,
+	modelEndpoint,
+} from "../lib/voice/intentServer";
 
 /**
  * The bot starting the voice command model's server itself, so nobody has to
@@ -18,6 +25,30 @@ describe("what it runs", () => {
 				"run", "-q", "--python", "3.12", "--with", "mlx-lm",
 				"mlx_lm.server", "--model", model, "--host", "127.0.0.1", "--port", "8085",
 			],
+		});
+	});
+
+	test("a Gemma recogniser is served by llama-server, on Apple silicon too", () => {
+		const setting = { VOICE_RECOGNISER: "gemma-4-E4B" } as Setting;
+		expect(gemmaModel(setting)).toBe("ggml-org/gemma-4-E4B-it-GGUF:Q4_0");
+		expect(gemmaModel({ VOICE_RECOGNISER: "qwen3-1.7B" } as Setting)).toBeNull();
+		const endpoint = modelEndpoint(setting, "darwin", "arm64");
+		expect(endpoint).toEqual({
+			url: "http://127.0.0.1:8085/v1",
+			model: "ggml-org/gemma-4-E4B-it-GGUF:Q4_0",
+			audio: true,
+		});
+		const launch = launchFor(endpoint!.url, endpoint!.model, "darwin", "arm64", undefined, true);
+		expect(launch?.command).toBe("llama-server");
+		expect(launch?.args.slice(0, 2)).toEqual(["-hf", "ggml-org/gemma-4-E4B-it-GGUF:Q4_0"]);
+	});
+
+	test("without a URL or a Gemma recogniser there is no server", () => {
+		expect(modelEndpoint({} as Setting, "darwin", "arm64")).toBeNull();
+		expect(modelEndpoint({ VOICE_INTENT_MODEL_URL: "http://127.0.0.1:8085/v1" } as Setting, "darwin", "arm64")).toEqual({
+			url: "http://127.0.0.1:8085/v1",
+			model: "mlx-community/Qwen3-4B-4bit",
+			audio: false,
 		});
 	});
 

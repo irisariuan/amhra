@@ -402,7 +402,7 @@ export const GlobalSettingSchema = z
 		VOICE_RECOGNISER: z
 			.preprocess(
 				(value) => (value === "qwen3" ? "qwen3-0.6B" : value),
-				z.enum(["qwen3-0.6B", "qwen3-1.7B", "sensevoice", "whisper-v3-turbo"]),
+				z.enum(["qwen3-0.6B", "qwen3-1.7B", "sensevoice", "whisper-v3-turbo", "gemma-4-E2B", "gemma-4-E4B"]),
 			)
 			.optional(),
 		VOICE_RECOGNISER_PROVIDER: z.enum(["cpu", "gpu", "coreml"]).optional(),
