@@ -204,11 +204,10 @@ export interface Setting {
 		| "gemma-4-E4B";
 	/**
 	 * With a Gemma VOICE_RECOGNISER, a second recogniser that hears every
-	 * command at the same time: "sensevoice" unless set, or "none". Its
-	 * transcript is used when Gemma has none (its server is still loading,
-	 * or did not answer) or wrote the command in another language than this
-	 * one heard; otherwise it only says which language Gemma's is in. It is
-	 * loaded by the sidecar, so costs its memory on top: about 250MB for
+	 * command first: "sensevoice" unless set, or "none". What it heard goes
+	 * to Gemma with the audio, as a hint, and is the transcript used when
+	 * Gemma has none (its server is still loading, or did not answer). It
+	 * is loaded by the sidecar, so costs its memory on top: about 250MB for
 	 * SenseVoice. Ignored with any other recogniser.
 	 */
 	VOICE_RECOGNISER_FALLBACK?: "sensevoice" | "qwen3-0.6B" | "qwen3-1.7B" | "whisper-v3-turbo" | "none";

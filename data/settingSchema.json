@@ -234,7 +234,7 @@
     "none"
    ],
    "default": "sensevoice",
-   "description": "With a Gemma VOICE_RECOGNISER, a second recogniser that hears every command at the same time. Its transcript is used when Gemma has none (its server is still loading or did not answer) or wrote the command in another language than this one heard. sensevoice adds about 250MB to the sidecar; none turns it off. Ignored with any other recogniser. Restart to apply"
+   "description": "With a Gemma VOICE_RECOGNISER, a second recogniser that hears every command first. What it heard goes to Gemma with the audio as a hint, and is the transcript used when Gemma has none (its server is still loading or did not answer). sensevoice adds about 250MB to the sidecar; none turns it off. Ignored with any other recogniser. Restart to apply"
   },
   "VOICE_RECOGNISER_PROVIDER": {
    "type": "string",

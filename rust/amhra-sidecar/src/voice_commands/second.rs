@@ -1,11 +1,11 @@
-//! A second recogniser, hearing every window alongside the first.
+//! A second recogniser, hearing every window before the first.
 //!
 //! Gemma 4 is a language model asked over HTTP: its server may still be
 //! loading, or not answer, and told no language it may write a command down
-//! in another one, or translate it. A sherpa-onnx recogniser beside it —
-//! SenseVoice by default, 30–50ms a command — hears the same window at the
-//! same time, and its transcript is the one used when the first has none or
-//! the two disagree about the language (see [`choose`]).
+//! in another one, or translate it. A sherpa-onnx recogniser — SenseVoice by
+//! default, 30–50ms a command — hears the window first. What it made of it,
+//! and the language it heard, go to Gemma with the audio as a hint; and its
+//! transcript is the one used when Gemma has none (see [`choose`]).
 
 use super::sherpa::script_language;
 use super::{ModelError, Transcriber, Transcript};
@@ -13,8 +13,8 @@ use super::{ModelError, Transcriber, Transcript};
 pub struct WithSecond {
 	first: Box<dyn Transcriber>,
 	second: Box<dyn Transcriber>,
-	/// The first is always told the language, so there is none to disagree
-	/// about: the second only stands in when the first has nothing.
+	/// The first is always told the language, so its transcript's is that
+	/// one, whatever the second heard.
 	pinned: bool,
 }
 
@@ -25,16 +25,10 @@ impl WithSecond {
 
 	fn both(&mut self, samples: &[f32], language: Option<&str>) -> Result<Transcript, ModelError> {
 		let Self { first, second, pinned } = self;
-		// Together, so the second costs no time: the first is waiting on
-		// its server while the second uses the cores here.
-		let (first, second) = std::thread::scope(|scope| {
-			let second = scope.spawn(|| second.transcribe_in(samples, language));
-			let first = first.transcribe_in(samples, language);
-			let second = second
-				.join()
-				.unwrap_or_else(|_| Err(ModelError::Recognition("the second recogniser panicked".to_owned())));
-			(first, second)
-		});
+		// The second first, as the first is shown what it heard: it is the
+		// quick one, so the first starts tens of milliseconds later.
+		let second = second.transcribe_in(samples, language);
+		let first = first.transcribe_hinted(samples, language, second.as_ref().ok());
 		let (transcript, which) = choose(first, second, *pinned || language.is_some())?;
 		match which {
 			Chosen::First => {}
@@ -63,15 +57,14 @@ enum Chosen {
 
 /// Which transcript to go by.
 ///
-/// The first's, unless it failed or heard nothing where the second heard
-/// something; or, when the first was told no language (`told`), the two are
-/// in writing that cannot be the same language. Then the second heard a
-/// language the first did not, and it is the one that says which language it
-/// heard, so it is believed.
+/// The first's, which was made knowing the second's, unless it failed or
+/// heard nothing where the second heard something.
 ///
-/// Where they agree, the language is the second's: it tells Mandarin from
-/// Cantonese and Japanese in kanji from Chinese by ear, which the first's
-/// writing does not show.
+/// Its language, when the first was told none (`told`), is the second's
+/// where the first's writing could be that language: the second tells
+/// Mandarin from Cantonese and Japanese in kanji from Chinese by ear, which
+/// writing does not show. Where it could not be, the first heard another
+/// language than the second and said so by writing it.
 fn choose(
 	first: Result<Transcript, ModelError>,
 	second: Result<Transcript, ModelError>,
@@ -100,11 +93,7 @@ fn choose(
 	let wrote = script_language(&first.text);
 	let heard = second.lang.as_deref().or_else(|| script_language(&second.text));
 	match (wrote, heard) {
-		(Some(wrote), Some(heard)) if !same_writing(wrote, heard) => {
-			let why = format!("the first wrote {wrote} where it heard {heard}");
-			Ok((second, Chosen::Second(why)))
-		}
-		(_, Some(heard)) => {
+		(Some(wrote), Some(heard)) if same_writing(wrote, heard) => {
 			let lang = Some(heard.to_owned());
 			Ok((Transcript { lang, ..first }, Chosen::First))
 		}
@@ -150,11 +139,12 @@ mod tests {
 	}
 
 	#[test]
-	fn the_second_is_used_when_the_first_wrote_another_language() {
-		let (transcript, which) = choose(heard("Play the next song", Some("en")), heard("다음 곡 틀어줘", Some("ko")), false).unwrap();
-		assert_eq!(transcript.text, "다음 곡 틀어줘");
-		assert_eq!(transcript.lang.as_deref(), Some("ko"));
-		assert!(matches!(which, Chosen::Second(_)));
+	fn the_first_stands_when_it_wrote_another_language_than_the_second_heard() {
+		// It saw the second's transcript and still wrote this.
+		let (transcript, which) = choose(heard("Play the next song", Some("en")), heard("什么号啊？", Some("zh")), false).unwrap();
+		assert_eq!(transcript.text, "Play the next song");
+		assert_eq!(transcript.lang.as_deref(), Some("en"));
+		assert_eq!(which, Chosen::First);
 	}
 
 	#[test]

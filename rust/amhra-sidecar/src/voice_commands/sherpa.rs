@@ -66,8 +66,8 @@ pub struct SherpaConfig {
 	/// `http://host:port/v1`, and the name it serves it under.
 	pub recogniser_url: Option<String>,
 	pub recogniser_model: Option<String>,
-	/// For Gemma 4: a recogniser of sherpa-onnx's to hear each window beside
-	/// it, for when it has no transcript or wrote another language (see
+	/// For Gemma 4: a recogniser of sherpa-onnx's to hear each window before
+	/// it, as a hint to it and for when it has no transcript (see
 	/// `second.rs`).
 	pub recogniser_fallback: Option<Recogniser>,
 	/// Threads for the recogniser. More shortens each command; there is only

@@ -56,11 +56,16 @@ impl GemmaRecogniser {
 		Ok(Self { url: url.trim_end_matches('/').to_owned(), model: model.to_owned(), pinned, client: None })
 	}
 
-	fn recognise(&mut self, samples: &[f32], language: Option<&'static str>) -> Result<Transcript, ModelError> {
+	fn recognise(
+		&mut self,
+		samples: &[f32],
+		language: Option<&'static str>,
+		hint: Option<&Transcript>,
+	) -> Result<Transcript, ModelError> {
 		let failed = |reason: String| ModelError::Recognition(reason);
 		let mut wav = Vec::with_capacity(44 + samples.len() * 2);
 		clips::write_wav(&mut wav, samples).map_err(|error| failed(error.to_string()))?;
-		let body = request(&self.model, &base64(&wav), language);
+		let body = request(&self.model, &base64(&wav), language, hint);
 		let (runtime, client) = match &self.client {
 			Some(client) => client,
 			None => {
@@ -107,22 +112,45 @@ impl GemmaRecogniser {
 
 impl Transcriber for GemmaRecogniser {
 	fn transcribe(&mut self, samples: &[f32]) -> Result<Transcript, ModelError> {
-		self.recognise(samples, self.pinned)
+		self.recognise(samples, self.pinned, None)
 	}
 
 	fn transcribe_in(&mut self, samples: &[f32], language: Option<&str>) -> Result<Transcript, ModelError> {
+		self.transcribe_hinted(samples, language, None)
+	}
+
+	fn transcribe_hinted(
+		&mut self,
+		samples: &[f32],
+		language: Option<&str>,
+		hint: Option<&Transcript>,
+	) -> Result<Transcript, ModelError> {
 		let code = language.and_then(|language| LANGUAGES.iter().find(|code| **code == language).copied());
-		self.recognise(samples, code.or(self.pinned))
+		self.recognise(samples, code.or(self.pinned), hint)
 	}
 }
 
 /// The chat request for one window: what to do, then the audio, which is the
-/// order Gemma wants them in.
-fn request(model: &str, wav: &str, language: Option<&str>) -> Value {
-	let task = match language.and_then(language_name) {
+/// order Gemma wants them in. With a `hint`, what another recogniser heard
+/// is in the text too.
+fn request(model: &str, wav: &str, language: Option<&str>, hint: Option<&Transcript>) -> Value {
+	let mut task = match language.and_then(language_name) {
 		Some(name) => format!("Transcribe the following speech segment in {name} into {name} text."),
 		None => "Transcribe the following speech segment in its original language.".to_owned(),
 	};
+	if let Some(hint) = hint.filter(|hint| !hint.text.trim().is_empty()) {
+		// Its language is only worth saying when Gemma was not told one.
+		let heard_as = match hint.lang.as_deref().and_then(language_name).filter(|_| language.is_none()) {
+			Some(name) => format!(" as {name}"),
+			None => String::new(),
+		};
+		// As JSON, so that quotes in it stay inside the quotes.
+		let text = Value::from(hint.text.trim()).to_string();
+		task.push_str(&format!(
+			"\n\nA smaller, less accurate speech recogniser heard it{heard_as}: {text}\n\
+			 Use that only as a hint. Go by the audio: correct what it got wrong, and if the speech is in another language, write what you hear."
+		));
+	}
 	json!({
 		"model": model,
 		"messages": [{
@@ -181,7 +209,7 @@ mod tests {
 
 	#[test]
 	fn the_request_puts_the_task_before_the_audio() {
-		let body = request("gemma", "UklGRg==", None);
+		let body = request("gemma", "UklGRg==", None, None);
 		assert_eq!(body["model"], "gemma");
 		let content = &body["messages"][0]["content"];
 		assert_eq!(content[0]["type"], "text");
@@ -193,9 +221,28 @@ mod tests {
 
 	#[test]
 	fn a_language_is_named_in_the_task() {
-		let body = request("gemma", "", Some("yue"));
+		let body = request("gemma", "", Some("yue"), None);
 		let task = body["messages"][0]["content"][0]["text"].as_str().unwrap();
 		assert!(task.starts_with("Transcribe the following speech segment in Cantonese into Cantonese text."));
+	}
+
+	#[test]
+	fn a_hint_is_what_another_recogniser_heard_and_in_what() {
+		let hint = Transcript { text: " 다음 \"곡\" 틀어줘 ".to_owned(), lang: Some("ko".to_owned()) };
+		let task = |language| {
+			let body = request("gemma", "", language, Some(&hint));
+			body["messages"][0]["content"][0]["text"].as_str().unwrap().to_owned()
+		};
+		let auto = task(None);
+		assert!(auto.starts_with("Transcribe the following speech segment in its original language.\n\n"));
+		assert!(auto.contains("heard it as Korean: \"다음 \\\"곡\\\" 틀어줘\"\n"));
+		assert!(auto.ends_with(FORMAT));
+		// Told the language, Gemma is not told the other's guess at it.
+		let told = task(Some("en"));
+		assert!(told.contains("heard it: \"다음"));
+		// Nothing heard is no hint.
+		let nothing = Transcript { text: " ".to_owned(), lang: None };
+		assert_eq!(request("gemma", "", None, Some(&nothing)), request("gemma", "", None, None));
 	}
 
 	#[test]
