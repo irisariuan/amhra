@@ -185,7 +185,7 @@
   "VOICE_SPEECH_THREADS": {
    "type": "integer",
    "minimum": 1,
-   "maximum": 8,
+   "maximum": 32,
    "default": 1,
    "description": "CPU threads for making speech. More makes a new phrase sooner but takes cores from playback and recognition. Restart to apply"
   },
@@ -214,12 +214,15 @@
   "VOICE_RECOGNISER": {
    "type": "string",
    "enum": [
-    "qwen3",
+    "qwen3-0.6B",
+    "qwen3-1.7B",
     "sensevoice",
-    "whisper-v3-turbo"
+    "whisper-v3-turbo",
+    "gemma-4-E2B",
+    "gemma-4-E4B"
    ],
-   "default": "qwen3",
-   "description": "The speech recogniser. qwen3 is Qwen3-ASR 0.6B, in 30 languages, but the sidecar then holds about 1.05GB, up to 1.65GB in use, and each command takes about seven times as long. sensevoice is SenseVoice-Small, in five languages and about 600MB, for small machines like a Raspberry Pi. whisper-v3-turbo is Whisper large-v3-turbo with int8 encoder and decoder; download it with scripts/download-voice-models.sh --whisper-v3-turbo. Restart to apply"
+   "default": "qwen3-0.6B",
+   "description": "The speech recogniser. qwen3-0.6B is Qwen3-ASR 0.6B, in 30 languages, but the sidecar then holds about 1.05GB, up to 1.65GB in use, and each command takes about seven times as long. qwen3-1.7B is the larger, more accurate Qwen3-ASR: its weights are 2.4GB against 1GB, so expect the sidecar to hold about 2.5GB and each command to take longer still, which is a lot on an 8GB machine; download it with scripts/download-voice-models.sh --qwen3-1.7B. sensevoice is SenseVoice-Small, in five languages and about 600MB, for small machines like a Raspberry Pi. whisper-v3-turbo is Whisper large-v3-turbo with int8 encoder and decoder; download it with scripts/download-voice-models.sh --whisper-v3-turbo. gemma-4-E2B and gemma-4-E4B are Gemma 4, a language model that takes audio: each command's audio goes to the server at VOICE_INTENT_MODEL_URL (http://127.0.0.1:8085/v1 if unset), which the bot starts as llama.cpp's llama-server and which fetches the model itself (about 3.5GB for E2B, 5.5GB for E4B, and about that much memory); with VOICE_INTENT_MODEL_URL set the same model also reads the command, in place of a second one. Restart to apply"
   },
   "VOICE_RECOGNISER_PROVIDER": {
    "type": "string",

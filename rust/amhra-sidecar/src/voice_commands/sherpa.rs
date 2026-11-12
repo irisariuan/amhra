@@ -3,9 +3,10 @@
 //! - **Wake word:** a 3.3M-parameter streaming zipformer keyword spotter
 //!   (GigaSpeech). One spotter for the process, one stream per speaker.
 //! - **End of speech:** Silero VAD, one small instance per speaker.
-//! - **Speech to text:** Qwen3-ASR 0.6B, int8, by default; or SenseVoice-Small
-//!   (FunASR), int8; or Whisper large-v3-turbo, int8 (see [`Recogniser`]). All
-//!   with the language worked out per window.
+//! - **Speech to text:** Qwen3-ASR 0.6B, int8, by default; or Qwen3-ASR 1.7B,
+//!   int8; or SenseVoice-Small (FunASR), int8; or Whisper large-v3-turbo, int8
+//!   (see [`Recogniser`]). All with the language worked out per window. Or
+//!   Gemma 4, which is not sherpa-onnx's: see `gemma.rs`.
 //!
 //! The keyword spotter and the VAD go through the `sherpa-onnx` crate's safe
 //! API. The recogniser does not: that wrapper parses the result JSON into a
@@ -32,6 +33,7 @@ use sherpa_onnx::{
 use sherpa_onnx_sys as sys;
 
 use super::classifier::Classifier;
+use super::gemma::GemmaRecogniser;
 use super::keywords::{self, Vocabulary};
 use super::{Detection, ModelError, Models, SAMPLE_RATE, Spotter, Transcriber, Transcript, Vad};
 
@@ -39,6 +41,7 @@ const KWS_DIR: &str = "sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01";
 const KWS_STEM: &str = "epoch-12-avg-2-chunk-16-left-64.int8.onnx";
 const STT_DIR: &str = "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17";
 const QWEN3_DIR: &str = "sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25";
+const QWEN3_LARGE_DIR: &str = "sherpa-onnx-qwen3-asr-1.7B-int8";
 const WHISPER_TURBO_DIR: &str = "sherpa-onnx-whisper-turbo";
 const VAD_FILE: &str = "silero_vad.onnx";
 
@@ -58,6 +61,10 @@ pub struct SherpaConfig {
 	pub vad_threshold: f32,
 	/// Which speech recogniser.
 	pub recogniser: Recogniser,
+	/// For Gemma 4: the OpenAI-compatible server that has the model, as
+	/// `http://host:port/v1`, and the name it serves it under.
+	pub recogniser_url: Option<String>,
+	pub recogniser_model: Option<String>,
 	/// Threads for the recogniser. More shortens each command; there is only
 	/// ever one being recognised at a time. Measured on an M5 Pro per command:
 	/// 294ms on one thread, 153ms on two, 83ms on four. Two leaves the cores
@@ -98,6 +105,8 @@ impl SherpaConfig {
 			keyword_threshold: 0.25,
 			vad_threshold: 0.5,
 			recogniser: Recogniser::default(),
+			recogniser_url: None,
+			recogniser_model: None,
 			recogniser_threads: 2,
 			recogniser_provider: Provider::Cpu,
 			spotter_provider: Provider::Cpu,
@@ -120,19 +129,32 @@ pub enum Recogniser {
 	/// decoder it takes longer the more was said.
 	#[default]
 	Qwen3,
+	/// Qwen3-ASR 1.7B, int8: the same model with a larger language model,
+	/// more accurate and about two and a half times the size on disk
+	/// (2.4GB), so slower and that much more memory.
+	Qwen3Large,
 	/// SenseVoice-Small (FunASR), int8: a non-autoregressive model of about
 	/// 230MB in five languages, for machines Qwen3-ASR is too big for.
 	SenseVoice,
 	/// Whisper large-v3-turbo, with int8 encoder and decoder.
 	WhisperTurbo,
+	/// Gemma 4 E2B (Google DeepMind): a language model that takes audio,
+	/// asked over HTTP rather than loaded here (see `gemma.rs`).
+	Gemma4E2B,
+	/// Gemma 4 E4B: the same, larger.
+	Gemma4E4B,
 }
 
 impl Recogniser {
 	pub fn parse(name: &str) -> Option<Self> {
 		match name.to_ascii_lowercase().as_str() {
-			"qwen3" | "qwen3-asr" => Some(Self::Qwen3),
+			// "qwen3" is what 0.6B was called when it was the only size.
+			"qwen3-0.6b" | "qwen3-asr-0.6b" | "qwen3" | "qwen3-asr" => Some(Self::Qwen3),
+			"qwen3-1.7b" | "qwen3-asr-1.7b" => Some(Self::Qwen3Large),
 			"sensevoice" | "sense-voice" => Some(Self::SenseVoice),
 			"whisper-v3-turbo" | "whisper-large-v3-turbo" | "whisper-turbo" => Some(Self::WhisperTurbo),
+			"gemma-4-e2b" => Some(Self::Gemma4E2B),
+			"gemma-4-e4b" => Some(Self::Gemma4E4B),
 			_ => None,
 		}
 	}
@@ -140,10 +162,23 @@ impl Recogniser {
 	/// As the settings and flags name it.
 	pub fn name(self) -> &'static str {
 		match self {
-			Self::Qwen3 => "qwen3",
+			Self::Qwen3 => "qwen3-0.6B",
+			Self::Qwen3Large => "qwen3-1.7B",
 			Self::SenseVoice => "sensevoice",
 			Self::WhisperTurbo => "whisper-v3-turbo",
+			Self::Gemma4E2B => "gemma-4-E2B",
+			Self::Gemma4E4B => "gemma-4-E4B",
 		}
+	}
+
+	/// Gemma 4, of either size: asked over HTTP, with no files of its own here.
+	pub fn is_gemma(self) -> bool {
+		matches!(self, Self::Gemma4E2B | Self::Gemma4E4B)
+	}
+
+	/// Qwen3-ASR, of either size: the one that takes a language per window.
+	pub fn is_qwen3(self) -> bool {
+		matches!(self, Self::Qwen3 | Self::Qwen3Large)
 	}
 }
 
@@ -226,21 +261,46 @@ pub struct ModelPaths {
 	pub vad: PathBuf,
 	pub stt_model: PathBuf,
 	pub stt_tokens: PathBuf,
-	pub qwen3_conv_frontend: PathBuf,
-	pub qwen3_encoder: PathBuf,
-	pub qwen3_decoder: PathBuf,
-	/// A directory: `vocab.json`, `merges.txt` and `tokenizer_config.json`.
-	pub qwen3_tokenizer: PathBuf,
+	/// Qwen3-ASR 0.6B.
+	pub qwen3: Qwen3Paths,
+	/// Qwen3-ASR 1.7B.
+	pub qwen3_large: Qwen3Paths,
 	pub whisper_encoder: PathBuf,
 	pub whisper_decoder: PathBuf,
 	pub whisper_tokens: PathBuf,
+}
+
+/// One size of Qwen3-ASR: both are laid out alike.
+#[derive(Debug, Clone)]
+pub struct Qwen3Paths {
+	pub conv_frontend: PathBuf,
+	pub encoder: PathBuf,
+	pub decoder: PathBuf,
+	/// A directory: `vocab.json`, `merges.txt` and `tokenizer_config.json`.
+	pub tokenizer: PathBuf,
+}
+
+impl Qwen3Paths {
+	fn under(dir: &Path) -> Self {
+		Self {
+			conv_frontend: dir.join("conv_frontend.onnx"),
+			encoder: dir.join("encoder.int8.onnx"),
+			decoder: dir.join("decoder.int8.onnx"),
+			tokenizer: dir.join("tokenizer"),
+		}
+	}
+
+	fn files(&self) -> Vec<PathBuf> {
+		let mut files = vec![self.conv_frontend.clone(), self.encoder.clone(), self.decoder.clone()];
+		files.extend(["vocab.json", "merges.txt", "tokenizer_config.json"].map(|name| self.tokenizer.join(name)));
+		files
+	}
 }
 
 impl ModelPaths {
 	pub fn under(dir: &Path) -> Self {
 		let kws = dir.join(KWS_DIR);
 		let stt = dir.join(STT_DIR);
-		let qwen3 = dir.join(QWEN3_DIR);
 		let whisper = dir.join(WHISPER_TURBO_DIR);
 		Self {
 			kws_encoder: kws.join(format!("encoder-{KWS_STEM}")),
@@ -251,10 +311,8 @@ impl ModelPaths {
 			vad: dir.join(VAD_FILE),
 			stt_model: stt.join("model.int8.onnx"),
 			stt_tokens: stt.join("tokens.txt"),
-			qwen3_conv_frontend: qwen3.join("conv_frontend.onnx"),
-			qwen3_encoder: qwen3.join("encoder.int8.onnx"),
-			qwen3_decoder: qwen3.join("decoder.int8.onnx"),
-			qwen3_tokenizer: qwen3.join("tokenizer"),
+			qwen3: Qwen3Paths::under(&dir.join(QWEN3_DIR)),
+			qwen3_large: Qwen3Paths::under(&dir.join(QWEN3_LARGE_DIR)),
 			whisper_encoder: whisper.join("turbo-encoder.int8.onnx"),
 			whisper_decoder: whisper.join("turbo-decoder.int8.onnx"),
 			whisper_tokens: whisper.join("turbo-tokens.txt"),
@@ -288,13 +346,10 @@ impl ModelPaths {
 			Recogniser::WhisperTurbo => {
 				vec![self.whisper_encoder.clone(), self.whisper_decoder.clone(), self.whisper_tokens.clone()]
 			}
-			Recogniser::Qwen3 => {
-				let mut files = vec![self.qwen3_conv_frontend.clone(), self.qwen3_encoder.clone(), self.qwen3_decoder.clone()];
-				files.extend(
-					["vocab.json", "merges.txt", "tokenizer_config.json"].map(|name| self.qwen3_tokenizer.join(name)),
-				);
-				files
-			}
+			Recogniser::Qwen3 => self.qwen3.files(),
+			Recogniser::Qwen3Large => self.qwen3_large.files(),
+			// Its server has them.
+			Recogniser::Gemma4E2B | Recogniser::Gemma4E4B => Vec::new(),
 		}
 	}
 
@@ -324,17 +379,27 @@ fn read(path: &Path) -> Result<Vec<u8>, ModelError> {
 }
 
 /// Load everything: the per-speaker model factory and the recogniser.
-pub fn load(config: &SherpaConfig) -> Result<(Arc<SherpaModels>, OfflineRecogniser), ModelError> {
+pub fn load(config: &SherpaConfig) -> Result<(Arc<SherpaModels>, Box<dyn Transcriber>), ModelError> {
 	let paths = ModelPaths::of(config);
 	paths.check(config.classifier.is_none(), config.recogniser)?;
 	let models = SherpaModels::load(&paths, config)?;
-	let recogniser = OfflineRecogniser::load(
-		&paths,
-		config.recogniser,
-		config.recogniser_threads,
-		config.recogniser_provider,
-		&config.recogniser_language,
-	)?;
+	let recogniser: Box<dyn Transcriber> = if config.recogniser.is_gemma() {
+		let missing = |what: &str| ModelError::Load {
+			what: "Gemma 4",
+			reason: format!("{} needs {what}", config.recogniser.name()),
+		};
+		let url = config.recogniser_url.as_deref().ok_or_else(|| missing("--recogniser-url, the server that has the model"))?;
+		let model = config.recogniser_model.as_deref().ok_or_else(|| missing("--recogniser-model, the name the server has it under"))?;
+		Box::new(GemmaRecogniser::new(url, model, &config.recogniser_language)?)
+	} else {
+		Box::new(OfflineRecogniser::load(
+			&paths,
+			config.recogniser,
+			config.recogniser_threads,
+			config.recogniser_provider,
+			&config.recogniser_language,
+		)?)
+	};
 	Ok((Arc::new(models), recogniser))
 }
 
@@ -559,7 +624,7 @@ fn without_repeats(text: &str) -> &str {
 }
 
 /// Qwen3-ASR's name for each of [`LANGUAGES`], as its prompt spells it.
-fn qwen3_language(code: &str) -> Option<&'static str> {
+pub(super) fn language_name(code: &str) -> Option<&'static str> {
 	Some(match code {
 		"en" => "English",
 		"zh" => "Chinese",
@@ -589,9 +654,13 @@ impl OfflineRecogniser {
 		language: &str,
 	) -> Result<Self, ModelError> {
 		let what = match model {
-			Recogniser::Qwen3 => "Qwen3-ASR",
+			Recogniser::Qwen3 => "Qwen3-ASR 0.6B",
+			Recogniser::Qwen3Large => "Qwen3-ASR 1.7B",
 			Recogniser::SenseVoice => "SenseVoice",
 			Recogniser::WhisperTurbo => "Whisper large-v3-turbo",
+			Recogniser::Gemma4E2B | Recogniser::Gemma4E4B => {
+				return Err(ModelError::Load { what: "Gemma 4", reason: "it is not a sherpa-onnx model".to_owned() });
+			}
 		};
 		let cstring = |text: String| {
 			CString::new(text).map_err(|_| ModelError::Load { what, reason: "a path contains a NUL byte".to_owned() })
@@ -622,19 +691,21 @@ impl OfflineRecogniser {
 			Recogniser::SenseVoice => {
 				strings.extend([path(&paths.stt_model)?, path(&paths.stt_tokens)?, cstring(language.to_owned())?]);
 			}
-			Recogniser::Qwen3 => {
+			Recogniser::Qwen3 | Recogniser::Qwen3Large => {
+				let qwen3 = if model == Recogniser::Qwen3 { &paths.qwen3 } else { &paths.qwen3_large };
 				strings.extend([
-					path(&paths.qwen3_conv_frontend)?,
-					path(&paths.qwen3_encoder)?,
-					path(&paths.qwen3_decoder)?,
-					path(&paths.qwen3_tokenizer)?,
+					path(&qwen3.conv_frontend)?,
+					path(&qwen3.encoder)?,
+					path(&qwen3.decoder)?,
+					path(&qwen3.tokenizer)?,
 				]);
 				if let (Some(code), Some(name)) =
-					(LANGUAGES.iter().find(|code| **code == language), qwen3_language(language))
+					(LANGUAGES.iter().find(|code| **code == language), language_name(language))
 				{
 					pinned = Some((*code, cstring(name.to_owned())?));
 				}
 			}
+			Recogniser::Gemma4E2B | Recogniser::Gemma4E4B => {}
 		}
 
 		// SAFETY: the config is plain C data — pointers, integers and floats —
@@ -664,7 +735,7 @@ impl OfflineRecogniser {
 					// "track 3", with punctuation.
 					config.model_config.sense_voice.use_itn = 1;
 				}
-				Recogniser::Qwen3 => {
+				Recogniser::Qwen3 | Recogniser::Qwen3Large => {
 					// Qwen3-ASR makes its own 128-bin features and ignores
 					// these, and needs no tokens file beside its tokenizer.
 					config.feat_config.feature_dim = 128;
@@ -682,6 +753,7 @@ impl OfflineRecogniser {
 					qwen3.top_p = 0.8;
 					qwen3.seed = 42;
 				}
+				Recogniser::Gemma4E2B | Recogniser::Gemma4E4B => {}
 			}
 			config.model_config.num_threads = threads;
 			config.model_config.provider = provider.as_ptr();
@@ -710,9 +782,9 @@ impl Transcriber for OfflineRecogniser {
 
 	fn transcribe_in(&mut self, window: &[f32], language: Option<&str>) -> Result<Transcript, ModelError> {
 		let code = language.and_then(|language| LANGUAGES.iter().find(|code| **code == language));
-		let name = code.and_then(|code| qwen3_language(code)).and_then(|name| CString::new(name).ok());
-		match (self.model, code, name) {
-			(Recogniser::Qwen3, Some(code), Some(name)) => self.recognise(window, Some(&(*code, name))),
+		let name = code.and_then(|code| language_name(code)).and_then(|name| CString::new(name).ok());
+		match (self.model.is_qwen3(), code, name) {
+			(true, Some(code), Some(name)) => self.recognise(window, Some(&(*code, name))),
 			_ => self.transcribe(window),
 		}
 	}
@@ -753,7 +825,7 @@ impl OfflineRecogniser {
 		};
 		let json = json.ok_or_else(|| ModelError::Recognition("no result".to_owned()))?;
 		let mut transcript = parse_result(&json)?;
-		if self.model == Recogniser::Qwen3 {
+		if self.model.is_qwen3() {
 			transcript.text = transcript.text.trim().to_owned();
 			// sherpa-onnx strips the "language English" Qwen3-ASR writes
 			// before the text and keeps nothing of it, so the language is
@@ -786,7 +858,7 @@ const CANTONESE: &str = "嘅咗佢啲冇喺嚟嘢唔噉嗰啱搵揾攞睇畀諗�
 /// Cantonese, other Han Chinese, and Latin letters English. Japanese written
 /// in kanji alone reads as Chinese, as does Cantonese that uses none of
 /// those characters ("暫停"); the Mandarin voice says it then.
-fn script_language(text: &str) -> Option<&'static str> {
+pub(super) fn script_language(text: &str) -> Option<&'static str> {
 	let (mut han, mut cantonese, mut latin) = (false, false, false);
 	for c in text.chars() {
 		match c {
@@ -858,6 +930,47 @@ mod tests {
 		] {
 			assert_eq!(without_repeats(kept), kept);
 		}
+	}
+
+	#[test]
+	fn qwen3_names_select_a_size() {
+		for name in ["qwen3-0.6B", "qwen3-0.6b", "qwen3", "qwen3-asr"] {
+			assert_eq!(Recogniser::parse(name), Some(Recogniser::Qwen3));
+		}
+		assert_eq!(Recogniser::parse("qwen3-1.7B"), Some(Recogniser::Qwen3Large));
+		assert_eq!(Recogniser::Qwen3.name(), "qwen3-0.6B");
+		assert_eq!(Recogniser::Qwen3Large.name(), "qwen3-1.7B");
+		for model in [Recogniser::Qwen3, Recogniser::Qwen3Large] {
+			assert_eq!(Recogniser::parse(model.name()), Some(model));
+			assert!(model.is_qwen3());
+		}
+		assert!(!Recogniser::SenseVoice.is_qwen3());
+	}
+
+	#[test]
+	fn gemma_names_select_a_size_and_need_no_files_here() {
+		assert_eq!(Recogniser::parse("gemma-4-E2B"), Some(Recogniser::Gemma4E2B));
+		assert_eq!(Recogniser::parse("gemma-4-e4b"), Some(Recogniser::Gemma4E4B));
+		for model in [Recogniser::Gemma4E2B, Recogniser::Gemma4E4B] {
+			assert_eq!(Recogniser::parse(model.name()), Some(model));
+			assert!(model.is_gemma());
+			assert!(!model.is_qwen3());
+			assert!(ModelPaths::under(Path::new("models")).recogniser_files(model).is_empty());
+		}
+		assert!(!Recogniser::Qwen3.is_gemma());
+	}
+
+	#[test]
+	fn each_qwen3_size_loads_its_own_files() {
+		let dir = Path::new("models");
+		let paths = ModelPaths::under(dir);
+		let small = paths.recogniser_files(Recogniser::Qwen3);
+		let large = paths.recogniser_files(Recogniser::Qwen3Large);
+		assert_eq!(small.len(), 6);
+		assert_eq!(large.len(), 6);
+		assert!(small.iter().all(|file| file.starts_with(dir.join(QWEN3_DIR))));
+		assert!(large.iter().all(|file| file.starts_with(dir.join(QWEN3_LARGE_DIR))));
+		assert_eq!(large[2], dir.join(QWEN3_LARGE_DIR).join("decoder.int8.onnx"));
 	}
 
 	#[test]

@@ -130,6 +130,7 @@ dependencies = [
  "amhra-voice",
  "fast2s",
  "futures-util",
+ "reqwest",
  "rustfft",
  "serde",
  "serde_json",

@@ -333,7 +333,7 @@ starts:
 | --- | --- | --- |
 | `--voice-models <dir>` | `models/voice` | where the download script put them (gitignored) |
 | `--wake-keywords <file>` | `data/wake-keywords.txt` | the wake phrases; edit and restart, no rebuild |
-| `--recogniser <r>` | `qwen3` | the speech recogniser: `qwen3` (Qwen3-ASR) or `sensevoice` (see [Qwen3-ASR or SenseVoice](#qwen3-asr-or-sensevoice)) |
+| `--recogniser <r>` | `qwen3-0.6B` | the speech recogniser: `qwen3-0.6B` or `qwen3-1.7B` (Qwen3-ASR, by size; `qwen3` still means 0.6B), or `sensevoice` (see [Qwen3-ASR or SenseVoice](#qwen3-asr-or-sensevoice)) |
 | `--recogniser-threads <n>` | `2` | speech-recognition threads |
 | `--recogniser-provider <p>` | `cpu` | `cpu`, `coreml` with `shared-onnxruntime` on macOS, or `gpu` (CUDA) with `cuda-onnxruntime` and `SHERPA_ONNX_LIB_DIR` at a sherpa-onnx GPU release; one the build lacks falls back to `cpu`, saying so |
 | `--wake-provider <p>` | `cpu` | the keyword spotter's, the same way; the wake classifier only runs on `cpu` |
@@ -381,6 +381,7 @@ runs whenever the models are present.
 | wake word | `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` (streaming zipformer, int8) | Apache-2.0 |
 | end of speech | Silero VAD (`silero_vad.onnx`) | MIT |
 | speech to text | `sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25` (default) | Apache-2.0 |
+| speech to text | `sherpa-onnx-qwen3-asr-1.7B-int8` (`--recogniser qwen3-1.7B`; `download-voice-models.sh --qwen3-1.7B`) | Apache-2.0 |
 | speech to text | `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` (`--recogniser sensevoice`) | FunASR Model License 1.1 |
 
 **Qwen3-ASR attribution.** The default speech recogniser is **Qwen3-ASR
@@ -389,6 +390,16 @@ runs whenever the models are present.
 sherpa-onnx int8 export. The download script fetches it file by file from
 the exporter's Hugging Face repository, which here was about thirty times
 faster than the GitHub release.
+
+**Qwen3-ASR 1.7B** (`--recogniser qwen3-1.7B`) is the same model with a
+larger language model. sherpa-onnx publishes no export of it, so the
+download script takes a third party's
+(<https://huggingface.co/thieunv-asilla/sherpa-onnx-qwen3-asr-1.7B-int8>,
+made with the same export script and in the same layout), at one fixed
+revision, and checks the weights' SHA-256. Its weights are 2.4GB where
+0.6B's are 1GB. It has not been measured here: going by 0.6B, whose process
+holds about what its weights weigh, expect about 2.5GB held and more in
+use, and each command to take two to three times as long.
 
 **SenseVoice attribution.** The speech recogniser is **SenseVoice-Small** by
 Tongyi Lab, Alibaba Group (<https://github.com/FunAudioLLM/SenseVoice>), via
@@ -584,6 +595,40 @@ handing work to another device.
 Either way, 500ms of the wait after someone stops talking is the silence
 that tells the gate they have finished.
 
+### Gemma 4
+
+`--recogniser gemma-4-E2B` or `gemma-4-E4B` hears commands with Gemma 4
+(Google DeepMind, Apache-2.0), a language model that takes audio. The
+sidecar does not load it. Each command's window goes as a WAV file, in a
+chat request, to the OpenAI-compatible server `--recogniser-url` names,
+which has the model as `--recogniser-model`; the answer is the transcript.
+The wake word and the end of speech are still sherpa-onnx's, here.
+
+The bot sets both flags from `VOICE_RECOGNISER`: the server is
+`VOICE_INTENT_MODEL_URL`, or `http://127.0.0.1:8085/v1` if that is unset,
+and the model `VOICE_INTENT_MODEL`, or `ggml-org/gemma-4-E2B-it-GGUF:Q4_0`
+(or `E4B`). It starts llama.cpp's `llama-server` there, on Apple silicon
+too, since `mlx_lm.server` takes text only; `llama-server` fetches the model
+and its audio projector the first time. With `VOICE_INTENT_MODEL_URL` set,
+the same server and model read the command afterwards, so one model is held
+where there were two.
+
+| | download | 
+| --- | --- |
+| `gemma-4-E2B` | 2.8GB and a projector of 0.6–1GB |
+| `gemma-4-E4B` | 4.6GB and a projector of 0.6–1GB |
+
+Expect about that much memory in `llama-server`, where Qwen3-ASR 0.6B and
+Qwen3 4B together take about 3.5–4GB: on an 8GB machine E2B is the one that
+fits. Gemma takes at most 30 seconds of audio; a command is at most eight.
+It reports no language, so that is the one asked for or, as for Qwen3-ASR,
+read off the writing.
+
+None of this has been run against a real server here: not the time a
+command takes, nor how well it hears titles, nor how well Gemma reads
+commands in place of Qwen3 4B. Try it on a recording with
+`wake_wav --whole --recogniser gemma-4-E2B --recogniser-url <url> --recogniser-model <name>`.
+
 ### Qwen3-ASR or SenseVoice
 
 Qwen3-ASR is an audio encoder and a 0.6B language model that writes out
@@ -769,7 +814,7 @@ starts:
 | `VOICE_LOG_TRANSCRIPTS` | off | log what was heard after the name, for tuning the matching |
 | `VOICE_WAKE_CHIME` | **on** | a chime in the call when the name is heard, another when the command has been taken down, and a soft sound every few seconds until the bot answers |
 | `VOICE_DUCK_VOLUME` | `0.3` | the music's volume from the name until the command is heard; 1 leaves it |
-| `VOICE_RECOGNISER` | `qwen3` | `qwen3` or `sensevoice`, as `--recogniser` |
+| `VOICE_RECOGNISER` | `qwen3-0.6B` | `qwen3-0.6B`, `qwen3-1.7B`, `sensevoice` or `whisper-v3-turbo`, as `--recogniser`; a saved `qwen3` is read as `qwen3-0.6B`. Or `gemma-4-E2B` or `gemma-4-E4B` (see [Gemma 4](#gemma-4)) |
 | `VOICE_RECOGNISER_PROVIDER` | `cpu` | `cpu`, `gpu` or `coreml`, as `--recogniser-provider` |
 | `VOICE_WAKE_PROVIDER` | `cpu` | the same, for the keyword spotter |
 | `VOICE_SPEECH_PROVIDER` | `cpu` | the same, for speech |

@@ -1,5 +1,6 @@
 import { guildSetting } from "../guildSetting";
 import { readSetting, type Setting } from "../setting";
+import { modelEndpoint } from "./intentServer";
 
 /**
  * Who may be heard, decided from the settings alone. Kept apart from the code
@@ -28,11 +29,22 @@ export type VoiceLanguage = keyof typeof VOICE_LANGUAGES;
 
 /**
  * The recogniser can be told the language for each window, which is what hearing
- * a command again and a member's own language take. Only Qwen3-ASR can: the
- * others fix theirs when they are loaded.
+ * a command again and a member's own language take. Qwen3-ASR and Gemma can:
+ * the others fix theirs when they are loaded.
  */
 export function recogniserTakesLanguage(setting: Setting = readSetting()) {
-	return (setting.VOICE_RECOGNISER ?? "qwen3") === "qwen3";
+	const recogniser = voiceRecogniser(setting);
+	return recogniser.startsWith("qwen3-") || recogniser.startsWith("gemma-");
+}
+
+/**
+ * The recogniser the setting names. One saved as "qwen3", from when Qwen3-ASR
+ * came in one size, is the 0.6B that was.
+ */
+export function voiceRecogniser(setting: Setting = readSetting()): NonNullable<Setting["VOICE_RECOGNISER"]> {
+	const saved: string | undefined = setting.VOICE_RECOGNISER;
+	if (saved === undefined || saved === "qwen3") return "qwen3-0.6B";
+	return saved as NonNullable<Setting["VOICE_RECOGNISER"]>;
 }
 
 /**
@@ -107,7 +119,12 @@ export function voiceCommandArgs(setting: Setting = readSetting()): string[] {
 	const duck = setting.VOICE_DUCK_VOLUME ?? DEFAULT_DUCK_VOLUME;
 	if (duck < 1) args.push("--wake-duck", String(Math.max(0, duck)));
 	if (setting.VOICE_RECOGNISER) {
-		args.push("--recogniser", setting.VOICE_RECOGNISER);
+		args.push("--recogniser", voiceRecogniser(setting));
+	}
+	// A Gemma is not the sidecar's to load: it asks the model's server.
+	const endpoint = modelEndpoint(setting);
+	if (endpoint?.audio) {
+		args.push("--recogniser-url", endpoint.url, "--recogniser-model", endpoint.model);
 	}
 	if (setting.VOICE_RECOGNISER_PROVIDER) {
 		args.push("--recogniser-provider", setting.VOICE_RECOGNISER_PROVIDER);
