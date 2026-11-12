@@ -13,10 +13,10 @@
 //! ```text
 //! "Amhra"  ─▶ start chime ─▶ they speak ─▶ end chime ─▶ processing ─▶ answer
 //!           (start.wav)                  (end.wav)  (waiting.wav,
-//!                                                      once)
+//!                                                    repeated)
 //! ```
 //!
-//! Overlapping requests share one processing sound. Ready answers interrupt
+//! Overlapping requests share one processing cycle. Ready answers interrupt
 //! it and play in turn; start and end chimes mix over all other audio.
 //!
 //! They are sound files in `assets/sounds`, built into the binary: 48kHz
@@ -327,8 +327,10 @@ impl Clips {
 	}
 }
 
-/// Delay before the single processing sound.
+/// Delay before the first processing sound.
 pub const WAIT_EVERY: Duration = Duration::from_secs(2);
+/// The quiet between one processing sound ending and the next starting.
+const WAIT_GAP: Duration = Duration::from_secs(1);
 /// The longest anyone is waited on. Past this, whatever was meant to answer
 /// them has been lost.
 const MAX_WAIT: Duration = Duration::from_secs(20);
@@ -337,10 +339,9 @@ const MAX_WAIT: Duration = Duration::from_secs(20);
 #[derive(Debug, Default)]
 pub struct Waits {
 	users: Vec<Wait>,
-	/// When this batch's processing sound is due.
+	/// When this batch's next processing sound is due. Later captures join
+	/// the cycle already running rather than restarting it.
 	next: Option<Instant>,
-	/// Prevent additional captures from restarting the sound during this batch.
-	sounded: bool,
 }
 
 #[derive(Debug)]
@@ -354,8 +355,8 @@ struct Wait {
 
 impl Waits {
 	/// `user_id`'s command has been taken down: hold the music at `gain`
-	/// until they are answered, with one waiting sound after [`WAIT_EVERY`] if
-	/// `sound`.
+	/// until they are answered, with the waiting sound after [`WAIT_EVERY`]
+	/// and then again after each [`WAIT_GAP`], if `sound`.
 	pub fn start(&mut self, user_id: u64, sound: bool, gain: f32, duck: &mut Duck, now: Instant) {
 		if let Some(wait) = self.users.iter_mut().find(|wait| wait.user_id == user_id) {
 			wait.until = now + MAX_WAIT;
@@ -366,7 +367,7 @@ impl Waits {
 			}
 			self.users.push(Wait { user_id, until: now + MAX_WAIT, ducked });
 		}
-		if sound && !self.sounded && self.next.is_none() {
+		if sound && self.next.is_none() {
 			self.next = Some(now + WAIT_EVERY);
 		}
 	}
@@ -389,8 +390,9 @@ impl Waits {
 		if now < next || busy {
 			return false;
 		}
-		self.next = None;
-		self.sounded = true;
+		// The next one a gap after this one ends.
+		let length = Duration::from_secs_f32(waiting().len() as f32 / CHANNELS as f32 / SAMPLE_RATE as f32);
+		self.next = Some(now + length + WAIT_GAP);
 		true
 	}
 
@@ -404,7 +406,6 @@ impl Waits {
 		});
 		if self.users.is_empty() {
 			self.next = None;
-			self.sounded = false;
 		}
 	}
 }
@@ -591,10 +592,11 @@ mod tests {
 		assert!(!waits.due(false, &mut duck, start));
 		assert!(waits.due(false, &mut duck, start + WAIT_EVERY));
 		assert!(!waits.due(false, &mut duck, start + WAIT_EVERY));
+		// A second capture joins the cycle rather than restarting it.
 		waits.start(8, true, 0.3, &mut duck, start + WAIT_EVERY);
-		for cycle in 2..=5 {
-			assert!(!waits.due(false, &mut duck, start + WAIT_EVERY * cycle));
-		}
+		let again = start + WAIT_EVERY + repeat();
+		assert!(!waits.due(false, &mut duck, again - Duration::from_millis(1)));
+		assert!(waits.due(false, &mut duck, again));
 		waits.settle(8, &mut duck);
 
 		// The answer starts: no more waiting, and it holds the music down.
@@ -602,7 +604,7 @@ mod tests {
 		let mut frame = [0i16; FRAME_PCM];
 		let answer: Arc<[i16]> = vec![1; FRAME_PCM].into();
 		clips.push(Clip::new(answer, Some(0.3)).answering(7));
-		let now = start + WAIT_EVERY * 3;
+		let now = again + Duration::from_millis(500);
 		assert!(clips.next_frame(&mut frame, &mut duck, &mut waits, now));
 		assert!(waits.is_empty());
 		assert_eq!(duck.factor(now), 0.3);
@@ -611,20 +613,29 @@ mod tests {
 		assert!(!waits.due(false, &mut duck, now + WAIT_EVERY * 10));
 	}
 
+	/// From one processing sound starting to the next.
+	fn repeat() -> Duration {
+		Duration::from_secs_f32(seconds(&waiting())) + WAIT_GAP
+	}
+
 	#[test]
-	fn a_new_batch_can_process_once_and_busy_speech_delays_it() {
+	fn the_processing_sound_repeats_until_answered_and_busy_speech_delays_it() {
 		let now = Instant::now();
 		let mut duck = Duck::default();
 		let mut waits = Waits::default();
 		waits.start(1, true, 0.3, &mut duck, now);
 		assert!(!waits.due(true, &mut duck, now + WAIT_EVERY));
-		assert!(waits.due(false, &mut duck, now + WAIT_EVERY * 2));
-		assert!(!waits.due(false, &mut duck, now + WAIT_EVERY * 3));
+		let first = now + WAIT_EVERY * 2;
+		assert!(waits.due(false, &mut duck, first));
+		assert!(!waits.due(false, &mut duck, first + repeat() - Duration::from_millis(1)));
+		assert!(waits.due(false, &mut duck, first + repeat()));
+		assert!(waits.due(false, &mut duck, first + repeat() * 2));
 		waits.settle(1, &mut duck);
-		let next = now + WAIT_EVERY * 4;
+		assert!(!waits.due(false, &mut duck, first + repeat() * 3), "answered: no more");
+		let next = first + repeat() * 4;
 		waits.start(2, true, 0.3, &mut duck, next);
+		assert!(!waits.due(false, &mut duck, next));
 		assert!(waits.due(false, &mut duck, next + WAIT_EVERY));
-		assert!(!waits.due(false, &mut duck, next + WAIT_EVERY * 2));
 	}
 
 	#[test]

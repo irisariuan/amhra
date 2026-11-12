@@ -343,7 +343,7 @@ starts:
 | `--wake-classifier <dir>` | off | the wake word classifier from `training/wake/classifier`, instead of any spotter (`VOICE_WAKE_CLASSIFIER`) |
 | `--wake-clips <dir>` | off | save the audio each wake was heard in (below) |
 | `--wake-clips-max <n>` | `2000` | stop saving after this many clips (about 75MB) |
-| `--wake-chime` | off | chime in the call when the name is heard, chime again when the command has been taken down, and sound softly every 2s until it is answered |
+| `--wake-chime` | off | chime in the call when the name is heard, chime again when the command has been taken down, and sound softly every few seconds until it is answered |
 | `--wake-duck <gain>` | off | lower the music to this until the command is heard |
 
 Even started this way, the sidecar hears a guild only while the bot says it
@@ -767,7 +767,7 @@ starts:
 | `VOICE_WAKE_KEYWORDS` | `training/wake/keywords.txt` | |
 | `VOICE_COLLECT_WAKE_CLIPS` | **on** | save wake clips from servers that turned voice commands on |
 | `VOICE_LOG_TRANSCRIPTS` | off | log what was heard after the name, for tuning the matching |
-| `VOICE_WAKE_CHIME` | **on** | a chime in the call when the name is heard, another when the command has been taken down, and a soft sound every 2s until the bot answers |
+| `VOICE_WAKE_CHIME` | **on** | a chime in the call when the name is heard, another when the command has been taken down, and a soft sound every few seconds until the bot answers |
 | `VOICE_DUCK_VOLUME` | `0.3` | the music's volume from the name until the command is heard; 1 leaves it |
 | `VOICE_RECOGNISER` | `qwen3` | `qwen3` or `sensevoice`, as `--recogniser` |
 | `VOICE_RECOGNISER_PROVIDER` | `cpu` | `cpu`, `gpu` or `coreml`, as `--recogniser-provider` |
@@ -896,8 +896,8 @@ starts:
   playing, and lowers the music until the command has been transcribed or the wake comes
   to nothing. Wakes are counted, so a second speaker keeps it down, and ten
   seconds is the most one wake can hold it there. When the command has been
-  taken down, `end.wav` says so; then `waiting.wav` once, two seconds on,
-  if the bot has not answered yet. The music stays down until it answers,
+  taken down, `end.wav` says so; then `waiting.wav` two seconds on, and
+  again a second after each one ends, until the bot answers. The music stays down until it answers,
   by saying something to them or by sending `settle` (twenty seconds at
   most).
 - **Seeing what was heard.** `/transcript enabled:true` is each member's own
