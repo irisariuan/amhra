@@ -37,6 +37,8 @@ pub mod keywords;
 #[cfg(feature = "voice-commands")]
 pub mod gemma;
 #[cfg(feature = "voice-commands")]
+pub mod second;
+#[cfg(feature = "voice-commands")]
 pub mod sherpa;
 pub mod speakers;
 

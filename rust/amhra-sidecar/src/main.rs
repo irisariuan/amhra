@@ -37,7 +37,9 @@
 //! - `--recogniser qwen3-0.6B|qwen3-1.7B|sensevoice|whisper-v3-turbo`: the speech
 //!   recogniser, default qwen3-0.6B (Qwen3-ASR; `qwen3` still means that size);
 //!   or gemma-4-E2B|gemma-4-E4B, Gemma 4 on the OpenAI-compatible server
-//!   `--recogniser-url <http://host:port/v1>` has as `--recogniser-model <name>`; sensevoice is a quarter of the size, for small machines;
+//!   `--recogniser-url <http://host:port/v1>` has as `--recogniser-model <name>`,
+//!   with `--recogniser-fallback <one of the others>` hearing each command too,
+//!   for when Gemma has no transcript or wrote another language; sensevoice is a quarter of the size, for small machines;
 //! - `--recogniser-threads <n>`: threads for speech recognition, default 2;
 //! - `--recogniser-language <lang>`: auto (the default), en, zh, ja, ko or
 //!   yue, for every guild;
@@ -1032,6 +1034,15 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 			}
 			config.recogniser_url = option("--recogniser-url");
 			config.recogniser_model = option("--recogniser-model");
+			if let Some(name) = option("--recogniser-fallback") {
+				let second = sherpa::Recogniser::parse(&name).filter(|second| !second.is_gemma()).ok_or_else(|| {
+					format!("unknown --recogniser-fallback {name:?}; use qwen3-0.6B, qwen3-1.7B, sensevoice or whisper-v3-turbo")
+				})?;
+				if config.recogniser.is_gemma() {
+					eprintln!("voice commands: {} hears each command as well", second.name());
+					config.recogniser_fallback = Some(second);
+				}
+			}
 			eprintln!("voice commands: speech recognition by {}", config.recogniser.name());
 			config.spotter = option("--wake-model").map(Into::into);
 			config.classifier = classifier.clone().map(Into::into);

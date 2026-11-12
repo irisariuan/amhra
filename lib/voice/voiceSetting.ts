@@ -125,6 +125,9 @@ export function voiceCommandArgs(setting: Setting = readSetting()): string[] {
 	const endpoint = modelEndpoint(setting);
 	if (endpoint?.audio) {
 		args.push("--recogniser-url", endpoint.url, "--recogniser-model", endpoint.model);
+		// Its server can be loading, or it can write another language down.
+		const fallback = setting.VOICE_RECOGNISER_FALLBACK ?? "sensevoice";
+		if (fallback !== "none") args.push("--recogniser-fallback", fallback);
 	}
 	if (setting.VOICE_RECOGNISER_PROVIDER) {
 		args.push("--recogniser-provider", setting.VOICE_RECOGNISER_PROVIDER);

@@ -624,6 +624,27 @@ fits. Gemma takes at most 30 seconds of audio; a command is at most eight.
 It reports no language, so that is the one asked for or, as for Qwen3-ASR,
 read off the writing.
 
+**A second recogniser.** `--recogniser-fallback <r>` (the bot passes
+`sensevoice` unless `VOICE_RECOGNISER_FALLBACK` says another, or `none`)
+loads one of the sherpa-onnx recognisers too, and has it hear every window
+at the same time as Gemma, so it adds memory (about 250MB for SenseVoice)
+but no time. Its transcript is the one used when:
+
+- Gemma has none: its server is still loading the model, did not answer,
+  or answered nothing; or
+- Gemma was told no language and wrote one the second did not hear, as when
+  it translates a Korean command into English. The second says which
+  language it heard, so it is the one believed. Han characters count as
+  Mandarin, Cantonese or Japanese alike.
+
+Otherwise the text is Gemma's and the language the second's, which tells
+Mandarin from Cantonese by ear. With `VOICE_LANGUAGE` set, or for someone
+who speaks one language, Gemma is told it and is not argued with. The log
+says each time the second's transcript was used, and why, but not the
+words. SenseVoice mishears very short English as Chinese on `auto` (see
+[Qwen3-ASR or SenseVoice](#qwen3-asr-or-sensevoice)), and here that would
+replace a transcript Gemma got right.
+
 None of this has been run against a real server here: not the time a
 command takes, nor how well it hears titles, nor how well Gemma reads
 commands in place of Qwen3 4B. Try it on a recording with
