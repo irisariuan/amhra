@@ -652,10 +652,31 @@ short English for Chinese on `auto` (see
 [Qwen3-ASR or SenseVoice](#qwen3-asr-or-sensevoice)), it is read off what
 Gemma wrote. How far a wrong hint pulls Gemma has not been measured.
 
-None of this has been run against a real server here: not the time a
-command takes, nor how well it hears titles, nor how well Gemma reads
-commands in place of Qwen3 4B. Try it on a recording with
-`wake_wav --whole --recogniser gemma-4-E2B --recogniser-url <url> --recogniser-model <name>`.
+**Tried**, with `gemma-4-E2B` in `llama-server` 0.9.0 on an M5 Pro, on five
+commands synthesised with macOS voices (`wake_wav --whole`); not yet on
+live speech, nor on the 8GB machine. The download was 3.2GB.
+
+| | Gemma alone | with SenseVoice's hint | SenseVoice alone |
+| --- | --- | --- | --- |
+| "play the next song" | Play the next song | play the next song | Play the next song. |
+| 瞬きを再生して | まばたきを再生して | まばたきを再生して | 瞬ば を 再生 して。 |
+| 止めて | 止めて | 止めて | 止めて。 |
+| 다음 곡 틀어줘 | 다음 곡 틀어 줘 | 다음 곡 틀어 줘 | 다음 꼭 틀 어 줘. |
+| 暫停 (Cantonese) | 점팅, as Korean | 暂停 | 暂停。 |
+| per command | 130–220ms, 900ms the first | 130–330ms | 90–150ms |
+
+So Gemma does take the hint, where it had the language wrong, and sets it
+aside where SenseVoice misheard a word.
+
+Reading the command afterwards took the same model about a second the
+first time, the instructions being 2,300 tokens, and 90–240ms after that,
+with them cached. It must not think first: left to, it spent all 300 tokens
+of its answer reasoning about 瞬きを再生して and answered nothing, which the
+bot reports as not a command; that is what `--reasoning off` and the
+request's `enable_thinking` are for. Not thinking, E2B read 瞬きを再生して
+as a search for 瞬き, "turn it up a bit" as the volume at 110, and 止めて as
+pause; it read 다음 곡 틀어 줘 as play with nothing to play, where it means
+skip.
 
 ### Qwen3-ASR or SenseVoice
 
