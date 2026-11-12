@@ -15,7 +15,7 @@ import {
 	type VoiceOptions,
 } from "./intent";
 import type { YouTubeVideo } from "../youtube";
-import { defaultIntentModel, intentServer, modelEndpoint } from "./intentServer";
+import { defaultIntentModel, intentServer, modelEndpoint, THINKING_TOKENS } from "./intentServer";
 import { quickMatches } from "./quickMatch";
 import { VOICE_LANGUAGES, type VoiceLanguage } from "./voiceSetting";
 
@@ -66,6 +66,11 @@ export const DEFAULT_INTENT_MODEL = defaultIntentModel();
  * a sentence or two long; the waiting sound covers the wait.
  */
 const ANSWER_WITHIN_MS = 6000;
+/**
+ * And this long for a model that thinks first: at the 40 tokens a second of
+ * a small machine, the whole of its thinking and a short answer.
+ */
+const THINKING_WITHIN_MS = 30_000;
 /** Enough for a few commands, or a spoken answer of a sentence or two. */
 const MAX_TOKENS = 300;
 /** The most actions one request is taken to ask for; the rest are left. */
@@ -495,6 +500,7 @@ export async function readIntent(
 		const turns: Turn[] = [];
 		let searches = 0;
 		let askedAgain = false;
+		let thought = false;
 		for (;;) {
 			const messages = [
 				{ role: "system", content: intentPrompt(lookup, context, retranscribe !== undefined, answerIn, speaks) },
@@ -502,10 +508,25 @@ export async function readIntent(
 				{ role: "user", content: text },
 				...turns,
 			];
-			const answer = await askModel(url, model, messages, modelEndpoint(setting)?.audio === true);
+			const endpoint = modelEndpoint(setting);
+			// A Gemma answers at once first. Thinking over every command took it
+			// seconds and made it wrong more often than not thinking did.
+			let answer = await askModel(url, model, messages, endpoint?.audio ? false : undefined);
 			if (answer === undefined) break;
+			const read = (answer: string) =>
+				parsedActions(answer, language, lookup, listedIn([...history, ...turns, { role: "assistant", content: answer }]));
+			let actions = read(answer);
+			// Nothing made of it at once is what thinking is for, once.
+			if (!actions.length && endpoint?.thinking && !thought) {
+				thought = true;
+				const considered = await askModel(url, model, messages, true);
+				const found = considered === undefined ? [] : read(considered);
+				if (considered !== undefined && found.length) {
+					answer = considered;
+					actions = found;
+				}
+			}
 			turns.push({ role: "assistant", content: answer });
-			const actions = parsedActions(answer, language, lookup, listedIn([...history, ...turns]));
 			const hearAgain = actions.find((action): action is RetranscribeRequest => action.command === RETRANSCRIBE);
 			if (hearAgain && retranscribe && !askedAgain) {
 				askedAgain = true;
@@ -544,7 +565,8 @@ async function askModel(
 	url: string,
 	model: string,
 	messages: { role: string; content: string }[],
-	gemma = false,
+	/** For a Gemma: whether it may think first. Undefined for any other model. */
+	thinking?: boolean,
 ): Promise<string | undefined> {
 	try {
 		const response = await fetch(`${url.replace(/\/+$/, "")}/chat/completions`, {
@@ -554,12 +576,13 @@ async function askModel(
 				model,
 				messages,
 				temperature: 0,
-				max_tokens: MAX_TOKENS,
+				// The thinking comes out of the same tokens as the answer.
+				max_tokens: MAX_TOKENS + (thinking ? THINKING_TOKENS : 0),
 				// Gemma takes no "/no_think": llama-server passes this on to
 				// its template instead, for a server the bot did not start.
-				...(gemma ? { chat_template_kwargs: { enable_thinking: false } } : {}),
+				...(thinking === undefined ? {} : { chat_template_kwargs: { enable_thinking: thinking } }),
 			}),
-			signal: AbortSignal.timeout(ANSWER_WITHIN_MS),
+			signal: AbortSignal.timeout(thinking ? THINKING_WITHIN_MS : ANSWER_WITHIN_MS),
 		});
 		if (!response.ok) throw new Error(`HTTP ${response.status}`);
 		const body = (await response.json()) as {

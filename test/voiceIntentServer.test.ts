@@ -29,7 +29,7 @@ describe("what it runs", () => {
 	});
 
 	test("a Gemma recogniser is served by llama-server, on Apple silicon too", () => {
-		const setting = { VOICE_RECOGNISER: "gemma-4-E4B" } as Setting;
+		const setting = { VOICE_RECOGNISER: "gemma-4-E4B", VOICE_INTENT_THINKING: false } as Setting;
 		expect(gemmaModel(setting)).toBe("ggml-org/gemma-4-E4B-it-GGUF:Q4_0");
 		expect(gemmaModel({ VOICE_RECOGNISER: "qwen3-1.7B" } as Setting)).toBeNull();
 		const endpoint = modelEndpoint(setting, "darwin", "arm64");
@@ -37,6 +37,7 @@ describe("what it runs", () => {
 			url: "http://127.0.0.1:8085/v1",
 			model: "ggml-org/gemma-4-E4B-it-GGUF:Q4_0",
 			audio: true,
+			thinking: false,
 		});
 		const launch = launchFor(endpoint!.url, endpoint!.model, "darwin", "arm64", undefined, true);
 		expect(launch?.command).toBe("llama-server");
@@ -44,6 +45,12 @@ describe("what it runs", () => {
 		// Room for the audio beside the instructions, and no thinking first.
 		expect(launch?.args.join(" ")).toContain("-c 8192 --reasoning off");
 		expect(launchFor(endpoint!.url, "m", "linux", "x64")?.args).not.toContain("--reasoning");
+		// Allowed to think unless told otherwise, up to a limit.
+		const thinking = modelEndpoint({ VOICE_RECOGNISER: "gemma-4-E2B" } as Setting, "darwin", "arm64");
+		expect(thinking?.thinking).toBe(true);
+		const thinks = launchFor(thinking!.url, thinking!.model, "darwin", "arm64", undefined, true, true);
+		expect(thinks?.args.join(" ")).toContain("-c 8192 --reasoning-budget 1024");
+		expect(thinks?.args).not.toContain("--reasoning");
 	});
 
 	test("without a URL or a Gemma recogniser there is no server", () => {
@@ -52,6 +59,7 @@ describe("what it runs", () => {
 			url: "http://127.0.0.1:8085/v1",
 			model: "mlx-community/Qwen3-4B-4bit",
 			audio: false,
+			thinking: false,
 		});
 	});
 
