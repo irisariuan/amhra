@@ -73,9 +73,21 @@ export function nativeVoiceActive() {
  * connection — so this exists to keep every command's "am I in voice?" check
  * working without each of them learning about two playback paths.
  */
+/**
+ * How long a voice socket closed under the bot may wait for the credentials of
+ * a move before the session is given up. A moderator dragging the bot closes
+ * its socket (4014) around the same moment the gateway hands out the new
+ * channel's token, in no fixed order.
+ */
+const MOVE_GRACE_MS = 5_000;
+
+/** The sidecar's reason for a 4014 close: moved or kicked, not yet known which. */
+const MOVED_OR_KICKED = "disconnected from the channel";
+
 export class NativeConnection {
 	readonly guildId: string;
-	readonly channelId: string;
+	/** Follows the bot when someone else moves it to another channel. */
+	channelId: string;
 	/**
 	 * Resolves once the sidecar has been told to connect.
 	 *
@@ -88,6 +100,10 @@ export class NativeConnection {
 	readonly connected: Promise<void>;
 	/** Give up the bot's seat in the channel, which the sidecar cannot do. */
 	private readonly leaveGateway: () => void;
+	/** Set once the gateway reports the bot was disconnected by someone else. */
+	private removed = false;
+	/** A lost socket waiting to see whether a move follows it. */
+	private pendingDrop: { timer: ReturnType<typeof setTimeout>; run: () => void } | null = null;
 
 	constructor(
 		guildId: string,
@@ -128,15 +144,52 @@ export class NativeConnection {
 	}
 
 	/**
-	 * The sidecar's session is already gone, so only the gateway half is left
-	 * to undo. Sending `disconnect` as well would only draw an answer about a
-	 * guild it no longer has.
+	 * The voice socket is gone for good. The sidecar still holds the guild's
+	 * audio thread, which a later join would otherwise pick back up, so it is
+	 * told to let go; its answer ("asked to leave") is ignored by the handler.
 	 */
 	dropped() {
+		this.cancelPendingDrop();
 		if (connections.get(this.guildId) !== this) return;
 		connections.delete(this.guildId);
 		dropExtraQueues(this.guildId, { send: false });
+		sidecar().send({ type: "disconnect", guildId: this.guildId });
 		this.leaveGateway();
+	}
+
+	/**
+	 * The voice socket closed under the bot. A move closes it too, so unless
+	 * the bot is known to have been disconnected, give the new channel's
+	 * credentials a moment to arrive before giving the session up.
+	 */
+	lost(drop: () => void) {
+		if (this.removed) return drop();
+		if (this.pendingDrop) return;
+		const timer = setTimeout(() => {
+			this.pendingDrop = null;
+			drop();
+		}, MOVE_GRACE_MS);
+		this.pendingDrop = { timer, run: drop };
+	}
+
+	/** New credentials went to the sidecar, so a lost socket was a move. */
+	reconnected() {
+		this.cancelPendingDrop();
+	}
+
+	/** Someone disconnected the bot. A socket already lost is dropped now. */
+	removedByGateway() {
+		this.removed = true;
+		const pending = this.pendingDrop;
+		if (!pending) return;
+		this.cancelPendingDrop();
+		pending.run();
+	}
+
+	private cancelPendingDrop() {
+		if (!this.pendingDrop) return;
+		clearTimeout(this.pendingDrop.timer);
+		this.pendingDrop = null;
 	}
 
 	/**
@@ -168,12 +221,30 @@ export function joinVoiceNative(channel: VoiceBasedChannel) {
 	const existing = connections.get(guildId);
 	if (existing && existing.channelId === channel.id) return existing;
 
-	const join = joinVoiceViaSidecar(channel, false, () => {
-		// discord.js tells the adapter it is finished with the guild. Only the
-		// connection that still owns it may act on that; a stale one would be
-		// disconnecting whoever replaced it.
-		if (connections.get(guildId) === connection) connection.disconnect();
-	});
+	const owns = () => connections.get(guildId) === connection;
+	const join = joinVoiceViaSidecar(
+		channel,
+		false,
+		() => {
+			// discord.js tells the adapter it is finished with the guild. Only
+			// the connection that still owns it may act on that; a stale one
+			// would be disconnecting whoever replaced it.
+			if (owns()) connection.disconnect();
+		},
+		{
+			onMoved: (movedTo) => {
+				if (!owns()) return;
+				dcb.log(`Moved to ${movedTo} in ${guildId}`);
+				connection.channelId = movedTo;
+			},
+			onRemoved: () => {
+				if (owns()) connection.removedByGateway();
+			},
+			onReconnect: () => {
+				if (owns()) connection.reconnected();
+			},
+		},
+	);
 	const connected = join.connected.catch((error: Error) => {
 		if (!(error instanceof LeftVoiceError)) {
 			globalApp.err(`Failed to join voice via the sidecar in ${guildId}`, error);
@@ -417,15 +488,25 @@ export function bindNativeVoice(client: CustomClient) {
 		// the time it lands the guild may have been joined again, and acting on
 		// it would tear the new connection down.
 		if (payload.reason === "asked to leave") return;
-		// The voice session dropped for good. Without this the bot would stay
-		// seated in the channel, silent, with nothing left that could make it
-		// leave.
-		connections.get(payload.guildId)?.dropped();
-		const player = client.player.get(payload.guildId);
-		if (!player?.nativePlayback) return;
-		globalApp.warn(`Voice disconnected in ${payload.guildId}: ${payload.reason}`);
-		player.nativePlayback.clear();
-		player.clearSongTimeouts();
-		player.reset();
+		const connection = connections.get(payload.guildId);
+		const drop = () => {
+			// Rejoined while this waited: the guild is someone else's now.
+			if (connection && connections.get(payload.guildId) !== connection) return;
+			// The voice session dropped for good. Without this the bot would
+			// stay seated in the channel, silent, with nothing left that could
+			// make it leave.
+			connection?.dropped();
+			const player = client.player.get(payload.guildId);
+			if (!player?.nativePlayback) return;
+			globalApp.warn(`Voice disconnected in ${payload.guildId}: ${payload.reason}`);
+			player.nativePlayback.clear();
+			player.clearSongTimeouts();
+			player.reset();
+		};
+		// Being moved by a moderator closes the socket the same way being
+		// kicked does. Leaving here would pull the bot out of the channel it
+		// was just moved into, so the connection waits to see which it was.
+		if (connection && payload.reason === MOVED_OR_KICKED) connection.lost(drop);
+		else drop();
 	});
 }
