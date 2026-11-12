@@ -678,3 +678,37 @@ describe("who reads the command", () => {
 		expect((await readIntent("pause", "en", lookup, MODEL)).by).toBe("fallback");
 	});
 });
+
+describe("how much the model may say, and how long it has", () => {
+	function asked(setting: Record<string, unknown>) {
+		const bodies: Record<string, unknown>[] = [];
+		const signals: (AbortSignal | null | undefined)[] = [];
+		globalThis.fetch = (async (_url: string, init: RequestInit) => {
+			bodies.push(JSON.parse(String(init.body)));
+			signals.push(init.signal);
+			return Response.json({ choices: [{ message: { content: '[{"command": "pause"}]' } }] });
+		}) as unknown as typeof fetch;
+		return readIntent("hold on a moment", "en", lookup, { ...MODEL, ...setting } as never).then(() => bodies[0]);
+	}
+
+	test("600 tokens unless the owner says otherwise", async () => {
+		expect((await asked({}))?.max_tokens).toBe(600);
+		expect((await asked({ VOICE_INTENT_MAX_TOKENS: 1500 }))?.max_tokens).toBe(1500);
+	});
+
+	test("a limit that is no limit is passed over", async () => {
+		expect((await asked({ VOICE_INTENT_MAX_TOKENS: 0 }))?.max_tokens).toBe(600);
+		expect((await asked({ VOICE_INTENT_MAX_TOKENS: 12.5 }))?.max_tokens).toBe(600);
+	});
+
+	test("the wait is the owner's too", async () => {
+		globalThis.fetch = (async (_url: string, init: RequestInit) =>
+			new Promise((_resolve, reject) => {
+				init.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+			})) as unknown as typeof fetch;
+		const started = performance.now();
+		const reading = await readIntent("hold on a moment", "en", lookup, { ...MODEL, VOICE_INTENT_TIMEOUT_MS: 1000 } as never);
+		expect(reading.by).toBe("fallback");
+		expect(performance.now() - started).toBeLessThan(3000);
+	});
+});

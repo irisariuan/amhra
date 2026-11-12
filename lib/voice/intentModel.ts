@@ -65,9 +65,19 @@ export const DEFAULT_INTENT_MODEL = defaultIntentModel();
  * Longer than this and the fallback answers instead. Room for a spoken answer
  * a sentence or two long; the waiting sound covers the wait.
  */
-const ANSWER_WITHIN_MS = 6000;
-/** Enough for a few commands, or a spoken answer of a sentence or two. */
-const MAX_TOKENS = 300;
+export const ANSWER_WITHIN_MS = 10_000;
+/** Enough for several commands, or a spoken answer of a few sentences. */
+export const MAX_TOKENS = 600;
+
+/** The model's limits: the owner's, or the ones above. */
+function limits(setting: Setting) {
+	const whole = (value: number | undefined, least: number, usual: number) =>
+		value !== undefined && Number.isInteger(value) && value >= least ? value : usual;
+	return {
+		tokens: whole(setting.VOICE_INTENT_MAX_TOKENS, 16, MAX_TOKENS),
+		within: whole(setting.VOICE_INTENT_TIMEOUT_MS, 1000, ANSWER_WITHIN_MS),
+	};
+}
 /** The most actions one request is taken to ask for; the rest are left. */
 export const MAX_ACTIONS = 5;
 /** The longest spoken answer, in characters: past this it is cut. */
@@ -502,7 +512,7 @@ export async function readIntent(
 				{ role: "user", content: text },
 				...turns,
 			];
-			const answer = await askModel(url, model, messages, modelEndpoint(setting)?.audio === true);
+			const answer = await askModel(url, model, messages, limits(setting), modelEndpoint(setting)?.audio === true);
 			if (answer === undefined) break;
 			turns.push({ role: "assistant", content: answer });
 			const actions = parsedActions(answer, language, lookup, listedIn([...history, ...turns]));
@@ -544,6 +554,7 @@ async function askModel(
 	url: string,
 	model: string,
 	messages: { role: string; content: string }[],
+	{ tokens, within }: { tokens: number; within: number },
 	gemma = false,
 ): Promise<string | undefined> {
 	try {
@@ -554,12 +565,12 @@ async function askModel(
 				model,
 				messages,
 				temperature: 0,
-				max_tokens: MAX_TOKENS,
+				max_tokens: tokens,
 				// Gemma takes no "/no_think": llama-server passes this on to
 				// its template instead, for a server the bot did not start.
 				...(gemma ? { chat_template_kwargs: { enable_thinking: false } } : {}),
 			}),
-			signal: AbortSignal.timeout(ANSWER_WITHIN_MS),
+			signal: AbortSignal.timeout(within),
 		});
 		if (!response.ok) throw new Error(`HTTP ${response.status}`);
 		const body = (await response.json()) as {

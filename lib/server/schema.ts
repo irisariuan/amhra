@@ -421,5 +421,7 @@ export const GlobalSettingSchema = z
 		VOICE_INTENT_MODEL_URL: z.string().optional(),
 		VOICE_INTENT_MODEL: z.string().optional(),
 		VOICE_INTENT_MODEL_SERVE: z.boolean().optional(),
+		VOICE_INTENT_MAX_TOKENS: z.number().int().min(16).max(4096).optional(),
+		VOICE_INTENT_TIMEOUT_MS: z.number().int().min(1000).max(120000).optional(),
 	})
 	.passthrough();

@@ -268,6 +268,18 @@ export interface Setting {
 	 */
 	VOICE_INTENT_MODEL_SERVE?: boolean;
 	/**
+	 * The most tokens the model may answer a voice command with. Defaults to
+	 * 600: several commands, or a few spoken sentences. An answer cut off at
+	 * the limit is not one the bot can read.
+	 */
+	VOICE_INTENT_MAX_TOKENS?: number;
+	/**
+	 * How long the model has to answer a voice command, in milliseconds,
+	 * before the bot stops waiting and goes by command names. Defaults to
+	 * 10000.
+	 */
+	VOICE_INTENT_TIMEOUT_MS?: number;
+	/**
 	 * Where the server the bot starts runs the model: "cpu" is `llama-server`
 	 * with no layers on the GPU (on Apple silicon too, instead of MLX, so a
 	 * VOICE_INTENT_MODEL set to an MLX model will not load), "gpu" all of

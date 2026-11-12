@@ -314,6 +314,20 @@
    "default": "mlx-community/Qwen3-4B-4bit",
    "description": "The model that server should use for voice commands"
   },
+  "VOICE_INTENT_MAX_TOKENS": {
+   "type": "integer",
+   "minimum": 16,
+   "maximum": 4096,
+   "default": 600,
+   "description": "The most tokens the voice command model may answer with: several commands, or a few spoken sentences. An answer cut off at the limit cannot be read, so raise it if long requests come back as not a command. Applies at once"
+  },
+  "VOICE_INTENT_TIMEOUT_MS": {
+   "type": "integer",
+   "minimum": 1000,
+   "maximum": 120000,
+   "default": 10000,
+   "description": "How long the voice command model has to answer, in milliseconds, before the bot stops waiting and goes by command names. Raise it on a slow machine or with a higher token limit. Applies at once"
+  },
   "VOICE_INTENT_PROVIDER": {
    "type": "string",
    "enum": [
