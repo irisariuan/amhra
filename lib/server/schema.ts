@@ -421,6 +421,5 @@ export const GlobalSettingSchema = z
 		VOICE_INTENT_MODEL_URL: z.string().optional(),
 		VOICE_INTENT_MODEL: z.string().optional(),
 		VOICE_INTENT_MODEL_SERVE: z.boolean().optional(),
-		VOICE_INTENT_THINKING: z.boolean().optional(),
 	})
 	.passthrough();
