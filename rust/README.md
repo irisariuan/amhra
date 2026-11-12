@@ -640,6 +640,11 @@ loads one of the sherpa-onnx recognisers too, so it adds memory: about
   server is still loading the model, did not answer, or answered nothing.
   The log says each time, and why, but not the words.
 
+What someone is still saying, for a member with `/transcript` on, is
+taken down each second by the second recogniser alone: asked of Gemma, the
+last of those requests would still be running when they stopped, and their
+command would wait behind it. Without a second recogniser it is Gemma's.
+
 When Gemma answers, the text is always Gemma's. The language is the
 second's where Gemma's writing could be it, since the second tells Mandarin
 from Cantonese by ear; where it could not be, as when SenseVoice takes

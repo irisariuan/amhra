@@ -47,6 +47,13 @@ impl Transcriber for WithSecond {
 	fn transcribe_in(&mut self, samples: &[f32], language: Option<&str>) -> Result<Transcript, ModelError> {
 		self.both(samples, language)
 	}
+
+	/// The second's alone. A request to the first's server each second
+	/// someone speaks would still be running when they stop, and their
+	/// command would wait behind it.
+	fn transcribe_partial(&mut self, samples: &[f32], language: Option<&str>) -> Result<Transcript, ModelError> {
+		self.second.transcribe_in(samples, language)
+	}
 }
 
 #[derive(Debug, PartialEq)]
@@ -114,6 +121,21 @@ mod tests {
 
 	fn heard(text: &str, lang: Option<&str>) -> Result<Transcript, ModelError> {
 		Ok(Transcript { text: text.to_owned(), lang: lang.map(str::to_owned) })
+	}
+
+	struct Says(&'static str);
+
+	impl Transcriber for Says {
+		fn transcribe(&mut self, _: &[f32]) -> Result<Transcript, ModelError> {
+			heard(self.0, None)
+		}
+	}
+
+	#[test]
+	fn what_is_still_being_said_is_taken_down_by_the_second_alone() {
+		let mut both = WithSecond::new(Box::new(Says("the first")), Box::new(Says("the second")), false);
+		assert_eq!(both.transcribe_partial(&[], None).unwrap().text, "the second");
+		assert_eq!(both.transcribe(&[]).unwrap().text, "the first");
 	}
 
 	fn failed() -> Result<Transcript, ModelError> {

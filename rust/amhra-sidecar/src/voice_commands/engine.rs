@@ -428,7 +428,7 @@ fn recognise(inbox: Receiver<Work>, mut transcriber: Box<dyn Transcriber>, repor
 			Some(Work::Partial { guild_id, user_id, samples, language }) => {
 				// The whole command is recognised when it ends, and a failure is
 				// reported then.
-				if let Ok(transcript) = transcriber.transcribe_in(&samples, language.as_deref()) {
+				if let Ok(transcript) = transcriber.transcribe_partial(&samples, language.as_deref()) {
 					let text = transcript.text.trim();
 					if !text.is_empty() {
 						report(Notice::Partial { guild_id, user_id, text: text.to_owned() });

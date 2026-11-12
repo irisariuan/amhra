@@ -115,6 +115,11 @@ pub trait Transcriber: Send {
 		let _ = language;
 		self.transcribe(samples)
 	}
+	/// What someone has said so far, while they are still speaking: taken
+	/// down again each second, so by whatever is quickest.
+	fn transcribe_partial(&mut self, samples: &[f32], language: Option<&str>) -> Result<Transcript, ModelError> {
+		self.transcribe_in(samples, language)
+	}
 	/// The same, shown what another recogniser made of the window, where
 	/// the recogniser can take that into account; Gemma can.
 	fn transcribe_hinted(
