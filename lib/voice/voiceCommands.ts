@@ -326,6 +326,14 @@ async function handleUtterance(
 			throw error;
 		}
 	}
+	// Nothing made of it, by a model that did not answer or did not know the
+	// words: a command said plainly is still one, in whatever language it was
+	// heard as. Tried last here, since a language they do not speak is first
+	// the model's to look at.
+	if (!read.intents.length) {
+		const plainly = quickIntent(read.heard?.text ?? text, read.heard?.lang ?? lang, lookup, answerIn);
+		if (plainly) read = { ...plainly, ...(read.heard ? { heard: read.heard } : {}) };
+	}
 	const { intents, by, turns, heard: heardAgain } = read;
 	const firstText = text;
 	if (heardAgain) {

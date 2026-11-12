@@ -29,6 +29,16 @@ impl WithSecond {
 		// quick one, so the first starts tens of milliseconds later.
 		let second = second.transcribe_in(samples, language);
 		let first = first.transcribe_hinted(samples, language, second.as_ref().ok());
+		// Whether the hint was taken, without the words: for telling a first
+		// that leans on the second from one that ignores it.
+		if let (Ok(first), Ok(second)) = (&first, &second) {
+			eprintln!(
+				"voice commands: the second recogniser heard {} chars as {}; the first wrote {}",
+				second.text.trim().chars().count(),
+				second.lang.as_deref().unwrap_or("an unknown language"),
+				if same_words(&first.text, &second.text) { "the same" } else { "something else" },
+			);
+		}
 		let (transcript, which) = choose(first, second, *pinned || language.is_some())?;
 		match which {
 			Chosen::First => {}
@@ -108,6 +118,12 @@ fn choose(
 	}
 }
 
+/// The same but for case, spaces and punctuation.
+fn same_words(a: &str, b: &str) -> bool {
+	let words = |text: &str| text.chars().filter(|c| c.is_alphanumeric()).flat_map(char::to_lowercase).collect::<String>();
+	words(a) == words(b)
+}
+
 /// Whether text that reads as `wrote` could be speech in `heard`. Han
 /// characters alone are Mandarin, Cantonese or Japanese; the rest are only
 /// themselves.
@@ -129,6 +145,13 @@ mod tests {
 		fn transcribe(&mut self, _: &[f32]) -> Result<Transcript, ModelError> {
 			heard(self.0, None)
 		}
+	}
+
+	#[test]
+	fn punctuation_and_case_do_not_make_different_words() {
+		assert!(same_words("Play the next song.", "play the next song"));
+		assert!(same_words("止めて。", "止めて"));
+		assert!(!same_words("止めて", "やめて"));
 	}
 
 	#[test]
