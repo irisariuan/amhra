@@ -25,6 +25,11 @@ const MAX_BACKOFF_MS = 60_000;
 const POLL_MS = 1000;
 /** Enough for the instructions and a command, and small enough for a Pi. */
 const CONTEXT_TOKENS = 4096;
+/**
+ * For a model that also hears the command: llama-server's slots share the
+ * context, and the audio is in one while the instructions are in another.
+ */
+const AUDIO_CONTEXT_TOKENS = 8192;
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
@@ -127,7 +132,11 @@ export function launchFor(
 		// The alias makes the name the bot asks for the name it serves.
 		args: [
 			"-hf", model, "--alias", model, "--host", host, "--port", port,
-			"-c", String(CONTEXT_TOKENS),
+			"-c", String(audio ? AUDIO_CONTEXT_TOKENS : CONTEXT_TOKENS),
+			// Gemma thinks before it answers unless told not to, and the
+			// "/no_think" the instructions end with is Qwen3's. Thinking, it
+			// took longer over a command than the bot waits.
+			...(audio ? ["--reasoning", "off"] : []),
 			...(runtime ? ["-ngl", runtime === "cpu" ? "0" : "999"] : []),
 		],
 	};

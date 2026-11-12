@@ -502,7 +502,7 @@ export async function readIntent(
 				{ role: "user", content: text },
 				...turns,
 			];
-			const answer = await askModel(url, model, messages);
+			const answer = await askModel(url, model, messages, modelEndpoint(setting)?.audio === true);
 			if (answer === undefined) break;
 			turns.push({ role: "assistant", content: answer });
 			const actions = parsedActions(answer, language, lookup, listedIn([...history, ...turns]));
@@ -544,6 +544,7 @@ async function askModel(
 	url: string,
 	model: string,
 	messages: { role: string; content: string }[],
+	gemma = false,
 ): Promise<string | undefined> {
 	try {
 		const response = await fetch(`${url.replace(/\/+$/, "")}/chat/completions`, {
@@ -554,6 +555,9 @@ async function askModel(
 				messages,
 				temperature: 0,
 				max_tokens: MAX_TOKENS,
+				// Gemma takes no "/no_think": llama-server passes this on to
+				// its template instead, for a server the bot did not start.
+				...(gemma ? { chat_template_kwargs: { enable_thinking: false } } : {}),
 			}),
 			signal: AbortSignal.timeout(ANSWER_WITHIN_MS),
 		});
