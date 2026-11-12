@@ -1,131 +1,125 @@
-import { readdirSync } from "node:fs";
-import { readdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { readdir, readFile, stat, unlink, utimes } from "node:fs/promises";
 import { dcb } from "../misc";
 import { readSetting } from "../setting";
-
-export async function getFolderSize() {
-	let totalSize = 0;
-	for (const filename of await readdir(`${process.cwd()}/cache`)) {
-		// A file can be removed between the listing and the stat
-		const size = await stat(`${process.cwd()}/cache/${filename}`)
-			.then((info) => info.size)
-			.catch(() => 0);
-		totalSize += size;
-	}
-	return totalSize;
-}
-
-const TEMP_SUFFIX = ".temp.music";
-/** How recently a temp file must have been touched to be presumed still in use */
-const TEMP_GRACE_MS = 5 * 60 * 1000;
+import { type CacheFile, planCacheReview } from "./cachePlan";
 
 /**
- * Delete `.temp.music` files no download owns any more.
+ * The song cache: one directory of `<id>.music` files, each with an optional
+ * `<id>.idx` seek index, plus `<id>.temp.*` while a download is in flight.
  *
- * A download writes to `<id>.temp.music` and renames it on success, so a temp
- * file left behind is the remains of a crash or a kill. Nothing ever promotes
- * or reads one again, but they still count towards the cache size budget, and
- * the size review only ever looks at `<id>.music` — so without this they
- * accumulate forever.
+ * Everything that names a cache file goes through here, so the layout lives in
+ * one place (the Rust fetcher and sidecar mirror it in `CachePaths`).
  *
- * Files belonging to a live download are protected twice: by the active id list
- * and by their recent mtime.
+ * There is no separate record of what was used when: a track's last use is the
+ * mtime of its `.music` file, see {@link markUsed}.
  */
-export async function collectOrphanedTemps(activeIds: string[] = []) {
-	const active = new Set(activeIds);
-	const directory = `${process.cwd()}/cache`;
-	const filenames = await readdir(directory).catch(() => [] as string[]);
-	let removed = 0;
-	let freed = 0;
-	for (const filename of filenames) {
-		if (!filename.endsWith(TEMP_SUFFIX)) continue;
-		if (active.has(filename.slice(0, -TEMP_SUFFIX.length))) continue;
-		const path = `${directory}/${filename}`;
-		const info = await stat(path).catch(() => null);
-		if (!info || Date.now() - info.mtimeMs < TEMP_GRACE_MS) continue;
-		await unlink(path).catch(() => {});
-		removed++;
-		freed += info.size;
-	}
-	if (removed) {
-		dcb.log(
-			`Removed ${removed} orphaned temp cache file(s), freeing ${freed} bytes`,
-		);
-	}
-	return removed;
+
+export const cacheDir = () => `${process.cwd()}/cache`;
+export const musicPath = (id: string, dir = cacheDir()) => `${dir}/${id}.music`;
+export const tempMusicPath = (id: string, dir = cacheDir()) =>
+	`${dir}/${id}.temp.music`;
+export const indexPath = (id: string, dir = cacheDir()) => `${dir}/${id}.idx`;
+
+/** Whether the whole track is on disk */
+export function isCached(id: string, dir = cacheDir()) {
+	return existsSync(musicPath(id, dir));
 }
 
-export async function reviewCaches(streamIds: string[], forceReview = false) {
-	// Before the size check below, so the reclaimed space counts and so stray
-	// temps are collected even when the cache is nowhere near its limit
-	await collectOrphanedTemps(streamIds);
-	const maxSize = readSetting().MAX_CACHE_IN_GB * 1024 * 1024 * 1024;
-	let size = await getFolderSize();
-	if (size < maxSize && !forceReview) return;
-	dcb.log(`Reviewing caches, cache size: ${size} / ${maxSize}`);
-	const data = (
-		await readFile(`${process.cwd()}/data/lastUsed.record`, "utf8")
-	).split("\n");
-	const actualCaches = readdirSync(`${process.cwd()}/cache`);
-	const deletedFiles = [];
-	for (const line of data) {
-		const [id, lastUsedStr] = line.split("=");
-		const lastUsed = Number(lastUsedStr);
-		if (streamIds.includes(id)) continue; // do not delete if it is being streamed
-		if (actualCaches.includes(`${id}.music`)) {
-			const metadata = await stat(`${process.cwd()}/cache/${id}.music`);
-			if (
-				metadata.size === 0 ||
-				(size >= maxSize &&
-					!forceReview &&
-					lastUsed < Date.now() - 1000 * 60 * 60 * 24)
-			) {
-				dcb.log(`Deleting cache: ${id}`);
-				unlink(`${process.cwd()}/cache/${id}.music`).catch(() => {});
-				size -= metadata.size;
-				deletedFiles.push(id);
-			}
-		} else {
-			deletedFiles.push(id);
-		}
-	}
-	await updateLastUsed([], deletedFiles).catch(() => {});
+/**
+ * Record that a track was just used, so it is the last to be evicted.
+ *
+ * A track still downloading has no `.music` yet; that is fine, it gets a fresh
+ * mtime when the download renames it into place.
+ */
+export async function markUsed(id: string, dir = cacheDir()) {
+	const now = new Date();
+	await utimes(musicPath(id, dir), now, now).catch(() => {});
 }
 
-export async function updateLastUsed(
-	updateIds: string[],
-	deleteIds?: string[],
-) {
-	const data = (
-		await readFile(`${process.cwd()}/data/lastUsed.record`, "utf8")
-	).split("\n");
-	(() => {
-		if (!updateIds.length) return;
-		for (let i = 0; i < data.length; i++) {
-			const line = data[i];
-			for (const id of updateIds) {
-				if (line.startsWith(id)) {
-					data[i] = `${id}=${Date.now()}`;
-					return;
-				}
-			}
-		}
-		data.push(`${updateIds}=${Date.now()}`);
-	})();
-	(() => {
-		if (!deleteIds?.length) return;
-		for (let i = 0; i < data.length; i++) {
-			const line = data[i];
-			for (const id of deleteIds) {
-				if (line.startsWith(id)) {
-					data.splice(i, 1);
-					return;
-				}
-			}
-		}
-	})();
-	return await writeFile(
-		`${process.cwd()}/data/lastUsed.record`,
-		data.join("\n"),
+/** Delete a track and its index, e.g. after a download that cannot be trusted */
+export async function dropCached(id: string, dir = cacheDir()) {
+	await Promise.all([
+		unlink(musicPath(id, dir)).catch(() => {}),
+		unlink(indexPath(id, dir)).catch(() => {}),
+	]);
+}
+
+async function listCache(dir: string): Promise<CacheFile[]> {
+	const names = await readdir(dir).catch(() => [] as string[]);
+	const files = await Promise.all(
+		names.map((name) =>
+			// A file can be removed between the listing and the stat
+			stat(`${dir}/${name}`).then(
+				(info) => ({ name, size: info.size, mtimeMs: info.mtimeMs }),
+				() => null,
+			),
+		),
 	);
+	return files.filter((file) => file !== null);
+}
+
+export async function getFolderSize(dir = cacheDir()) {
+	let total = 0;
+	for (const file of await listCache(dir)) total += file.size;
+	return total;
+}
+
+async function review(activeIds: string[], dir: string, maxBytes: number) {
+	const plan = planCacheReview(await listCache(dir), {
+		maxBytes,
+		now: Date.now(),
+		activeIds,
+	});
+	if (!plan.remove.length) return plan;
+	await Promise.all(
+		plan.remove.map((name) => unlink(`${dir}/${name}`).catch(() => {})),
+	);
+	dcb.log(
+		`Cache review: removed ${plan.remove.length} file(s), freed ${plan.freedBytes} of ${plan.totalBytes} bytes (limit ${maxBytes})`,
+	);
+	return plan;
+}
+
+let reviewing: Promise<unknown> = Promise.resolve();
+
+/**
+ * Clear out what downloads left behind and, when the cache is over
+ * `MAX_CACHE_IN_GB`, evict the least recently used tracks until it fits.
+ *
+ * `activeIds` are the tracks being downloaded right now; they and anything used
+ * in the last few minutes are left alone. Reviews run one at a time, so two
+ * finishing downloads cannot both act on the same stale listing.
+ */
+export function reviewCaches(
+	activeIds: Iterable<string> = [],
+	dir = cacheDir(),
+	maxBytes = readSetting().MAX_CACHE_IN_GB * 1024 * 1024 * 1024,
+) {
+	const ids = [...activeIds];
+	const run = reviewing.then(() => review(ids, dir, maxBytes));
+	reviewing = run.catch((error) => {
+		dcb.log(`Cache review failed: ${error}`);
+	});
+	return run;
+}
+
+/**
+ * Carry over the last-used times from `data/lastUsed.record`, the side file
+ * older versions kept, then delete it. Runs once; a no-op afterwards.
+ */
+export async function migrateLastUsedRecord(
+	record = `${process.cwd()}/data/lastUsed.record`,
+	dir = cacheDir(),
+) {
+	const content = await readFile(record, "utf8").catch(() => null);
+	if (content === null) return;
+	for (const line of content.split("\n")) {
+		const [id, lastUsed] = line.split("=");
+		const time = Number(lastUsed);
+		if (!id || !Number.isFinite(time) || time <= 0) continue;
+		const date = new Date(time);
+		await utimes(musicPath(id, dir), date, date).catch(() => {});
+	}
+	await unlink(record).catch(() => {});
 }

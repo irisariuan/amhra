@@ -63,7 +63,7 @@ import {
 	type NativeConnection,
 } from "./native";
 import { nativeFetchReady } from "./nativeFetch";
-import { updateLastUsed } from "./cache";
+import { markUsed } from "./cache";
 
 const videoInfoCache = new NodeCache();
 const setting = readSetting();
@@ -388,7 +388,7 @@ async function createNativeResource(
 	if (!id) return null;
 	if (!nativeNoCache()) {
 		await nativeFetchReady(id, skipCache);
-		await updateLastUsed([id]);
+		await markUsed(id);
 	}
 
 	const segments = await getSegments(id, [SegmentCategory.MusicOffTopic]);
