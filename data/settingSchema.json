@@ -185,7 +185,7 @@
   "VOICE_SPEECH_THREADS": {
    "type": "integer",
    "minimum": 1,
-   "maximum": 8,
+   "maximum": 32,
    "default": 1,
    "description": "CPU threads for making speech. More makes a new phrase sooner but takes cores from playback and recognition. Restart to apply"
   },
