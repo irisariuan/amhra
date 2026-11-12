@@ -41,6 +41,9 @@ describe("what it runs", () => {
 		const launch = launchFor(endpoint!.url, endpoint!.model, "darwin", "arm64", undefined, true);
 		expect(launch?.command).toBe("llama-server");
 		expect(launch?.args.slice(0, 2)).toEqual(["-hf", "ggml-org/gemma-4-E4B-it-GGUF:Q4_0"]);
+		// Room for the audio beside the instructions, and no thinking first.
+		expect(launch?.args.join(" ")).toContain("-c 8192 --reasoning off");
+		expect(launchFor(endpoint!.url, "m", "linux", "x64")?.args).not.toContain("--reasoning");
 	});
 
 	test("without a URL or a Gemma recogniser there is no server", () => {
