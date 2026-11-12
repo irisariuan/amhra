@@ -16,7 +16,7 @@
 //! `--end-silence-ms` and `--max-capture-ms` its other timings, and `--recogniser-threads` sets
 //! how many threads speech recognition gets, `--provider cpu|coreml` where it
 //! runs (coreml needs `--features shared-onnxruntime`), `--recogniser
-//! qwen3|sensevoice|whisper-v3-turbo` which model it is, `--language <lang>`
+//! qwen3-0.6B|qwen3-1.7B|sensevoice|whisper-v3-turbo` which model it is, `--language <lang>`
 //! pins what it listens for. `--wake-model <dir>` tries a
 //! fine-tuned spotter from `training/wake/export.sh`, and `--wake-classifier
 //! <dir>` the wake word classifier from `training/wake/classifier/export.py`

@@ -32,7 +32,17 @@ export type VoiceLanguage = keyof typeof VOICE_LANGUAGES;
  * others fix theirs when they are loaded.
  */
 export function recogniserTakesLanguage(setting: Setting = readSetting()) {
-	return (setting.VOICE_RECOGNISER ?? "qwen3") === "qwen3";
+	return voiceRecogniser(setting).startsWith("qwen3-");
+}
+
+/**
+ * The recogniser the setting names. One saved as "qwen3", from when Qwen3-ASR
+ * came in one size, is the 0.6B that was.
+ */
+export function voiceRecogniser(setting: Setting = readSetting()): NonNullable<Setting["VOICE_RECOGNISER"]> {
+	const saved: string | undefined = setting.VOICE_RECOGNISER;
+	if (saved === undefined || saved === "qwen3") return "qwen3-0.6B";
+	return saved as NonNullable<Setting["VOICE_RECOGNISER"]>;
 }
 
 /**
@@ -107,7 +117,7 @@ export function voiceCommandArgs(setting: Setting = readSetting()): string[] {
 	const duck = setting.VOICE_DUCK_VOLUME ?? DEFAULT_DUCK_VOLUME;
 	if (duck < 1) args.push("--wake-duck", String(Math.max(0, duck)));
 	if (setting.VOICE_RECOGNISER) {
-		args.push("--recogniser", setting.VOICE_RECOGNISER);
+		args.push("--recogniser", voiceRecogniser(setting));
 	}
 	if (setting.VOICE_RECOGNISER_PROVIDER) {
 		args.push("--recogniser-provider", setting.VOICE_RECOGNISER_PROVIDER);

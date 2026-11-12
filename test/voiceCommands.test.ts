@@ -8,11 +8,13 @@ import { guildSetting, setGuildSetting } from "../lib/guildSetting";
 import { setUserSetting, userSetting } from "../lib/userSetting";
 import { Language } from "../lib/interaction";
 import { languageText } from "../lib/language";
-import type { Setting } from "../lib/setting";
+import { renamed, type Setting } from "../lib/setting";
+import { GlobalSettingSchema } from "../lib/server/schema";
 import type { Command } from "../lib/interaction";
 import { voiceInteraction } from "../lib/voice/voiceInteraction";
 import {
 	collectsWakeClips,
+	recogniserTakesLanguage,
 	voiceCommandArgs,
 	voiceTimings,
 	WAKE_CLIPS_DIR,
@@ -329,6 +331,29 @@ describe("sidecar flags", () => {
 		expect(voiceCommandArgs({ ...allowed, VOICE_RECOGNISER: "sensevoice" }).join(" ")).toContain(
 			"--recogniser sensevoice",
 		);
+		expect(voiceCommandArgs({ ...allowed, VOICE_RECOGNISER: "qwen3-0.6B" }).join(" ")).toContain(
+			"--recogniser qwen3-0.6B",
+		);
+		expect(voiceCommandArgs({ ...allowed, VOICE_RECOGNISER: "qwen3-1.7B" }).join(" ")).toContain(
+			"--recogniser qwen3-1.7B",
+		);
+	});
+
+	test("a setting saved as qwen3 is the 0.6B it was", () => {
+		const saved = { ...base, VOICE_COMMANDS: true, VOICE_RECOGNISER: "qwen3" } as unknown as Setting;
+		expect(voiceCommandArgs(saved).join(" ")).toContain("--recogniser qwen3-0.6B");
+		expect(recogniserTakesLanguage(saved)).toBe(true);
+		expect(renamed({ ...saved }).VOICE_RECOGNISER).toBe("qwen3-0.6B");
+		expect(GlobalSettingSchema.shape.VOICE_RECOGNISER.parse("qwen3")).toBe("qwen3-0.6B");
+		expect(GlobalSettingSchema.shape.VOICE_RECOGNISER.safeParse("qwen3-1.7B").success).toBe(true);
+		expect(GlobalSettingSchema.shape.VOICE_RECOGNISER.safeParse("qwen3-4B").success).toBe(false);
+	});
+
+	test("both sizes of Qwen3-ASR take a language per window, the others none", () => {
+		expect(recogniserTakesLanguage(base)).toBe(true);
+		expect(recogniserTakesLanguage({ ...base, VOICE_RECOGNISER: "qwen3-1.7B" })).toBe(true);
+		expect(recogniserTakesLanguage({ ...base, VOICE_RECOGNISER: "sensevoice" })).toBe(false);
+		expect(recogniserTakesLanguage({ ...base, VOICE_RECOGNISER: "whisper-v3-turbo" })).toBe(false);
 	});
 
 	test("timings, for the flags and for the running sidecar alike", () => {

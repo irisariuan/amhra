@@ -7,9 +7,20 @@ export function readSetting(
 	file = `${process.cwd()}/data/setting.json`,
 ): Setting {
 	if (setting === null) {
-		setting = JSON.parse(readFileSync(file, "utf8"));
+		setting = renamed(JSON.parse(readFileSync(file, "utf8")));
 	}
-	return setting ?? JSON.parse(readFileSync(file, "utf8"));
+	return setting ?? renamed(JSON.parse(readFileSync(file, "utf8")));
+}
+
+/**
+ * Values a saved setting.json may still hold under an old name, as they are
+ * called now: "qwen3" was Qwen3-ASR 0.6B, when that was its only size.
+ */
+export function renamed(saved: Setting): Setting {
+	if ((saved.VOICE_RECOGNISER as string | undefined) === "qwen3") {
+		saved.VOICE_RECOGNISER = "qwen3-0.6B";
+	}
+	return saved;
 }
 
 /**
@@ -24,7 +35,7 @@ export function reloadSetting(
 	reloadLanguage = true,
 	file = `${process.cwd()}/data/setting.json`,
 ) {
-	const nextSetting = JSON.parse(readFileSync(file, "utf8")) as Setting;
+	const nextSetting = renamed(JSON.parse(readFileSync(file, "utf8")) as Setting);
 	// Modules commonly retain the object returned by readSetting(). Update that
 	// object instead of replacing it so a runtime reload reaches those modules.
 	if (setting) Object.assign(setting, nextSetting);
@@ -168,13 +179,16 @@ export interface Setting {
 	 */
 	VOICE_DUCK_VOLUME?: number;
 	/**
-	 * The speech recogniser: "qwen3" (the default), Qwen3-ASR 0.6B, in 30
+	 * The speech recogniser: "qwen3-0.6B" (the default), Qwen3-ASR 0.6B, in 30
 	 * languages, but the sidecar then holds about 1.05GB, up to 1.65GB in use,
-	 * and each command takes about seven times as long; or "sensevoice",
-	 * SenseVoice-Small, in five and about 600MB, for small machines; or
-	 * "whisper-v3-turbo", Whisper large-v3-turbo with int8 encoder and decoder.
+	 * and each command takes about seven times as long; or "qwen3-1.7B", the
+	 * larger and more accurate Qwen3-ASR, whose weights are 2.4GB against 1GB;
+	 * or "sensevoice", SenseVoice-Small, in five and about 600MB, for small
+	 * machines; or "whisper-v3-turbo", Whisper large-v3-turbo with int8 encoder
+	 * and decoder. A setting saved as "qwen3", from when there was one size,
+	 * still means "qwen3-0.6B".
 	 */
-	VOICE_RECOGNISER?: "qwen3" | "sensevoice" | "whisper-v3-turbo";
+	VOICE_RECOGNISER?: "qwen3-0.6B" | "qwen3-1.7B" | "sensevoice" | "whisper-v3-turbo";
 	/**
 	 * Where speech recognition runs. Core ML needs a sidecar built with
 	 * `--features shared-onnxruntime`, on macOS; "gpu" is CUDA, and needs one

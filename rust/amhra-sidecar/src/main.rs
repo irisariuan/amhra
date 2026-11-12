@@ -34,8 +34,8 @@
 //!   `models/voice`;
 //! - `--wake-keywords <file>`: the wake phrases, default
 //!   `data/wake-keywords.txt`;
-//! - `--recogniser qwen3|sensevoice|whisper-v3-turbo`: the speech recogniser, default qwen3
-//!   (Qwen3-ASR); sensevoice is a quarter of the size, for small machines;
+//! - `--recogniser qwen3-0.6B|qwen3-1.7B|sensevoice|whisper-v3-turbo`: the speech
+//!   recogniser, default qwen3-0.6B (Qwen3-ASR; `qwen3` still means that size); sensevoice is a quarter of the size, for small machines;
 //! - `--recogniser-threads <n>`: threads for speech recognition, default 2;
 //! - `--recogniser-language <lang>`: auto (the default), en, zh, ja, ko or
 //!   yue, for every guild;
@@ -1025,7 +1025,7 @@ fn start_voice_commands(events: &Sender<Event>, workers: &Workers) -> Option<Arc
 			}
 			if let Some(name) = option("--recogniser") {
 				config.recogniser = sherpa::Recogniser::parse(&name).ok_or_else(|| {
-					format!("unknown --recogniser {name:?}; use qwen3, sensevoice or whisper-v3-turbo")
+					format!("unknown --recogniser {name:?}; use qwen3-0.6B, qwen3-1.7B, sensevoice or whisper-v3-turbo")
 				})?;
 			}
 			eprintln!("voice commands: speech recognition by {}", config.recogniser.name());

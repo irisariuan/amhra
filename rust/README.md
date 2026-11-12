@@ -333,7 +333,7 @@ starts:
 | --- | --- | --- |
 | `--voice-models <dir>` | `models/voice` | where the download script put them (gitignored) |
 | `--wake-keywords <file>` | `data/wake-keywords.txt` | the wake phrases; edit and restart, no rebuild |
-| `--recogniser <r>` | `qwen3` | the speech recogniser: `qwen3` (Qwen3-ASR) or `sensevoice` (see [Qwen3-ASR or SenseVoice](#qwen3-asr-or-sensevoice)) |
+| `--recogniser <r>` | `qwen3-0.6B` | the speech recogniser: `qwen3-0.6B` or `qwen3-1.7B` (Qwen3-ASR, by size; `qwen3` still means 0.6B), or `sensevoice` (see [Qwen3-ASR or SenseVoice](#qwen3-asr-or-sensevoice)) |
 | `--recogniser-threads <n>` | `2` | speech-recognition threads |
 | `--recogniser-provider <p>` | `cpu` | `cpu`, `coreml` with `shared-onnxruntime` on macOS, or `gpu` (CUDA) with `cuda-onnxruntime` and `SHERPA_ONNX_LIB_DIR` at a sherpa-onnx GPU release; one the build lacks falls back to `cpu`, saying so |
 | `--wake-provider <p>` | `cpu` | the keyword spotter's, the same way; the wake classifier only runs on `cpu` |
@@ -381,6 +381,7 @@ runs whenever the models are present.
 | wake word | `sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01` (streaming zipformer, int8) | Apache-2.0 |
 | end of speech | Silero VAD (`silero_vad.onnx`) | MIT |
 | speech to text | `sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25` (default) | Apache-2.0 |
+| speech to text | `sherpa-onnx-qwen3-asr-1.7B-int8` (`--recogniser qwen3-1.7B`; `download-voice-models.sh --qwen3-1.7B`) | Apache-2.0 |
 | speech to text | `sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2024-07-17` (`--recogniser sensevoice`) | FunASR Model License 1.1 |
 
 **Qwen3-ASR attribution.** The default speech recogniser is **Qwen3-ASR
@@ -389,6 +390,16 @@ runs whenever the models are present.
 sherpa-onnx int8 export. The download script fetches it file by file from
 the exporter's Hugging Face repository, which here was about thirty times
 faster than the GitHub release.
+
+**Qwen3-ASR 1.7B** (`--recogniser qwen3-1.7B`) is the same model with a
+larger language model. sherpa-onnx publishes no export of it, so the
+download script takes a third party's
+(<https://huggingface.co/thieunv-asilla/sherpa-onnx-qwen3-asr-1.7B-int8>,
+made with the same export script and in the same layout), at one fixed
+revision, and checks the weights' SHA-256. Its weights are 2.4GB where
+0.6B's are 1GB. It has not been measured here: going by 0.6B, whose process
+holds about what its weights weigh, expect about 2.5GB held and more in
+use, and each command to take two to three times as long.
 
 **SenseVoice attribution.** The speech recogniser is **SenseVoice-Small** by
 Tongyi Lab, Alibaba Group (<https://github.com/FunAudioLLM/SenseVoice>), via
@@ -769,7 +780,7 @@ starts:
 | `VOICE_LOG_TRANSCRIPTS` | off | log what was heard after the name, for tuning the matching |
 | `VOICE_WAKE_CHIME` | **on** | a chime in the call when the name is heard, another when the command has been taken down, and a soft sound every few seconds until the bot answers |
 | `VOICE_DUCK_VOLUME` | `0.3` | the music's volume from the name until the command is heard; 1 leaves it |
-| `VOICE_RECOGNISER` | `qwen3` | `qwen3` or `sensevoice`, as `--recogniser` |
+| `VOICE_RECOGNISER` | `qwen3-0.6B` | `qwen3-0.6B`, `qwen3-1.7B`, `sensevoice` or `whisper-v3-turbo`, as `--recogniser`; a saved `qwen3` is read as `qwen3-0.6B` |
 | `VOICE_RECOGNISER_PROVIDER` | `cpu` | `cpu`, `gpu` or `coreml`, as `--recogniser-provider` |
 | `VOICE_WAKE_PROVIDER` | `cpu` | the same, for the keyword spotter |
 | `VOICE_SPEECH_PROVIDER` | `cpu` | the same, for speech |

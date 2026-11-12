@@ -55,7 +55,9 @@ Set `VOICE_RECOGNISER` to `"whisper-v3-turbo"` in `data/setting.json` and restar
 the bot. Voice commands require `USE_RUST_VOICE` and `VOICE_COMMANDS` to be enabled.
 `VOICE_LANGUAGE` supports `auto`, `en`, `zh`, `ja`, `ko`, or `yue`;
 Whisper transcribes in the source language. The existing recogniser thread and
-provider settings also apply. Qwen3 remains the default.
+provider settings also apply. Qwen3-ASR 0.6B (`"qwen3-0.6B"`) remains the default;
+`"qwen3-1.7B"` is the larger one, fetched with
+`scripts/download-voice-models.sh --qwen3-1.7B` (2.4GB, and about that much memory).
 
 Each Whisper transcription takes about 1.5s on 4 threads of an M5 Pro however short
 the command, since it needs a stretch of silence after the audio not to repeat

@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Fetch the models voice commands need into models/voice (gitignored).
 #
-#   scripts/download-voice-models.sh [--speech] [--whisper-v3-turbo] [target dir]
+#   scripts/download-voice-models.sh [--speech] [--qwen3-1.7B] [--whisper-v3-turbo] [target dir]
 #
 # Idempotent: anything already in place is left alone, so rerunning after a
 # partial download only fetches what is missing. About 1.2GB to download and
 # unpacked, nearly all of it Qwen3-ASR, then SenseVoice. `--speech` also fetches the
 # speech models for VOICE_SPEECH: about 380MB more to download, 600MB unpacked.
+# `--qwen3-1.7B` also fetches Qwen3-ASR 1.7B, for VOICE_RECOGNISER qwen3-1.7B:
+# 2.4GB more.
 #
 # The sidecar finds them with `--voice-models <dir>` (default models/voice,
 # relative to the directory it is started in).
@@ -14,10 +16,12 @@ set -euo pipefail
 
 SPEECH=0
 WHISPER=0
+QWEN3_LARGE_WANTED=0
 while [[ "${1:-}" == --* ]]; do
 	case "$1" in
 		--speech) SPEECH=1 ;;
 		--whisper-v3-turbo) WHISPER=1 ;;
+		--qwen3-1.7B | --qwen3-1.7b) QWEN3_LARGE_WANTED=1 ;;
 		*) echo "unknown option: $1" >&2; exit 1 ;;
 	esac
 	shift
@@ -41,6 +45,17 @@ QWEN3="sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25"
 QWEN3_FILES=(conv_frontend.onnx encoder.int8.onnx decoder.int8.onnx
 	tokenizer/vocab.json tokenizer/merges.txt tokenizer/tokenizer_config.json)
 HUGGING_FACE="https://huggingface.co/csukuangfj2"
+# Optional Qwen3-ASR 1.7B, int8 (`--recogniser qwen3-1.7B`): 2.4GB. sherpa-onnx
+# publishes no export of this size, so this is a third party's, made with the
+# same script and laid out the same. It is fetched at one fixed revision and
+# its weights checked against the SHA-256 that revision had.
+QWEN3_LARGE="sherpa-onnx-qwen3-asr-1.7B-int8"
+QWEN3_LARGE_SOURCE="https://huggingface.co/thieunv-asilla/$QWEN3_LARGE/resolve/69eb686fd94a4a865bb5340a3d6ac0d7f1fec0d5"
+QWEN3_LARGE_SHA256=(
+	"3cb27a9fe94d95c938e476f2012b21aba2ec0bfceef33b0e58acd208946bafdd  conv_frontend.onnx"
+	"a5deedae034ece715de8ed204378d8c77f889af3a60c2566581135e84cced7cd  encoder.int8.onnx"
+	"c43c853fa6e97d08365cb8a5502b360b595cd43c00dc60e4d8ca7cc18cad460b  decoder.int8.onnx"
+)
 # Optional Whisper large-v3-turbo, int8: about 1GB extra. The encoder's
 # full-precision export uses external weights; these int8 files are standalone.
 WHISPER_TURBO="sherpa-onnx-whisper-turbo"
@@ -91,16 +106,36 @@ fetch_archive() {
 fetch_archive kws-models "$KWS"
 fetch_archive asr-models "$STT"
 
-if [[ -d "$QWEN3" ]]; then
-	echo "have $QWEN3"
-else
-	echo "fetching $QWEN3"
+# Qwen3-ASR, either size: `name` from `source`, file by file. Any further
+# arguments are `sha256sum` lines the files must match.
+fetch_qwen3() {
+	local name="$1" source="$2"
+	shift 2
+	if [[ -d "$name" ]]; then
+		echo "have $name"
+		return
+	fi
+	echo "fetching $name"
 	# Into a staging directory, renamed when complete, as the archives are.
-	mkdir -p ".staging.$QWEN3/tokenizer"
+	mkdir -p ".staging.$name/tokenizer"
+	local file
 	for file in "${QWEN3_FILES[@]}"; do
-		download "$HUGGING_FACE/$QWEN3/resolve/main/$file" ".staging.$QWEN3/$file"
+		download "$source/$file" ".staging.$name/$file"
 	done
-	mv ".staging.$QWEN3" "$QWEN3"
+	if [[ $# -gt 0 ]]; then
+		local sum=(sha256sum)
+		command -v sha256sum >/dev/null || sum=(shasum -a 256)
+		if ! (cd ".staging.$name" && printf '%s\n' "$@" | "${sum[@]}" -c -); then
+			echo "$name is not the files expected; left in .staging.$name" >&2
+			exit 1
+		fi
+	fi
+	mv ".staging.$name" "$name"
+}
+
+fetch_qwen3 "$QWEN3" "$HUGGING_FACE/$QWEN3/resolve/main"
+if [[ "$QWEN3_LARGE_WANTED" == 1 ]]; then
+	fetch_qwen3 "$QWEN3_LARGE" "$QWEN3_LARGE_SOURCE" "${QWEN3_LARGE_SHA256[@]}"
 fi
 
 if [[ "$WHISPER" == 1 ]]; then
