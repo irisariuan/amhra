@@ -652,10 +652,43 @@ short English for Chinese on `auto` (see
 [Qwen3-ASR or SenseVoice](#qwen3-asr-or-sensevoice)), it is read off what
 Gemma wrote. How far a wrong hint pulls Gemma has not been measured.
 
-None of this has been run against a real server here: not the time a
-command takes, nor how well it hears titles, nor how well Gemma reads
-commands in place of Qwen3 4B. Try it on a recording with
-`wake_wav --whole --recogniser gemma-4-E2B --recogniser-url <url> --recogniser-model <name>`.
+**Tried**, with `gemma-4-E2B` in `llama-server` 0.9.0 on an M5 Pro, on five
+commands synthesised with macOS voices (`wake_wav --whole`); not yet on
+live speech, nor on the 8GB machine. The download was 3.2GB.
+
+| | Gemma alone | with SenseVoice's hint | SenseVoice alone |
+| --- | --- | --- | --- |
+| "play the next song" | Play the next song | play the next song | Play the next song. |
+| 瞬きを再生して | まばたきを再生して | まばたきを再生して | 瞬ば を 再生 して。 |
+| 止めて | 止めて | 止めて | 止めて。 |
+| 다음 곡 틀어줘 | 다음 곡 틀어 줘 | 다음 곡 틀어 줘 | 다음 꼭 틀 어 줘. |
+| 暫停 (Cantonese) | 점팅, as Korean | 暂停 | 暂停。 |
+| per command | 130–220ms, 900ms the first | 130–330ms | 90–150ms |
+
+So Gemma does take the hint, where it had the language wrong, and sets it
+aside where SenseVoice misheard a word.
+
+Reading the command afterwards took the same model about a second the
+first time, the instructions being 2,300 tokens, and 90–240ms after that,
+with them cached. Not thinking, E2B read 瞬きを再生して as a search for
+瞬き, "turn it up a bit" as the volume at 110, and 止めて as pause; it read
+다음 곡 틀어 줘 as play with nothing to play, where it means skip.
+
+**Thinking.** Gemma thinks before it answers unless told not to, and the
+`/no_think` the instructions end with is Qwen3's. Left to think within the
+300 tokens of an answer, it spent them all reasoning about 瞬きを再生して
+and answered nothing, which the bot reports as not a command. Given 1,024
+tokens to think in, on every command, it took 1–12 seconds where it had
+taken 0.1–0.7, and was wrong more often: it asked how loud for "turn it up
+a bit", and read "play the next song" as play, though it got 다음 곡 틀어
+줘 right. So it is asked twice at most. First not to think
+(`enable_thinking` false in the request), and that answer stands if it
+comes to anything. Only if it comes to nothing is it asked again, thinking,
+with 1,024 more tokens and 30 seconds rather than six; the server is
+started with `--reasoning-budget 1024`, so that it is always made to
+answer. `VOICE_INTENT_THINKING: false` leaves the first answer to stand,
+and starts the server with `--reasoning off`. Hearing a command never
+thinks.
 
 ### Qwen3-ASR or SenseVoice
 
@@ -854,6 +887,7 @@ starts:
 | `VOICE_MEMORY_MS` | `60000` | how long what each member said is remembered for the next request; 15000 to 600000, applies at once |
 | `VOICE_INTENT_MODEL_URL` | empty | an OpenAI-compatible server whose model reads every command; empty, only command names said first are understood |
 | `VOICE_INTENT_MODEL` | Qwen3 4B | the model that server uses: `mlx-community/Qwen3-4B-4bit` on Apple silicon, `Qwen/Qwen3-4B-GGUF:Q4_K_M` elsewhere |
+| `VOICE_INTENT_THINKING` | on | with a Gemma `VOICE_RECOGNISER`: when its answer at once comes to nothing, ask it again and let it think (see [Gemma 4](#gemma-4)) |
 | `VOICE_INTENT_MODEL_SERVE` | `true` | with the URL on this machine and nothing answering there, the bot starts the server itself |
 | `VOICE_INTENT_PROVIDER` | the runtime's | for a server the bot starts: `cpu` is `llama-server -ngl 0`, on Apple silicon too instead of MLX; `gpu` is MLX, or `llama-server -ngl 999`; `coreml`, which neither has, is `cpu` |
 | `VOICE_SPEECH` | off | say aloud what a voice command does, with the models in models/voice (see Speaking) |

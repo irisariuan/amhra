@@ -678,3 +678,55 @@ describe("who reads the command", () => {
 		expect((await readIntent("pause", "en", lookup, MODEL)).by).toBe("fallback");
 	});
 });
+
+describe("a Gemma that also reads the commands", () => {
+	const GEMMA = { ...MODEL, VOICE_RECOGNISER: "gemma-4-E2B" } as const;
+
+	/** A server that gives each answer in turn, keeping what it was asked. */
+	function answeringInTurn(...contents: string[]) {
+		const asked: Record<string, unknown>[] = [];
+		globalThis.fetch = (async (_url: string, init: RequestInit) => {
+			asked.push(JSON.parse(String(init.body)));
+			return Response.json({ choices: [{ message: { content: contents[asked.length - 1] ?? "[]" } }] });
+		}) as unknown as typeof fetch;
+		return asked;
+	}
+
+	test("answers at once, without thinking, when that comes to something", async () => {
+		const asked = answeringInTurn('[{"command": "pause"}]');
+		const reading = await readIntent("hold on a moment", "en", lookup, GEMMA);
+		expect(reading.intents.map((intent) => intent.command)).toEqual(["pause"]);
+		expect(asked).toHaveLength(1);
+		expect(asked[0]?.chat_template_kwargs).toEqual({ enable_thinking: false });
+		expect(asked[0]?.max_tokens).toBe(300);
+	});
+
+	test("is asked again, thinking, when its answer at once comes to nothing", async () => {
+		const asked = answeringInTurn("[]", '```json\n[{"command": "pause"}]\n```');
+		const reading = await readIntent("hold on a moment", "en", lookup, GEMMA);
+		expect(reading.intents.map((intent) => intent.command)).toEqual(["pause"]);
+		expect(reading.by).toBe("model");
+		expect(asked).toHaveLength(2);
+		expect(asked[1]?.chat_template_kwargs).toEqual({ enable_thinking: true });
+		expect(asked[1]?.max_tokens).toBe(1324);
+		expect(asked[1]?.messages).toEqual(asked[0]?.messages);
+	});
+
+	test("thinks once, and not at all when that is turned off", async () => {
+		const nothing = answeringInTurn("[]", "[]", "[]");
+		expect((await readIntent("lovely weather", "en", lookup, GEMMA)).intents).toEqual([]);
+		expect(nothing).toHaveLength(2);
+		const off = answeringInTurn("[]", '[{"command": "pause"}]');
+		const reading = await readIntent("lovely weather", "en", lookup, { ...GEMMA, VOICE_INTENT_THINKING: false });
+		expect(reading.intents).toEqual([]);
+		expect(off).toHaveLength(1);
+	});
+
+	test("another model is asked as it always was", async () => {
+		const asked = answeringInTurn("[]");
+		await readIntent("lovely weather", "en", lookup, MODEL);
+		expect(asked).toHaveLength(1);
+		expect(asked[0]).not.toHaveProperty("chat_template_kwargs");
+		expect(asked[0]?.max_tokens).toBe(300);
+	});
+});
