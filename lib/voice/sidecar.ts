@@ -397,6 +397,7 @@ export function joinVoiceViaSidecar(
 	channel: VoiceBasedChannel,
 	deaf = true,
 	onLibraryDestroy?: () => void,
+	hooks: JoinHooks = {},
 ) {
 	const guild: Guild = channel.guild;
 	const client = guild.client;
@@ -419,9 +420,27 @@ export function joinVoiceViaSidecar(
 		let leaving = false;
 		let leaveTimer: ReturnType<typeof setTimeout> | undefined;
 
+		/** The channel the gateway last put the bot in. */
+		let channelId = channel.id;
+
 		const adapter = guild.voiceAdapterCreator({
 			onVoiceStateUpdate: (state) => {
 				if (state.user_id !== userId) return;
+				if (settled && joining) {
+					// After the handshake, a state update means someone else
+					// moved the bot: a moderator dragged it to another channel,
+					// or disconnected it outright.
+					if (!state.channel_id) {
+						hooks.onRemoved?.();
+						return;
+					}
+					sessionId = state.session_id ?? sessionId;
+					if (state.channel_id !== channelId) {
+						channelId = state.channel_id;
+						hooks.onMoved?.(channelId);
+					}
+					return;
+				}
 				if (!joining) {
 					// The leave landed. Waiting for this rather than for a fixed
 					// delay is what makes the rejoin reliable: the gateway only
@@ -441,6 +460,15 @@ export function joinVoiceViaSidecar(
 				if (!joining) return;
 				endpoint = server.endpoint ?? undefined;
 				token = server.token;
+				if (settled) {
+					// A new token after the handshake: the bot was moved, or
+					// its voice server changed. The old voice socket is closed
+					// (a move ends it with 4014), so the sidecar is handed the
+					// new credentials. It keeps the guild's queues and swaps
+					// only the connection, and the music carries on.
+					if (endpoint && sessionId) connect();
+					return;
+				}
 				ready();
 			},
 			destroy: () => {
@@ -487,11 +515,18 @@ export function joinVoiceViaSidecar(
 			if (settled || !sessionId || !endpoint || !token) return;
 			settled = true;
 			clearTimeout(timer);
+			connect();
+			resolve();
+		}
+
+		/** Hand the sidecar the current credentials. */
+		function connect() {
+			if (!sessionId || !endpoint || !token) return;
 			const client = sidecar();
 			client.send({
 				type: "connect",
 				guildId: guild.id,
-				channelId: channel.id,
+				channelId,
 				userId: userId as string,
 				sessionId,
 				endpoint,
@@ -504,7 +539,7 @@ export function joinVoiceViaSidecar(
 			// event: the sidecar queues commands per guild, so this is applied
 			// before the first frame either way.
 			client.send({ type: "setFades", guildId: guild.id, queueId: null, ...fadeSettings() });
-			resolve();
+			hooks.onReconnect?.();
 		}
 
 		function join() {
@@ -559,6 +594,16 @@ export function joinVoiceViaSidecar(
 		};
 	});
 	return { connected, leave: () => leaveGateway() };
+}
+
+/** What a joined session hears about the bot being moved by someone else. */
+export interface JoinHooks {
+	/** The gateway put the bot in another channel. */
+	onMoved?: (channelId: string) => void;
+	/** The bot was disconnected from voice by someone else. */
+	onRemoved?: () => void;
+	/** The sidecar was just handed credentials, first time or after a move. */
+	onReconnect?: () => void;
 }
 
 /** A join abandoned on purpose, which is not worth logging as a failure. */

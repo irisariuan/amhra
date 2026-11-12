@@ -346,10 +346,47 @@ async fn dispatch(
 	let Context { cache_dir, listen, voice, workers, speech } = *context;
 	match command {
 		Command::Connect { guild_id, channel_id, user_id, session_id, endpoint, token, listen: wanted } => {
-			// Reconnecting to the same guild replaces the old session rather
-			// than leaving two things sending to one channel.
-			if let Some(existing) = guilds.remove(&guild_id) {
-				existing.stand_down().await;
+			// A guild that already has a session is being moved: a moderator
+			// dragged the bot, or it was asked to join somewhere else. Only the
+			// voice connection is replaced. The worker, and every queue and
+			// track it holds, carries over, so the music follows the bot into
+			// the new channel instead of stopping with the old socket.
+			if let Some(existing) = guilds.get_mut(&guild_id) {
+				// Cleared before the close, as in `stand_down`, so nothing the
+				// old connection still has in flight reports over the new one.
+				existing.alive.store(false, Ordering::Relaxed);
+				existing.gateway.close().await;
+				// Frames sent to the old server in the gap are frames lost.
+				existing.worker.send(WorkerCommand::Detach);
+				existing.listening.store(wanted, Ordering::Relaxed);
+
+				let info = ConnectionInfo {
+					endpoint,
+					guild_id: guild_id.clone(),
+					user_id: user_id.clone(),
+					session_id,
+					token,
+					max_dave_protocol_version: MAX_DAVE_VERSION,
+				};
+				let (handle, gateway_events) = gateway::connect(info);
+				let alive = Arc::new(AtomicBool::new(true));
+				tokio::spawn(drive_connection(
+					guild_id.clone(),
+					channel_id.clone(),
+					user_id,
+					handle.clone(),
+					gateway_events,
+					events.clone(),
+					existing.worker.command_sender(),
+					existing.worker.speaking_flag(),
+					alive.clone(),
+					listen.then(|| existing.listening.clone()),
+					voice.cloned(),
+				));
+				existing.gateway = handle;
+				existing.alive = alive;
+				existing.channel_id = channel_id;
+				return;
 			}
 
 			let worker = match Worker::spawn(guild_id.clone(), events.clone()) {
