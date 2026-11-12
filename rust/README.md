@@ -878,6 +878,8 @@ starts:
 | `VOICE_MEMORY_MS` | `60000` | how long what each member said is remembered for the next request; 15000 to 600000, applies at once |
 | `VOICE_INTENT_MODEL_URL` | empty | an OpenAI-compatible server whose model reads every command; empty, only command names said first are understood |
 | `VOICE_INTENT_MODEL` | Qwen3 4B | the model that server uses: `mlx-community/Qwen3-4B-4bit` on Apple silicon, `Qwen/Qwen3-4B-GGUF:Q4_K_M` elsewhere |
+| `VOICE_INTENT_MAX_TOKENS` | `600` | the most tokens the model may answer a command with; an answer cut off there cannot be read |
+| `VOICE_INTENT_TIMEOUT_MS` | `10000` | how long the model has to answer before the bot goes by command names |
 | `VOICE_INTENT_MODEL_SERVE` | `true` | with the URL on this machine and nothing answering there, the bot starts the server itself |
 | `VOICE_INTENT_PROVIDER` | the runtime's | for a server the bot starts: `cpu` is `llama-server -ngl 0`, on Apple silicon too instead of MLX; `gpu` is MLX, or `llama-server -ngl 999`; `coreml`, which neither has, is `cpu` |
 | `VOICE_SPEECH` | off | say aloud what a voice command does, with the models in models/voice (see Speaking) |
