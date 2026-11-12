@@ -34,6 +34,7 @@ use sherpa_onnx_sys as sys;
 
 use super::classifier::Classifier;
 use super::gemma::GemmaRecogniser;
+use super::second::WithSecond;
 use super::keywords::{self, Vocabulary};
 use super::{Detection, ModelError, Models, SAMPLE_RATE, Spotter, Transcriber, Transcript, Vad};
 
@@ -65,6 +66,10 @@ pub struct SherpaConfig {
 	/// `http://host:port/v1`, and the name it serves it under.
 	pub recogniser_url: Option<String>,
 	pub recogniser_model: Option<String>,
+	/// For Gemma 4: a recogniser of sherpa-onnx's to hear each window beside
+	/// it, for when it has no transcript or wrote another language (see
+	/// `second.rs`).
+	pub recogniser_fallback: Option<Recogniser>,
 	/// Threads for the recogniser. More shortens each command; there is only
 	/// ever one being recognised at a time. Measured on an M5 Pro per command:
 	/// 294ms on one thread, 153ms on two, 83ms on four. Two leaves the cores
@@ -107,6 +112,7 @@ impl SherpaConfig {
 			recogniser: Recogniser::default(),
 			recogniser_url: None,
 			recogniser_model: None,
+			recogniser_fallback: None,
 			recogniser_threads: 2,
 			recogniser_provider: Provider::Cpu,
 			spotter_provider: Provider::Cpu,
@@ -390,7 +396,21 @@ pub fn load(config: &SherpaConfig) -> Result<(Arc<SherpaModels>, Box<dyn Transcr
 		};
 		let url = config.recogniser_url.as_deref().ok_or_else(|| missing("--recogniser-url, the server that has the model"))?;
 		let model = config.recogniser_model.as_deref().ok_or_else(|| missing("--recogniser-model, the name the server has it under"))?;
-		Box::new(GemmaRecogniser::new(url, model, &config.recogniser_language)?)
+		let gemma = Box::new(GemmaRecogniser::new(url, model, &config.recogniser_language)?);
+		match config.recogniser_fallback.filter(|second| !second.is_gemma()) {
+			Some(second) => {
+				paths.check(false, second)?;
+				let second = OfflineRecogniser::load(
+					&paths,
+					second,
+					config.recogniser_threads,
+					config.recogniser_provider,
+					&config.recogniser_language,
+				)?;
+				Box::new(WithSecond::new(gemma, Box::new(second), config.recogniser_language != "auto"))
+			}
+			None => gemma,
+		}
 	} else {
 		Box::new(OfflineRecogniser::load(
 			&paths,

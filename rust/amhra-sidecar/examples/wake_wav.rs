@@ -53,6 +53,7 @@ struct Args {
 	recogniser: Option<String>,
 	recogniser_url: Option<String>,
 	recogniser_model: Option<String>,
+	recogniser_fallback: Option<String>,
 	language: Option<String>,
 	spotter: Option<PathBuf>,
 	classifier: Option<PathBuf>,
@@ -76,6 +77,7 @@ fn args() -> Args {
 		recogniser: None,
 		recogniser_url: None,
 		recogniser_model: None,
+		recogniser_fallback: None,
 		language: None,
 		spotter: None,
 		classifier: None,
@@ -102,6 +104,7 @@ fn args() -> Args {
 			"--recogniser" => args.recogniser = Some(value()),
 			"--recogniser-url" => args.recogniser_url = Some(value()),
 			"--recogniser-model" => args.recogniser_model = Some(value()),
+			"--recogniser-fallback" => args.recogniser_fallback = Some(value()),
 			"--language" => args.language = Some(value()),
 			"--tail-ms" => args.tail_ms = value().parse().expect("--tail-ms takes a number"),
 			"--verbose" => args.verbose = true,
@@ -192,6 +195,9 @@ fn main() {
 	}
 	config.recogniser_url = args.recogniser_url.clone();
 	config.recogniser_model = args.recogniser_model.clone();
+	config.recogniser_fallback = args.recogniser_fallback.as_deref().map(|name| {
+		sherpa::Recogniser::parse(name).unwrap_or_else(|| panic!("unknown recogniser {name}"))
+	});
 	if let Some(language) = &args.language {
 		config.recogniser_language = language.clone();
 	}

@@ -364,6 +364,16 @@ describe("sidecar flags", () => {
 		expect(elsewhere).toContain(
 			"--recogniser gemma-4-E4B --recogniser-url http://127.0.0.1:9000/v1 --recogniser-model my/gemma",
 		);
+		expect(elsewhere).toContain("--recogniser-fallback sensevoice");
+		const gemma = { ...allowed, VOICE_RECOGNISER: "gemma-4-E2B" } as const;
+		expect(voiceCommandArgs({ ...gemma, VOICE_RECOGNISER_FALLBACK: "qwen3-0.6B" }).join(" ")).toContain(
+			"--recogniser-fallback qwen3-0.6B",
+		);
+		expect(voiceCommandArgs({ ...gemma, VOICE_RECOGNISER_FALLBACK: "none" })).not.toContain("--recogniser-fallback");
+		// Only a Gemma has one.
+		expect(
+			voiceCommandArgs({ ...allowed, VOICE_RECOGNISER: "qwen3-1.7B", VOICE_RECOGNISER_FALLBACK: "sensevoice" }),
+		).not.toContain("--recogniser-fallback");
 		// The text model's server is not the recogniser's.
 		expect(
 			voiceCommandArgs({ ...allowed, VOICE_INTENT_MODEL_URL: "http://127.0.0.1:8085/v1" }),

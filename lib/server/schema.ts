@@ -405,6 +405,9 @@ export const GlobalSettingSchema = z
 				z.enum(["qwen3-0.6B", "qwen3-1.7B", "sensevoice", "whisper-v3-turbo", "gemma-4-E2B", "gemma-4-E4B"]),
 			)
 			.optional(),
+		VOICE_RECOGNISER_FALLBACK: z
+			.enum(["sensevoice", "qwen3-0.6B", "qwen3-1.7B", "whisper-v3-turbo", "none"])
+			.optional(),
 		VOICE_RECOGNISER_PROVIDER: z.enum(["cpu", "gpu", "coreml"]).optional(),
 		VOICE_WAKE_PROVIDER: z.enum(["cpu", "gpu", "coreml"]).optional(),
 		VOICE_SPEECH_PROVIDER: z.enum(["cpu", "gpu", "coreml"]).optional(),
