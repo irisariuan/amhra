@@ -670,25 +670,16 @@ aside where SenseVoice misheard a word.
 
 Reading the command afterwards took the same model about a second the
 first time, the instructions being 2,300 tokens, and 90–240ms after that,
-with them cached. Not thinking, E2B read 瞬きを再生して as a search for
-瞬き, "turn it up a bit" as the volume at 110, and 止めて as pause; it read
-다음 곡 틀어 줘 as play with nothing to play, where it means skip.
-
-**Thinking.** Gemma thinks before it answers unless told not to, and the
-`/no_think` the instructions end with is Qwen3's. Left to think within the
-300 tokens of an answer, it spent them all reasoning about 瞬きを再生して
-and answered nothing, which the bot reports as not a command. Given 1,024
-tokens to think in, on every command, it took 1–12 seconds where it had
-taken 0.1–0.7, and was wrong more often: it asked how loud for "turn it up
-a bit", and read "play the next song" as play, though it got 다음 곡 틀어
-줘 right. So it is asked twice at most. First not to think
-(`enable_thinking` false in the request), and that answer stands if it
-comes to anything. Only if it comes to nothing is it asked again, thinking,
-with 1,024 more tokens and 30 seconds rather than six; the server is
-started with `--reasoning-budget 1024`, so that it is always made to
-answer. `VOICE_INTENT_THINKING: false` leaves the first answer to stand,
-and starts the server with `--reasoning off`. Hearing a command never
-thinks.
+with them cached. It must not think first: left to, it spent all 300 tokens
+of its answer reasoning about 瞬きを再生して and answered nothing, which the
+bot reports as not a command; that is what `--reasoning off` and the
+request's `enable_thinking` are for. Given 1,024 tokens to think in it did
+answer, but took 1–12 seconds over a command where it had taken 0.1–0.7,
+and was wrong more often: it asked how loud for "turn it up a bit" and read
+"play the next song" as play. So it is never asked to. Not thinking, E2B read 瞬きを再生して
+as a search for 瞬き, "turn it up a bit" as the volume at 110, and 止めて as
+pause; it read 다음 곡 틀어 줘 as play with nothing to play, where it means
+skip.
 
 ### Qwen3-ASR or SenseVoice
 
@@ -887,7 +878,6 @@ starts:
 | `VOICE_MEMORY_MS` | `60000` | how long what each member said is remembered for the next request; 15000 to 600000, applies at once |
 | `VOICE_INTENT_MODEL_URL` | empty | an OpenAI-compatible server whose model reads every command; empty, only command names said first are understood |
 | `VOICE_INTENT_MODEL` | Qwen3 4B | the model that server uses: `mlx-community/Qwen3-4B-4bit` on Apple silicon, `Qwen/Qwen3-4B-GGUF:Q4_K_M` elsewhere |
-| `VOICE_INTENT_THINKING` | on | with a Gemma `VOICE_RECOGNISER`: when its answer at once comes to nothing, ask it again and let it think (see [Gemma 4](#gemma-4)) |
 | `VOICE_INTENT_MODEL_SERVE` | `true` | with the URL on this machine and nothing answering there, the bot starts the server itself |
 | `VOICE_INTENT_PROVIDER` | the runtime's | for a server the bot starts: `cpu` is `llama-server -ngl 0`, on Apple silicon too instead of MLX; `gpu` is MLX, or `llama-server -ngl 999`; `coreml`, which neither has, is `cpu` |
 | `VOICE_SPEECH` | off | say aloud what a voice command does, with the models in models/voice (see Speaking) |

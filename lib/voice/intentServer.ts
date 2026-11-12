@@ -30,12 +30,6 @@ const CONTEXT_TOKENS = 4096;
  * context, and the audio is in one while the instructions are in another.
  */
 const AUDIO_CONTEXT_TOKENS = 8192;
-/**
- * The most a Gemma may think over one command, in tokens, before it is made
- * to answer. It decides how much of that to use: a word or two of Cantonese
- * took it 80, a song to find more than 300.
- */
-export const THINKING_TOKENS = 1024;
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
@@ -82,19 +76,17 @@ export function gemmaModel(setting: Setting = readSetting()) {
  * The server voice commands use and the model it should have, if there is
  * to be one. `audio` when the model is also the recogniser, and so has to be
  * served by something that passes audio on: `llama-server`, not MLX's.
- * `thinking` when it may be asked to think over a command it made nothing of.
  */
 export function modelEndpoint(
 	setting: Setting = readSetting(),
 	platform: NodeJS.Platform = process.platform,
 	arch: string = process.arch,
-): { url: string; model: string; audio: boolean; thinking: boolean } | null {
+): { url: string; model: string; audio: boolean } | null {
 	const gemma = gemmaModel(setting);
 	const url = setting.VOICE_INTENT_MODEL_URL || (gemma ? DEFAULT_MODEL_URL : undefined);
 	if (!url) return null;
 	const model = setting.VOICE_INTENT_MODEL ?? gemma ?? defaultIntentModel(platform, arch, intentRuntime(setting));
-	// Only a Gemma is asked to think: Qwen3's instructions end in "/no_think".
-	return { url, model, audio: gemma !== null, thinking: gemma !== null && setting.VOICE_INTENT_THINKING !== false };
+	return { url, model, audio: gemma !== null };
 }
 
 /** MLX has no CPU-only mode worth having, so the CPU is llama.cpp's. */
@@ -115,7 +107,6 @@ export function launchFor(
 	arch: string = process.arch,
 	runtime: IntentRuntime = undefined,
 	audio = false,
-	thinking = false,
 ): Launch | null {
 	let parsed: URL;
 	try {
@@ -143,10 +134,9 @@ export function launchFor(
 			"-hf", model, "--alias", model, "--host", host, "--port", port,
 			"-c", String(audio ? AUDIO_CONTEXT_TOKENS : CONTEXT_TOKENS),
 			// Gemma thinks before it answers unless told not to, and the
-			// "/no_think" the instructions end with is Qwen3's. Allowed to,
-			// it is stopped at a limit, so that it always gets to answer:
-			// with none it thought its whole answer away.
-			...(audio ? (thinking ? ["--reasoning-budget", String(THINKING_TOKENS)] : ["--reasoning", "off"]) : []),
+			// "/no_think" the instructions end with is Qwen3's. Thinking, it
+			// took longer over a command than the bot waits.
+			...(audio ? ["--reasoning", "off"] : []),
 			...(runtime ? ["-ngl", runtime === "cpu" ? "0" : "999"] : []),
 		],
 	};
@@ -290,12 +280,12 @@ export function startIntentServer(setting: Setting = readSetting()) {
 	if (shared) return shared;
 	const endpoint = modelEndpoint(setting);
 	if (!endpoint || setting.VOICE_INTENT_MODEL_SERVE === false) return null;
-	const { url, model, audio, thinking } = endpoint;
+	const { url, model, audio } = endpoint;
 	const runtime = intentRuntime(setting);
 	if (setting.VOICE_INTENT_PROVIDER === "coreml") {
 		globalApp.warn("Voice command model: neither MLX nor llama.cpp runs on Core ML; running it on the cpu");
 	}
-	const launch = launchFor(url, model, process.platform, process.arch, runtime, audio, thinking);
+	const launch = launchFor(url, model, process.platform, process.arch, runtime, audio);
 	if (!launch) return null;
 	shared = new IntentServer(url, launch);
 	shared.start();

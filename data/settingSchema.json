@@ -314,11 +314,6 @@
    "default": "mlx-community/Qwen3-4B-4bit",
    "description": "The model that server should use for voice commands"
   },
-  "VOICE_INTENT_THINKING": {
-   "type": "boolean",
-   "default": true,
-   "description": "With a Gemma VOICE_RECOGNISER that also reads the commands: when its answer at once comes to nothing the bot can do, ask it again and let it think first, as long as it needs up to a limit. That second answer takes seconds. Off, the first answer stands. Restart to apply"
-  },
   "VOICE_INTENT_PROVIDER": {
    "type": "string",
    "enum": [

@@ -268,14 +268,6 @@ export interface Setting {
 	 */
 	VOICE_INTENT_MODEL_SERVE?: boolean;
 	/**
-	 * With a Gemma VOICE_RECOGNISER reading the commands too: when its
-	 * answer at once comes to nothing the bot can do, ask it again and let it
-	 * think first, for as long as it finds it needs, up to a limit. On unless
-	 * set to false. That second answer takes seconds, and is given the tokens
-	 * and the time for it. Hearing a command never thinks.
-	 */
-	VOICE_INTENT_THINKING?: boolean;
-	/**
 	 * Where the server the bot starts runs the model: "cpu" is `llama-server`
 	 * with no layers on the GPU (on Apple silicon too, instead of MLX, so a
 	 * VOICE_INTENT_MODEL set to an MLX model will not load), "gpu" all of
