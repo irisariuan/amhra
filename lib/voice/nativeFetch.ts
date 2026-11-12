@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
+import { cacheDir, isCached, tempMusicPath } from "./cache";
 import { nativeBinary } from "./nativeBinary";
 
 /**
@@ -57,6 +58,11 @@ export const nativeFetchBin = nativeBinary(
 	"amhra-fetch",
 );
 
+/** The tracks being downloaded right now */
+export function nativeFetchingIds() {
+	return [...inFlight.keys()];
+}
+
 /** Cancel every running download, for shutdown */
 export function killNativeFetches() {
 	for (const [id, entry] of inFlight) {
@@ -79,7 +85,7 @@ export function nativeFetch(
 	if (existing && !force) return existing.promise;
 
 	const binary = nativeFetchBin.path();
-	const args = [id, "--cache-dir", `${process.cwd()}/cache`];
+	const args = [id, "--cache-dir", cacheDir()];
 	if (force) args.push("--force");
 	// The client ladder is compiled into the binary, so a client YouTube
 	// retires would otherwise need a rebuild to replace. Handing the fetcher an
@@ -165,11 +171,10 @@ export async function nativeFetchReady(
 	id: string,
 	force = false,
 ): Promise<NativeFetchResult | null> {
-	const done = `${process.cwd()}/cache/${id}.music`;
-	if (!force && existsSync(done)) return null;
+	if (!force && isCached(id)) return null;
 
 	const promise = nativeFetch(id, force);
-	const temp = `${process.cwd()}/cache/${id}.temp.music`;
+	const temp = tempMusicPath(id);
 	const deadline = Date.now() + READY_TIMEOUT_MS;
 
 	for (;;) {

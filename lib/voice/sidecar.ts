@@ -5,6 +5,7 @@ import type { Guild, VoiceBasedChannel } from "discord.js";
 import { z } from "zod";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
+import { cacheDir } from "./cache";
 import { fadesFrom } from "./fades";
 import { nativeBinary } from "./nativeBinary";
 import {
@@ -191,7 +192,7 @@ export class Sidecar extends EventEmitter {
 		const binary = sidecarBin.path();
 		dcb.log(`Starting voice sidecar: ${binary}`);
 		const extra = typeof this.extraArgs === "function" ? this.extraArgs() : this.extraArgs;
-		const args = ["--cache-dir", `${process.cwd()}/cache`, ...extra];
+		const args = ["--cache-dir", cacheDir(), ...extra];
 		// Streaming with caching off, the sidecar walks the same client ladder
 		// the fetcher does, so it is handed the same operator override.
 		const clients = `${process.cwd()}/data/youtube-clients.json`;

@@ -3,7 +3,6 @@ import {
 	createReadStream,
 	createWriteStream,
 	existsSync,
-	writeFileSync,
 } from "node:fs";
 import {
 	open,
@@ -16,10 +15,19 @@ import { PassThrough, Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { getYouTubeVideoId } from "../youtube";
 import { dcb, globalApp } from "../misc";
-import { collectOrphanedTemps, updateLastUsed, reviewCaches } from "./cache";
+import {
+	dropCached,
+	isCached,
+	markUsed,
+	migrateLastUsedRecord,
+	musicPath,
+	reviewCaches,
+	tempMusicPath,
+} from "./cache";
 import { CHANNELS, SAMPLE_RATE } from "./opus";
 import {
 	killNativeFetches,
+	nativeFetchingIds,
 	nativeFetch,
 	nativeFetchBin,
 	nativeFetchReady,
@@ -28,13 +36,11 @@ import { nativeNoCache, nativeVoiceActive } from "./native";
 import { stopIntentServer } from "./intentServer";
 import { stopSidecar } from "./sidecar";
 
-if (!existsSync(`${process.cwd()}/data/lastUsed.record`)) {
-	writeFileSync(`${process.cwd()}/data/lastUsed.record`, "");
-}
-
-// Nothing can be downloading yet, so every temp file present at startup is
-// left over from a run that did not shut down cleanly
-collectOrphanedTemps().catch(() => {});
+// Nothing is downloading yet, so this also clears what a run that did not shut
+// down cleanly left behind
+migrateLastUsedRecord()
+	.then(() => reviewCaches())
+	.catch(() => {});
 
 interface YtDlpStream {
 	rawStream?: Readable;
@@ -43,6 +49,11 @@ interface YtDlpStream {
 }
 
 const streams = new Map<string, YtDlpStream>();
+
+/** Every track with a download behind it, which a cache review must leave alone */
+function activeIds() {
+	return [...streams.keys(), ...nativeFetchingIds()];
+}
 
 /**
  * Whether downloads go through the Rust fetcher.
@@ -76,9 +87,9 @@ async function closeAllStreams() {
 		if (stream.rawStream?.destroyed) continue;
 		dcb.log(`Killing stream: ${id}`);
 		stream.rawStream?.destroy(new Error("Force stream closed"));
-		if (existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
+		if (existsSync(tempMusicPath(id))) {
 			dcb.log(`Deleting temp file: ${id}`);
-			await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch(
+			await unlink(tempMusicPath(id)).catch(
 				() => {},
 			);
 		}
@@ -107,7 +118,7 @@ export async function prefetch(url: string, force = false) {
 	if (!id) throw new Error(`Invalid YouTube video URL: ${url}`);
 	const processedUrl = `https://www.youtube.com/watch?v=${id}`;
 	if (
-		(existsSync(`${process.cwd()}/cache/${id}.music`) || streams.has(id)) &&
+		(isCached(id) || streams.has(id)) &&
 		!force
 	) {
 		dcb.log(`Cache hit: ${id}, skipping prefetch`);
@@ -123,7 +134,7 @@ export async function prefetch(url: string, force = false) {
 	// cache, so a prefetch is only a nudge: nothing here holds the audio.
 	if (useNativeFetch()) {
 		nativeFetch(id, force).then(
-			() => updateLastUsed([id]).then(() => reviewCaches([])),
+			() => markUsed(id).then(() => reviewCaches(activeIds())),
 			() => {},
 		);
 		return;
@@ -158,7 +169,7 @@ export async function prefetch(url: string, force = false) {
 	const rawOutputStream = spawnedProcess.stdout;
 	const copiedStream = copyStreamSafe("prefetch", rawOutputStream);
 	const writeStream = createWriteStream(
-		`${process.cwd()}/cache/${id}.temp.music`,
+		tempMusicPath(id),
 	);
 	
 	// Collect data chunks for in-memory caching
@@ -175,31 +186,28 @@ export async function prefetch(url: string, force = false) {
 			writeStream.destroy();
 			globalApp.err(`Error occurred while prefetching ${id}`, error);
 			streams.delete(id);
-			if (existsSync(`${process.cwd()}/cache/${id}.temp.music`)) {
+			if (existsSync(tempMusicPath(id))) {
 				globalApp.err(
 					`Deleting ${id}.temp.music due to ${error.message}`,
 				);
-				await unlink(`${process.cwd()}/cache/${id}.temp.music`).catch(
+				await unlink(tempMusicPath(id)).catch(
 					() => {},
 				);
 			}
 
-			if (existsSync(`${process.cwd()}/cache/${id}.music`)) {
+			if (isCached(id)) {
 				globalApp.err(`Deleting ${id}.music due to ${error.message}`);
-				await unlink(`${process.cwd()}/cache/${id}.music`).catch(
-					() => {},
-				);
+				await dropCached(id);
 			}
-			await updateLastUsed([], [id]);
-			await reviewCaches(streams.keys().toArray());
+			await reviewCaches(activeIds());
 			err(error);
 		};
 		writeStream.on("close", async () => {
 			streams.delete(id);
-			const temp = `${process.cwd()}/cache/${id}.temp.music`;
+			const temp = tempMusicPath(id);
 			if (!existsSync(temp)) {
 				globalApp.warn(`Temp file not found: ${id}`);
-				await reviewCaches(streams.keys().toArray());
+				await reviewCaches(activeIds());
 				return resolve();
 			}
 
@@ -218,17 +226,16 @@ export async function prefetch(url: string, force = false) {
 					}`,
 				);
 				await unlink(temp).catch(() => {});
-				await updateLastUsed([], [id]);
-				await reviewCaches(streams.keys().toArray());
+				await reviewCaches(activeIds());
 				return err(
 					new Error(`yt-dlp failed for ${id} (exit ${code})`),
 				);
 			}
 
 			dcb.log(`Download completed: ${id} (${written} bytes)`);
-			await rename(temp, `${process.cwd()}/cache/${id}.music`);
-			await updateLastUsed([id]);
-			await reviewCaches(streams.keys().toArray());
+			await rename(temp, musicPath(id));
+			await markUsed(id);
+			await reviewCaches(activeIds());
 			resolve();
 		});
 
@@ -276,11 +283,11 @@ const EBML_MAGIC = 0x1a45dfa3;
  * by definition already been written.
  */
 export function openCacheStream(id: string, follow = false): Readable | null {
-	const done = `${process.cwd()}/cache/${id}.music`;
+	const done = musicPath(id);
 	// A finished download is a plain file; nothing can be appended to it
 	if (existsSync(done)) return createReadStream(done);
 
-	const partial = `${process.cwd()}/cache/${id}.temp.music`;
+	const partial = tempMusicPath(id);
 	if (!existsSync(partial)) return null;
 	if (!follow) return createReadStream(partial);
 	return new TailFileStream(partial);
@@ -556,7 +563,7 @@ export async function createYtDlpStream(
 	// download reads the same file rather than a second copy of the bytes.
 	if (useNativeFetch()) {
 		await nativeFetchReady(id, force);
-		await updateLastUsed([id]);
+		await markUsed(id);
 		const stream = openCacheStream(id, true);
 		if (!stream) throw new Error(`No cache file to play for ${id}`);
 		return stream;
@@ -584,7 +591,7 @@ export async function createYtDlpStream(
 		return readable;
 	}
 	// Check if the file is already cached (fetched in previous process)
-	if (existsSync(`${process.cwd()}/cache/${id}.music`) && !force) {
+	if (isCached(id) && !force) {
 		return await getFileCachedStream(id);
 	}
 	// Cache miss, we need to download the file
@@ -602,7 +609,7 @@ export async function createYtDlpStream(
 				resultStream.data,
 			);
 		}
-		if (existsSync(`${process.cwd()}/cache/${id}.music`)) {
+		if (isCached(id)) {
 			return await getFileCachedStream(id);
 		}
 		throw new Error(
@@ -619,8 +626,8 @@ export async function createYtDlpStream(
 
 async function getFileCachedStream(id: string) {
 	dcb.log(`Cache hit: ${id}`);
-	await updateLastUsed([id]);
-	const stream = createReadStream(`${process.cwd()}/cache/${id}.music`);
+	await markUsed(id);
+	const stream = createReadStream(musicPath(id));
 	const data: (string | Buffer)[] = [];
 	stream.on("data", (chunk) => data.push(chunk));
 	const promise = new Promise<void>((r) => stream.on("end", r));

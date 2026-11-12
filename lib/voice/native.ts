@@ -1,9 +1,9 @@
-import { existsSync } from "node:fs";
 import type { VoiceBasedChannel } from "discord.js";
 import type { CustomAudioPlayer, CustomClient } from "../custom";
 import { dcb, globalApp } from "../misc";
 import { readSetting } from "../setting";
 import { getYouTubeVideoId } from "../youtube";
+import { isCached } from "./cache";
 import { nativeFetchBin } from "./nativeFetch";
 import { planArm } from "./nativePlan";
 import { gapBefore } from "./queuePlan";
@@ -363,7 +363,7 @@ export function nativeSetFades(
 export function cachedTrackId(url: string) {
 	const id = getYouTubeVideoId(url);
 	if (!id) return null;
-	return existsSync(`${process.cwd()}/cache/${id}.music`) ? id : null;
+	return isCached(id) ? id : null;
 }
 
 /**
