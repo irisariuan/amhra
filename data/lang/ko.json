@@ -221,6 +221,17 @@
 				}
 			}
 		},
+		"speed": {
+			"description": "음높이는 그대로 두고 재생 속도를 설정합니다",
+			"options": {
+				"speed": {
+					"description": "속도 (0~10, 0.01 단위). 1이 보통이고 0이면 노래가 소리 없이 멈춥니다"
+				},
+				"queue": {
+					"description": "이 대기열의 속도만. 비워 두면 대기열 1"
+				}
+			}
+		},
 		"loop": {
 			"name": "반복",
 			"description": "반복 모드를 전환합니다",
@@ -511,6 +522,10 @@
 	"QUEUE_CHOICE_NEW": "대기열 {queue}: 새 대기열 만들기",
 	"QUEUE_NATIVE_ONLY": "2번 이후의 대기열은 Rust 음성 백엔드(`USE_RUST_VOICE`)가 필요합니다",
 	"SET_QUEUE_VOLUME": "대기열 {queue} 음량을 {volume}%(으)로 설정했습니다",
+	"SET_SPEED": "재생 속도를 {speed}배로 설정했습니다",
+	"SET_QUEUE_SPEED": "대기열 {queue} 속도를 {speed}배로 설정했습니다",
+	"SET_SPEED_ZERO": "재생 속도를 0배로 설정했습니다. 속도를 올릴 때까지 노래가 소리 없이 멈춥니다",
+	"SPEED_NATIVE_ONLY": "속도를 바꾸려면 Rust 음성 백엔드(`USE_RUST_VOICE`)가 필요합니다",
 	"SCHEDULE_QUEUE_TAG": " · 대기열 {queue}",
 	"VOICE_LANGUAGE_INPUT": "🎙️ 사용 언어 (많이 쓰는 순): {language}",
 	"VOICE_LANGUAGE_INPUT_AUTO": "🎙️ 듣는 언어: 말하는 언어를 자동으로 판단",

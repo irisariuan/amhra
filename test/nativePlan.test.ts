@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+	clampSpeed,
 	NativePlayback,
 	planArm,
 	positionFrom,
 	PROMOTION_GRACE_MS,
 	shouldSendPlay,
+	wallDelay,
 } from "../lib/voice/nativePlan";
 
 /**
@@ -212,5 +214,40 @@ describe("NativePlayback", () => {
 		const playback = new NativePlayback();
 		playback.resumeAt(60_000);
 		expect(playback.anchor).toBeNull();
+	});
+});
+
+describe("speed", () => {
+	test("is kept within 0 to 10 on a 0.01 step", () => {
+		expect(clampSpeed(1.5)).toBe(1.5);
+		expect(clampSpeed(1.1)).toBe(1.1);
+		expect(clampSpeed(0.004)).toBe(0);
+		expect(clampSpeed(0.005)).toBe(0.01);
+		expect(clampSpeed(2.345)).toBe(2.35);
+		expect(clampSpeed(-1)).toBe(0);
+		expect(clampSpeed(12)).toBe(10);
+		expect(clampSpeed(Number.NaN)).toBe(1);
+	});
+
+	test("moves the position that much faster than the clock", () => {
+		const anchor = { ms: 10_000, at: 0 };
+		expect(positionFrom(anchor, false, 1_000, 2)).toBe(12_000);
+		expect(positionFrom(anchor, false, 1_000, 0.5)).toBe(10_500);
+		expect(positionFrom(anchor, false, 1_000, 0)).toBe(10_000);
+		// Paused is paused at any speed
+		expect(positionFrom(anchor, true, 1_000, 2)).toBe(10_000);
+	});
+
+	test("a player's position follows its speed", () => {
+		const playback = new NativePlayback();
+		playback.speed = 3;
+		playback.anchorAt(0, 0);
+		expect(playback.positionAt(false, 1_000)).toBe(3_000);
+	});
+
+	test("waits on the clock are scaled, and never end at zero", () => {
+		expect(wallDelay(10_000, 2)).toBe(5_000);
+		expect(wallDelay(10_000, 0.5)).toBe(20_000);
+		expect(wallDelay(10_000, 0)).toBeNull();
 	});
 });

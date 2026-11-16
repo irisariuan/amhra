@@ -26,11 +26,12 @@ import {
 	nativeSkip,
 	nativeStop,
 	nativeSetFades,
+	nativeSetSpeed,
 	nativeVoiceActive,
 } from "./voice/native";
 import { fadeSettings } from "./voice/sidecar";
 import { nextFades, syncedFades, type Fades } from "./voice/fades";
-import { NativePlayback, shouldSendPlay } from "./voice/nativePlan";
+import { NativePlayback, clampSpeed, shouldSendPlay, wallDelay } from "./voice/nativePlan";
 import {
 	dueIn,
 	gainFromPercent,
@@ -95,6 +96,10 @@ export interface SongDataPacket {
 	 * silently dropped.
 	 */
 	canCrossfade: boolean;
+	/** Queue 1's playback speed, 0 to 10; the song clock runs this much faster. */
+	speed: number;
+	/** Only the sidecar can change speed, so a dashboard should hide it otherwise. */
+	canSpeed: boolean;
 	paused: boolean;
 	pausedInMs: number;
 	pausedTimestamp: number;
@@ -134,6 +139,8 @@ export interface QueueLane {
 	id: string;
 	/** Its own level, linear, under the bot's volume. */
 	volume: number;
+	/** Its playback speed, 0 to 10: `playing.positionMs` moves this fast. */
+	speed: number;
 	gapMs: number;
 	loop: boolean;
 	paused: boolean;
@@ -228,6 +235,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 	volume: number;
 	isMuting: boolean;
+	/** Playback speed, 0 to 10, pitch kept. 0 holds the track silent. */
+	speed: number;
 
 	/**
 	 * @description If the player is playing song (true even when paused)
@@ -345,6 +354,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 
 		this.volume = 1;
 		this.isMuting = false;
+		this.speed = 1;
 
 		this.isPlaying = false;
 		this.nowPlaying = null;
@@ -419,6 +429,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 	}
 
 	resetAll() {
+		this.speed = 1;
+		if (this.nativePlayback) this.nativePlayback.speed = 1;
 		this.hardStop();
 		this.volume = 1;
 		this.reset();
@@ -630,6 +642,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 		// restart, or a player created after the connection came up all end up
 		// with this guild's fades rather than the sidecar's defaults.
 		this.pushFades();
+		nativeSetSpeed(this.guildId, this.sidecarQueue, this.speed);
 		const promoted = playback.takePromotion();
 		if (shouldSendPlay(promoted, trackId, startMs, Date.now())) {
 			playback.armed = null;
@@ -646,6 +659,36 @@ export class CustomAudioPlayer extends AudioPlayer {
 		if ((idleQueue || (this.isPlaying && this.nowPlaying)) && !this.isMuting) {
 			this.applyGain(this.gainFor(volume));
 		}
+	}
+
+	/**
+	 * Set how fast this queue plays, 0 to 10 on a 0.01 step, pitch kept.
+	 * 0 holds the track where it is and plays nothing.
+	 *
+	 * Kept across songs, like the volume. False without the sidecar, which is
+	 * the only backend that can stretch audio.
+	 */
+	setSpeed(speed: number) {
+		if (!this.nativePlayback) return false;
+		const next = clampSpeed(speed);
+		// What has played so far was at the old speed: pin it before the new
+		// one starts counting, for the clock here and the dashboard's alike.
+		const position = this.getCurrentSongPosition();
+		if (position !== null) {
+			const now = Date.now();
+			this.nativePlayback.anchorAt(position, now);
+			this.startFrom = position;
+			this.pauseCounter = 0;
+			this.startTime = now;
+			if (this.isPaused) this.pauseTimestamp = now;
+		}
+		this.speed = next;
+		this.nativePlayback.speed = next;
+		nativeSetSpeed(this.guildId, this.sidecarQueue, next);
+		// Segments come sooner or later on the clock now
+		this.clearSongTimeouts();
+		this.updateSongTimeouts();
+		return true;
 	}
 
 	/**
@@ -755,6 +798,8 @@ export class CustomAudioPlayer extends AudioPlayer {
 			crossfadeMs: this.crossfadeMs,
 			skipFadeMs: this.skipFadeMs,
 			canCrossfade: this.native,
+			speed: this.speed,
+			canSpeed: this.native,
 			loop: this.customSetting.looping ?? false,
 			autoSuggest: this.customSetting.autoSuggest ?? false,
 			skipToTimestamp: this.currentSegment()?.segment[1] ?? null,
@@ -787,6 +832,7 @@ export class CustomAudioPlayer extends AudioPlayer {
 			id: this.sidecarQueue,
 			// Queue 1's `volume` is the bot's; its own level is `mainVolume`
 			volume: this.queueId === 1 ? this.mainVolume / 100 : this.volume,
+			speed: this.speed,
 			paused: this.isPaused,
 			gapMs: this.gapMs,
 			loop: this.customSetting.looping ?? false,
@@ -969,13 +1015,15 @@ export class CustomAudioPlayer extends AudioPlayer {
 		// started sits at exactly zero, and treating that as "no position"
 		// left every switched-to track with no segment timers at all.
 		if (!this.nowPlaying || !this.isPlaying || currentPos === null) return;
-		if (this.isPaused) {
+		if (this.isPaused || this.speed <= 0) {
 			return this.clearSongTimeouts();
 		}
-		for (const { delayMs } of upcomingSegments(
+		for (const { delayMs: trackMs } of upcomingSegments(
 			this.nowPlaying.segments,
 			currentPos,
 		)) {
+			const delayMs = wallDelay(trackMs, this.speed);
+			if (delayMs === null) continue;
 			const id = setTimeout(() => {
 				if (this.customSetting.autoSkipSegment)
 					return this.skipCurrentSegment();

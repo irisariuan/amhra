@@ -345,6 +345,11 @@ export function nativeSetQueueVolume(guildId: string, queueId: QueueName, gain: 
 	send(guildId, { type: "setQueueVolume", guildId, queueId, gain });
 }
 
+/** One queue's playback speed, 0 to 10, pitch kept. 0 holds it silent. */
+export function nativeSetSpeed(guildId: string, queueId: QueueName, speed: number) {
+	send(guildId, { type: "setSpeed", guildId, queueId, speed });
+}
+
 /** Fade a queue out and drop it. Nothing it was playing is reported finished. */
 export function nativeRemoveQueue(guildId: string, queueId: QueueName) {
 	send(guildId, { type: "removeQueue", guildId, queueId });

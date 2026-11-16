@@ -17,7 +17,8 @@
 
 use amhra_audio::{CacheReader, packet_info};
 
-use crate::dsp::Crossfader;
+use crate::dsp::{Crossfader, DspError, MAX_SAMPLES, UNITY_EPSILON, encoder};
+use crate::stretch::{HOP, MAX_SPEED, Stretcher};
 
 /// How often a track still downloading is refreshed, in ticks. Once a second
 /// is enough to keep its buffer warm without stat-ing on every frame.
@@ -31,6 +32,9 @@ pub enum Tick<'a> {
 	/// A track is playing but its audio has not arrived yet. Send nothing and
 	/// keep the speaking state: this is a stall, not an ending.
 	Starving,
+	/// A track is loaded at speed zero: send nothing, consume nothing, and
+	/// do not call it a stall or an ending.
+	Held,
 	/// Nothing is loaded.
 	Idle,
 }
@@ -96,6 +100,72 @@ pub struct Player {
 	/// Frames copied out of the two readers so the mixer can borrow neither.
 	scratch_a: Vec<u8>,
 	scratch_b: Vec<u8>,
+	/// Playback speed, 0 to 10. At 1 frames pass through untouched.
+	speed: Speed,
+	/// Built the first time the speed leaves 1, dropped when it returns.
+	stretch: Option<Box<SpeedCodec>>,
+}
+
+/// The speed, defaulting to 1 rather than the 0 `Default` would give a float.
+#[derive(Debug, Clone, Copy)]
+struct Speed(f32);
+
+impl Default for Speed {
+	fn default() -> Self {
+		Self(1.0)
+	}
+}
+
+/// What playing at another speed costs: a decode, the stretch, an encode.
+struct SpeedCodec {
+	decoder: opus::Decoder,
+	encoder: opus::Encoder,
+	stretcher: Stretcher,
+	pcm: Vec<i16>,
+	frame: Vec<i16>,
+	encoded: Vec<u8>,
+	written: usize,
+}
+
+impl std::fmt::Debug for SpeedCodec {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("SpeedCodec").field("stretcher", &self.stretcher).finish_non_exhaustive()
+	}
+}
+
+impl SpeedCodec {
+	fn new(speed: f32) -> Result<Self, DspError> {
+		Ok(Self {
+			decoder: opus::Decoder::new(amhra_audio::opus::SAMPLE_RATE, opus::Channels::Stereo)?,
+			encoder: encoder()?,
+			stretcher: Stretcher::new(speed as f64),
+			pcm: vec![0; MAX_SAMPLES],
+			frame: vec![0; HOP * 2],
+			encoded: vec![0; 4000],
+			written: 0,
+		})
+	}
+
+	/// Decode a packet into the stretcher. A packet that will not decode is
+	/// left out: a 20ms hole is better than ending the track over it.
+	fn feed(&mut self, packet: &[u8]) {
+		if let Ok(samples) = self.decoder.decode(packet, &mut self.pcm, false) {
+			self.stretcher.push(&self.pcm[..samples * 2]);
+		}
+	}
+
+	/// Stretch and encode the next frame, once there is enough input.
+	fn encode_next(&mut self) -> Result<bool, DspError> {
+		if !self.stretcher.next_frame(&mut self.frame) {
+			return Ok(false);
+		}
+		self.written = self.encoder.encode(&self.frame, &mut self.encoded)?;
+		Ok(true)
+	}
+
+	fn output(&self) -> &[u8] {
+		&self.encoded[..self.written]
+	}
 }
 
 impl Player {
@@ -115,6 +185,48 @@ impl Player {
 		self.fades
 	}
 
+	/// Set the playback speed, 0 to 10, pitch kept. 1 passes frames through
+	/// untouched; 0 holds the track where it is and sends nothing.
+	///
+	/// Crossfades and skip fades are left out while it is not 1: they mix
+	/// frames as they are stored, which would jump back to normal speed for
+	/// the length of the seam.
+	pub fn set_speed(&mut self, speed: f32) {
+		let speed = if speed.is_finite() { speed.clamp(0.0, MAX_SPEED as f32) } else { 1.0 };
+		self.speed = Speed(speed);
+		if self.is_unity_speed() {
+			// What the stretcher still held is a few tens of milliseconds the
+			// reader has already moved past; dropping it is a skip too short
+			// to hear, against holding a codec for nothing.
+			self.stretch = None;
+			return;
+		}
+		// A seam already mixing is finished at once rather than left half done.
+		if self.fade.is_some() {
+			self.finish_fade();
+		}
+		if speed > 0.0
+			&& let Some(codec) = self.stretch.as_mut()
+		{
+			codec.stretcher.set_speed(speed as f64);
+		}
+	}
+
+	pub fn speed(&self) -> f32 {
+		self.speed.0
+	}
+
+	fn is_unity_speed(&self) -> bool {
+		(self.speed.0 - 1.0).abs() < UNITY_EPSILON
+	}
+
+	/// Forget what the stretcher held, for a jump in what is playing.
+	fn reset_stretch(&mut self) {
+		if let Some(codec) = self.stretch.as_mut() {
+			codec.stretcher.reset();
+		}
+	}
+
 	/// Whether a fade is running right now.
 	pub fn is_fading(&self) -> bool {
 		self.fade.is_some()
@@ -124,6 +236,7 @@ impl Player {
 	pub fn play(&mut self, id: impl Into<String>, reader: CacheReader) {
 		self.active = Some(Slot { id: id.into(), reader, started: false });
 		self.starving = false;
+		self.reset_stretch();
 	}
 
 	/// Queue the track to follow, replacing any previous standby.
@@ -142,7 +255,7 @@ impl Player {
 	pub fn skip(&mut self) {
 		// A skip with a fade keeps both tracks for a moment; without one it is
 		// the old behaviour of dropping straight to the next.
-		if self.fades.skip_fade_ms > 0 && self.standby.is_some() && self.active.is_some() {
+		if self.fades.skip_fade_ms > 0 && self.is_unity_speed() && self.standby.is_some() && self.active.is_some() {
 			self.fade = Some(Fade { elapsed_ms: 0, total_ms: self.fades.skip_fade_ms as u32 });
 			return;
 		}
@@ -150,6 +263,7 @@ impl Player {
 			self.events.push(Event::Finished(finished.id));
 		}
 		self.promote();
+		self.reset_stretch();
 	}
 
 	pub fn stop(&mut self) {
@@ -157,12 +271,15 @@ impl Player {
 			self.events.push(Event::Finished(finished.id));
 		}
 		self.standby = None;
+		self.reset_stretch();
 	}
 
 	pub fn seek(&mut self, timestamp_ms: u32) -> Option<u32> {
 		let slot = self.active.as_mut()?;
 		self.starving = false;
-		Some(slot.reader.seek(timestamp_ms))
+		let landed = slot.reader.seek(timestamp_ms);
+		self.reset_stretch();
+		Some(landed)
 	}
 
 	pub fn position_ms(&self) -> u32 {
@@ -205,6 +322,10 @@ impl Player {
 			self.promote();
 		}
 
+		if !self.is_unity_speed() {
+			return self.tick_at_speed();
+		}
+
 		// A fade needs a frame from each track at once, which no borrow of a
 		// single slot can give, so it is mixed into the fader's own buffer and
 		// only borrowed from there once every slot borrow has ended.
@@ -235,6 +356,54 @@ impl Player {
 			Step::Starve => Tick::Starving,
 			Step::Idle => Tick::Idle,
 		}
+	}
+
+	/// This tick's audio at a speed other than 1: as many stored frames as
+	/// the stretcher needs, one frame out.
+	///
+	/// The switch to the next track happens inside the loop, the same way it
+	/// does at normal speed, so the stretcher carries straight across the seam.
+	fn tick_at_speed(&mut self) -> Tick<'_> {
+		if self.speed.0 <= 0.0 {
+			return if self.active.is_none() { Tick::Idle } else { Tick::Held };
+		}
+		if self.stretch.is_none() {
+			match SpeedCodec::new(self.speed.0) {
+				Ok(codec) => self.stretch = Some(Box::new(codec)),
+				// Without a codec the honest outcome is normal speed.
+				Err(_) => {
+					self.speed = Speed(1.0);
+					return self.tick();
+				}
+			}
+		}
+		loop {
+			match self.stretch.as_mut().expect("built above").encode_next() {
+				Ok(true) => break,
+				Ok(false) => {}
+				Err(_) => return Tick::Starving,
+			}
+			match self.step() {
+				Step::Play => {
+					let Self { active, stretch, events, starving, .. } = self;
+					let slot = active.as_mut().expect("step said play");
+					if !slot.started {
+						slot.started = true;
+						events.push(Event::Started(slot.id.clone()));
+					}
+					*starving = false;
+					let (bytes, _) = slot.reader.next_frame().expect("step checked a frame is ready");
+					stretch.as_mut().expect("built above").feed(bytes);
+				}
+				Step::Starve => return Tick::Starving,
+				Step::Idle => {
+					self.reset_stretch();
+					return Tick::Idle;
+				}
+			}
+		}
+		let bytes = self.stretch.as_ref().expect("built above").output();
+		Tick::Frame { bytes, samples: HOP as u32 }
 	}
 
 	/// Whether the active track is close enough to its end to start mixing.
@@ -584,6 +753,89 @@ mod tests {
 		assert_eq!(landed, 1_000);
 		assert_eq!(player.position_ms(), 1_000);
 		assert!(matches!(player.tick(), Tick::Frame { .. }));
+		std::fs::remove_file(&path).ok();
+	}
+
+	/// A file of real Opus frames of a steady tone, for the paths that decode.
+	fn tone_reader(name: &str, frames: usize) -> (CacheReader, PathBuf) {
+		test_support::reader(&format!("player-{name}"), &vec![test_support::tone_packet(8000); frames])
+	}
+
+	#[test]
+	fn double_speed_reads_two_frames_a_tick() {
+		let (source, path) = tone_reader("speed2", 200);
+		let mut player = Player::new();
+		player.set_speed(2.0);
+		player.play("a", source);
+		for _ in 0..50 {
+			assert!(matches!(player.tick(), Tick::Frame { samples: 960, .. }));
+		}
+		// A second of output from about two seconds of track, give or take
+		// what the stretcher holds.
+		let position = player.position_ms();
+		assert!((1_900..=2_100).contains(&position), "at {position}ms");
+		std::fs::remove_file(&path).ok();
+	}
+
+	#[test]
+	fn half_speed_reads_a_frame_every_other_tick() {
+		let (source, path) = tone_reader("speed05", 200);
+		let mut player = Player::new();
+		player.set_speed(0.5);
+		player.play("a", source);
+		for _ in 0..100 {
+			assert!(matches!(player.tick(), Tick::Frame { .. }));
+		}
+		let position = player.position_ms();
+		assert!((950..=1_100).contains(&position), "at {position}ms");
+		std::fs::remove_file(&path).ok();
+	}
+
+	#[test]
+	fn speed_zero_holds_the_track_without_ending_it() {
+		let (source, path) = tone_reader("speed0", 50);
+		let mut player = Player::new();
+		player.play("a", source);
+		player.tick();
+		player.set_speed(0.0);
+		for _ in 0..20 {
+			assert!(matches!(player.tick(), Tick::Held));
+		}
+		assert_eq!(player.position_ms(), 20, "nothing should be consumed while held");
+		assert!(!player.is_idle());
+		player.set_speed(1.0);
+		assert!(matches!(player.tick(), Tick::Frame { .. }));
+		std::fs::remove_file(&path).ok();
+	}
+
+	#[test]
+	fn a_fast_track_still_hands_over_to_the_next() {
+		let (first, first_path) = tone_reader("speedseam-a", 20);
+		let (second, second_path) = tone_reader("speedseam-b", 200);
+		let mut player = Player::new();
+		player.set_speed(4.0);
+		player.play("a", first);
+		player.set_next("b", second);
+		for _ in 0..10 {
+			assert!(matches!(player.tick(), Tick::Frame { .. }), "a gap appeared at the seam");
+		}
+		assert_eq!(player.current_id(), Some("b"));
+		let events = player.drain_events();
+		assert!(events.contains(&Event::Finished("a".to_owned())));
+		assert!(events.contains(&Event::Started("b".to_owned())));
+		std::fs::remove_file(&first_path).ok();
+		std::fs::remove_file(&second_path).ok();
+	}
+
+	#[test]
+	fn back_to_normal_speed_passes_frames_through_again() {
+		let (source, path) = reader("speedback", 100, 0x77);
+		let mut player = Player::new();
+		player.play("a", source);
+		player.set_speed(1.5);
+		player.set_speed(1.0);
+		let Tick::Frame { bytes, .. } = player.tick() else { panic!("expected a frame") };
+		assert_eq!(bytes[1], 0x77, "unity speed should not re-encode");
 		std::fs::remove_file(&path).ok();
 	}
 

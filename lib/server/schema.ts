@@ -3,6 +3,7 @@ import { SongEditType } from "./event";
 import { isYouTubePlaylist, isYouTubeVideo } from "../youtube";
 import { Language } from "../interaction";
 import { MAX_GAP_MS, MAX_LEAD_IN_MS, MAX_QUEUES } from "../voice/queuePlan";
+import { MAX_SPEED, MIN_SPEED } from "../voice/nativePlan";
 
 // Queue item (from custom.ts)
 export const QueueItemSchema = z.object({
@@ -194,6 +195,19 @@ const SetMainVolumeSchema = z.object({
 	detail: z.object({ volume: MixVolume }),
 });
 
+/**
+ * A queue's playback speed, 0 to 10 on a 0.01 step, pitch kept; 0 holds it
+ * silent. Queue 1 when `track` is left out. Only the sidecar can do it.
+ */
+const SetSpeedSchema = z.object({
+	action: z.literal(SongEditType.SetSpeed),
+	guildId: z.string(),
+	detail: z.object({
+		speed: z.number().min(MIN_SPEED).max(MAX_SPEED, `Speed must be <= ${MAX_SPEED}`),
+		track: TrackId.optional(),
+	}),
+});
+
 /** A new, silent track, for songs to be queued or moved onto. */
 const AddMixTrackSchema = z.object({
 	action: z.literal(SongEditType.AddMixTrack),
@@ -301,6 +315,7 @@ export const SongEditRequestSchema = z.discriminatedUnion("action", [
 	AutoSuggestSchema,
 	SkipSegmentSchema,
 	SetMainVolumeSchema,
+	SetSpeedSchema,
 	AddMixTrackSchema,
 	RemoveMixTrackSchema,
 	SetMixTrackSchema,

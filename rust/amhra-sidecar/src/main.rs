@@ -164,6 +164,7 @@ impl GuildSession {
 			position_ms: 0,
 			paused: false,
 			gain: 1.0,
+			speed: 1.0,
 		})
 	}
 
@@ -535,6 +536,12 @@ async fn dispatch(
 			with_guild(guilds, events, &guild_id, |session| {
 				session.queue(&queue_id).gain = gain;
 				session.worker.send(WorkerCommand::SetQueueVolume { queue: queue_id, gain });
+			})
+		}
+		Command::SetSpeed { guild_id, queue_id, speed } => {
+			with_guild(guilds, events, &guild_id, |session| {
+				session.queue(&queue_id).speed = speed;
+				session.worker.send(WorkerCommand::SetSpeed { queue: queue_id, speed });
 			})
 		}
 		Command::RemoveQueue { guild_id, queue_id } => {

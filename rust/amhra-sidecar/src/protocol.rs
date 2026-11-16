@@ -125,6 +125,15 @@ pub enum Command {
 		queue_id: String,
 		gain: f32,
 	},
+	/// One queue's playback speed, 0 to 10, pitch kept. 1 passes frames
+	/// through untouched; 0 holds the track and sends nothing.
+	#[serde(rename_all = "camelCase")]
+	SetSpeed {
+		guild_id: String,
+		#[serde(default = "first_queue")]
+		queue_id: String,
+		speed: f32,
+	},
 	/// Fade a queue out and drop it, with what it was playing and had armed.
 	/// Nothing is reported finished: the bot asked.
 	#[serde(rename_all = "camelCase")]
@@ -335,6 +344,8 @@ pub struct QueueState {
 	pub paused: bool,
 	/// The queue's own gain.
 	pub gain: f32,
+	/// The queue's playback speed.
+	pub speed: f32,
 }
 
 /// The queue a command means when it does not say.
@@ -361,6 +372,7 @@ impl Command {
 			| Self::Seek { guild_id, .. }
 			| Self::SetVolume { guild_id, .. }
 			| Self::SetQueueVolume { guild_id, .. }
+			| Self::SetSpeed { guild_id, .. }
 			| Self::RemoveQueue { guild_id, .. }
 			| Self::SetFades { guild_id, .. }
 			| Self::SetListen { guild_id, .. }
@@ -455,6 +467,7 @@ mod tests {
 			r#"{"type":"skip","guildId":"1"}"#,
 			r#"{"type":"seek","guildId":"1","positionMs":5}"#,
 			r#"{"type":"setQueueVolume","guildId":"1","gain":0.5}"#,
+			r#"{"type":"setSpeed","guildId":"1","speed":1.5}"#,
 		] {
 			let command: Command = serde_json::from_str(json).unwrap();
 			let queue = match &command {
@@ -462,7 +475,8 @@ mod tests {
 				| Command::SetNext { queue_id, .. }
 				| Command::Skip { queue_id, .. }
 				| Command::Seek { queue_id, .. }
-				| Command::SetQueueVolume { queue_id, .. } => queue_id,
+				| Command::SetQueueVolume { queue_id, .. }
+				| Command::SetSpeed { queue_id, .. } => queue_id,
 				other => panic!("wrong variant: {other:?}"),
 			};
 			assert_eq!(queue, "1", "{json}");
@@ -528,6 +542,7 @@ mod tests {
 			r#"{"type":"setFades","guildId":"g","crossfadeMs":0,"skipFadeMs":40}"#,
 			r#"{"type":"setQueueVolume","guildId":"g","queueId":"2","gain":0.5}"#,
 			r#"{"type":"removeQueue","guildId":"g","queueId":"2"}"#,
+			r#"{"type":"setSpeed","guildId":"g","queueId":"2","speed":0}"#,
 			r#"{"type":"stop","guildId":"g","queueId":"2"}"#,
 			r#"{"type":"setListen","guildId":"g","listen":true}"#,
 			r#"{"type":"speak","guildId":"g","text":"Skipping."}"#,
