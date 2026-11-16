@@ -56,6 +56,7 @@ const sessionState = z.object({
 			positionMs: z.number(),
 			paused: z.boolean(),
 			gain: z.number(),
+			speed: z.number(),
 		}),
 	),
 });
