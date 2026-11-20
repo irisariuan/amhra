@@ -21,6 +21,7 @@ export enum SongEditType {
 	SkipSegment = "skipSegment",
 	AutoSuggest = "autoSuggest",
 	SetMainVolume = "setMainVolume",
+	SetSpeed = "setSpeed",
 	AddMixTrack = "addMixTrack",
 	RemoveMixTrack = "removeMixTrack",
 	SetMixTrack = "setMixTrack",
@@ -35,6 +36,7 @@ export type ExpressEventDetail = {
 	sec?: number;
 	index?: number;
 	volume?: number;
+	speed?: number;
 	crossfadeMs?: number;
 	skipFadeMs?: number;
 	queue?: QueueItem[];

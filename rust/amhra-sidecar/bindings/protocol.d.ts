@@ -23,7 +23,7 @@ trackId: string, startMs: number,
  * Fetch the track straight into playback rather than read it from
  * the cache, unless the cache already holds all of it.
  */
-stream: boolean, } | { "type": "setNext", guildId: string, queueId: string, trackId: string, stream: boolean, } | { "type": "clearNext", guildId: string, queueId: string, } | { "type": "skip", guildId: string, queueId: string, } | { "type": "stop", guildId: string, queueId: string | null, } | { "type": "pause", guildId: string, queueId: string | null, } | { "type": "resume", guildId: string, queueId: string | null, } | { "type": "seek", guildId: string, queueId: string, positionMs: number, } | { "type": "setVolume", guildId: string, gain: number, } | { "type": "setQueueVolume", guildId: string, queueId: string, gain: number, } | { "type": "removeQueue", guildId: string, queueId: string, } | { "type": "setFades", guildId: string, queueId: string | null, crossfadeMs: number, skipFadeMs: number, } | { "type": "speak", guildId: string, text: string, 
+stream: boolean, } | { "type": "setNext", guildId: string, queueId: string, trackId: string, stream: boolean, } | { "type": "clearNext", guildId: string, queueId: string, } | { "type": "skip", guildId: string, queueId: string, } | { "type": "stop", guildId: string, queueId: string | null, } | { "type": "pause", guildId: string, queueId: string | null, } | { "type": "resume", guildId: string, queueId: string | null, } | { "type": "seek", guildId: string, queueId: string, positionMs: number, } | { "type": "setVolume", guildId: string, gain: number, } | { "type": "setQueueVolume", guildId: string, queueId: string, gain: number, } | { "type": "setSpeed", guildId: string, queueId: string, speed: number, } | { "type": "removeQueue", guildId: string, queueId: string, } | { "type": "setFades", guildId: string, queueId: string | null, crossfadeMs: number, skipFadeMs: number, } | { "type": "speak", guildId: string, text: string, 
 /**
  * `en`, `ja`, `ko`, `zh` (Mandarin) or `yue` (Cantonese); anything
  * else, or nothing, is English.
@@ -76,7 +76,11 @@ paused: boolean,
 /**
  * The queue's own gain.
  */
-gain: number, };
+gain: number, 
+/**
+ * The queue's playback speed.
+ */
+speed: number, };
 
 /**
  * One guild's state, for a bot that has just restarted and lost its own.

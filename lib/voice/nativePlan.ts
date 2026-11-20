@@ -77,6 +77,22 @@ export interface PositionAnchor {
 	at: number;
 }
 
+/** Slowest and fastest playback speeds, and the step between them. */
+export const MIN_SPEED = 0;
+export const MAX_SPEED = 10;
+export const SPEED_STEP = 0.01;
+
+/**
+ * A speed as the sidecar takes it: within 0 to 10, on the 0.01 step, and 1
+ * for anything that is not a number at all.
+ */
+export function clampSpeed(speed: number) {
+	if (!Number.isFinite(speed)) return 1;
+	const stepped = Math.round(speed / SPEED_STEP) * SPEED_STEP;
+	// Rounded again so 1.1 comes out as 1.1 rather than 1.1000000000000001
+	return Math.min(MAX_SPEED, Math.max(MIN_SPEED, Number(stepped.toFixed(2))));
+}
+
 /**
  * Where playback is now, given the last report.
  *
@@ -84,15 +100,26 @@ export interface PositionAnchor {
  * bar or a segment timer, so the wall clock carries the position between them
  * and every report resets whatever drift accumulated. While paused the anchor
  * is the whole answer: no reports arrive, and time passing is not progress.
+ * At another speed the track moves that much faster or slower than the clock.
  */
 export function positionFrom(
 	anchor: PositionAnchor | null,
 	paused: boolean,
 	now: number,
+	speed = 1,
 ) {
 	if (!anchor) return null;
 	if (paused) return anchor.ms;
-	return anchor.ms + Math.max(0, now - anchor.at);
+	return anchor.ms + Math.max(0, now - anchor.at) * speed;
+}
+
+/**
+ * Wall-clock milliseconds until the track reaches `trackMs` ahead, at `speed`;
+ * null at speed zero, where it never will.
+ */
+export function wallDelay(trackMs: number, speed: number) {
+	if (speed <= 0) return null;
+	return trackMs / speed;
 }
 
 /**
@@ -123,6 +150,8 @@ export class NativePlayback {
 	 * through it re-arms whatever is at the head of the queue by then.
 	 */
 	promoted: Promotion | null = null;
+	/** How fast the track plays, which is how fast the position moves. */
+	speed = 1;
 
 	/** Nothing playing, nothing armed, nothing promoted. */
 	clear() {
@@ -148,7 +177,7 @@ export class NativePlayback {
 
 	/** Where playback is now, or null when nothing has been reported yet. */
 	positionAt(paused: boolean, now: number) {
-		return positionFrom(this.anchor, paused, now);
+		return positionFrom(this.anchor, paused, now, this.speed);
 	}
 
 	/**

@@ -64,6 +64,7 @@ pub enum WorkerCommand {
 	SetVolume(f32),
 	/// One queue's own gain.
 	SetQueueVolume { queue: String, gain: f32 },
+	SetSpeed { queue: String, speed: f32 },
 	RemoveQueue(String),
 	/// One queue's seams, or every queue's and the default for new ones.
 	SetFades { queue: Option<String>, fades: FadeSettings },
@@ -310,6 +311,8 @@ fn run(
 		let mut frames = Vec::with_capacity(queues.list.len());
 		// A stalled queue is not an ending, even with nothing to send.
 		let mut stalled = false;
+		// A queue at speed zero is quiet but not finished, as a paused one is.
+		let mut stopped = false;
 		if !paused {
 			for Queue { id, player, paused: held, .. } in queues.list.iter_mut() {
 				if *held {
@@ -318,6 +321,7 @@ fn run(
 				match player.tick() {
 					Tick::Frame { bytes, samples } => frames.push((id.as_str(), Frame { bytes, samples })),
 					Tick::Starving => stalled = true,
+					Tick::Held => stopped = true,
 					Tick::Idle => {}
 				}
 			}
@@ -368,7 +372,7 @@ fn run(
 			}
 			// A chime over nothing ending is not the queues going quiet, and
 			// neither is one held by its own pause.
-			if std::mem::take(&mut player_spoke) && !paused && !queues.any_held() {
+			if std::mem::take(&mut player_spoke) && !paused && !stopped && !queues.any_held() {
 				let _ = events.send(Event::Idle { guild_id: guild_id.clone() });
 			}
 		}
@@ -594,6 +598,10 @@ fn apply(
 		}
 		WorkerCommand::SetVolume(gain) => mixer.set_master(gain),
 		WorkerCommand::SetQueueVolume { queue, gain } => mixer.set_gain(&queue, gain),
+		WorkerCommand::SetSpeed { queue, speed } => match queues.get_or_make(&queue) {
+			Ok(queue) => queue.player.set_speed(speed),
+			Err(message) => report(events, guild_id, message),
+		},
 		WorkerCommand::RemoveQueue(queue) => {
 			if let Some(queue) = queues.get(&queue) {
 				// Faded to silence over the next frame, then dropped.

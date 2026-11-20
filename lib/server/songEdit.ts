@@ -354,6 +354,14 @@ export async function handleSongInterruption(
 			if (status !== 200) return status;
 			break;
 		}
+		case SongEditType.SetSpeed: {
+			if (!player.native) return 501;
+			const track = data.detail.track === undefined ? player : laneById(player, data.detail.track);
+			if (!track) return 404;
+			track.setSpeed(data.detail.speed);
+			dcb.log(`Set queue ${track.queueId} to ${track.speed}x from dashboard`);
+			break;
+		}
 		case SongEditType.SetMainVolume: {
 			if (!player.native) return 501;
 			const volume = percent(data.detail.volume);

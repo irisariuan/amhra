@@ -241,6 +241,17 @@
 				}
 			}
 		},
+		"speed": {
+			"description": "音程を変えずに再生速度を設定します",
+			"options": {
+				"speed": {
+					"description": "速度（0〜10、0.01刻み）。1が通常、0で曲を無音のまま止めます"
+				},
+				"queue": {
+					"description": "このキューの速度だけ。空欄ならキュー 1"
+				}
+			}
+		},
 		"loop": {
 			"name": "ループ",
 			"description": "ループモードを切り替えます",
@@ -537,6 +548,10 @@
 	"QUEUE_CHOICE_NEW": "キュー {queue}: 新しいキューを作る",
 	"QUEUE_NATIVE_ONLY": "キュー 2 以降には Rust 音声バックエンド（`USE_RUST_VOICE`）が必要です",
 	"SET_QUEUE_VOLUME": "キュー {queue} の音量を {volume}% に設定しました",
+	"SET_SPEED": "再生速度を{speed}倍に設定しました",
+	"SET_QUEUE_SPEED": "キュー {queue} の速度を{speed}倍に設定しました",
+	"SET_SPEED_ZERO": "再生速度を0倍にしました。速度を上げるまで曲は無音で止まります",
+	"SPEED_NATIVE_ONLY": "速度の変更には Rust 音声バックエンド（`USE_RUST_VOICE`）が必要です",
 	"SCHEDULE_QUEUE_TAG": " · キュー {queue}",
 	"VOICE_LANGUAGE_INPUT": "🎙️ あなたの言語(よく話す順):{language}",
 	"VOICE_LANGUAGE_INPUT_AUTO": "🎙️ 聞き取る言語:話している言語を自動で判断",

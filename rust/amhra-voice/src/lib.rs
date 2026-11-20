@@ -8,6 +8,7 @@ pub mod gateway;
 pub mod mixer;
 pub mod player;
 pub mod receive;
+pub mod stretch;
 pub mod udp;
 pub mod wire;
 

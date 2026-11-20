@@ -395,7 +395,7 @@ async fn main() {
 				elapsed_us += samples as u64 * 1_000_000 / 48_000;
 			}
 			// Nothing to send: hold the speaking state and wait a tick.
-			Tick::Starving => elapsed_us += 20_000,
+			Tick::Starving | Tick::Held => elapsed_us += 20_000,
 			Tick::Idle => break,
 		}
 
